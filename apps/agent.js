@@ -74,7 +74,7 @@ import {
   PersonaStore, PersonaService, PersonaLore, PersonaAdoptionQueue,
   PERSONA_MAX_NAME_LEN, PERSONA_MAX_PROMPT_LEN,
   groundingText, PERSONA_COMPLETION_SYSTEM, buildCompletionInput,
-  parseCompletionOutput, buildLoreDraft, formatDraftSummary,
+  parseCompletionOutput, buildLoreDraft, formatDraftSummary, isCompletionToolAllowed,
 } from '../model/persona/index.js'
 import { VisionService, describeImages, resolveVisionBaseURL, resolveVisionRoute } from '../model/vision/index.js'
 import { getStickerManager } from '../model/sticker/manager.js'
@@ -1343,7 +1343,11 @@ async function _buildRuntime(scope) {
     let out
     const taskId = randomUUID()
     try {
-      out = await makeAgent({ maxTurns: cfg.schedule?.taskMaxTurns || 200, masterSkipConfirm: false }).run(buildCompletionInput(p), {
+      out = await makeAgent({
+        maxTurns: cfg.schedule?.taskMaxTurns || 200,
+        masterSkipConfirm: false,
+        tools: makeCompletionToolRegistry(tools),
+      }).run(buildCompletionInput(p), {
         ctx: completionCtx,
         systemPrompt: PERSONA_COMPLETION_SYSTEM, // 身份层替换为资料员；工具/防护仍照常追加
         ephemeral: true, // 借用真实身份/任务账本，但不污染会话历史/记忆
@@ -1868,6 +1872,36 @@ export function attachToolRuntime(ctx, rt, cfg = Config.get().agent || {}) {
   ctx.sandbox = makeSandboxCtx(ctx, rt, cfg)
   ctx.vision = rt?.vision && Config.get().agent?.media?.enable !== false ? rt.vision : null
   return ctx
+}
+
+/**
+ * 人设补齐专用「只读取材」工具表：按白名单复制工具，默认拒绝新工具。
+ * web_crawl 额外移除 js_code（可执行点击/提交，不属于只读取材）。
+ */
+function makeCompletionToolRegistry(source) {
+  const reg = new ToolRegistry()
+  for (const tool of source.list()) {
+    if (!isCompletionToolAllowed(tool)) continue
+    if (tool.name === 'web_crawl') {
+      let parameters = tool.parameters
+      try { parameters = JSON.parse(JSON.stringify(tool.parameters || {})) } catch { /* 保留原 schema */ }
+      if (parameters?.properties) delete parameters.properties.js_code
+      reg.register({
+        ...tool,
+        parameters,
+        execute: (params, ctx) => {
+          const wait = params?.wait_for
+          if (wait && !/^\s*css:/i.test(String(wait))) {
+            return { error: '人设补齐任务只允许 css: 等待条件（禁止在页面执行 JS）' }
+          }
+          return tool.execute({ ...(params || {}), js_code: undefined }, ctx)
+        },
+      })
+    } else {
+      reg.register(tool)
+    }
+  }
+  return reg
 }
 
 /**
@@ -4071,7 +4105,11 @@ export class Chat extends plugin {
   /** 补齐任务的真实 ctx（含活动会话 + 机器人身份）：使任务并入主任务账本、浏览器等工具可用。 */
   async _personaCompletionCtx(rt) {
     const base = ctxOf(this.e)
-    try { base.conversationId = await rt.session.getActiveConversation(base.scopeUserId, base.groupId) } catch { /* 用默认 */ }
+    try {
+      // 只读活跃对话：`getActiveConversation()` 在无对话时会**新建空对话**，
+      // 让一次资料补齐凭空出现在用户的 #聊天列表 里（副作用）。
+      base.conversationId = await rt.session.peekActiveConversation?.(base.scopeUserId, base.groupId) || 'persona-complete'
+    } catch { base.conversationId = 'persona-complete' }
     base.selfId = String(this.e.self_id || this.e.selfId || '')
     return base
   }

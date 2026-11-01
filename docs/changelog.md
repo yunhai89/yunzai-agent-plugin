@@ -6,6 +6,7 @@
 
 | 版本 | 内容 |
 | --- | --- |
+| **v1.47.4** | 人设补齐安全/副作用加固：补齐任务改用只读工具白名单（禁止 terminal、stagehand act、memory、提醒/定时、下载/本地文件；web_crawl 移除 js_code 与 js: 等待），外部资料无法经注入驱动副作用；`PersonaCompletion` 不再为无活跃会话的用户凭空创建空对话 |
 | **v1.47.3** | 无损压缩加强（参考 Hermes/Claude Code auto-compact）：台账新增约束/未决问题/已确认决定/工具错误结构化字段并优先保留；多次压缩合并去重；`context_recall` 检索升级为 BM25（jieba 中文分词）+ 精确短语加权，无需连续子串；devLog 增加各字段计数 |
 | **v1.47.2** | 修复两类长内容问题：① `web_crawl`/知识库抓取 PDF 时不再把 `%PDF-1.5`/FlateDecode 原始字节当正文，自动用 pdfjs 提取文本（`via:"pdf"`，扫描件/加密 PDF 返回明确错误）；② Web「长期记忆/用户画像」看不到 QQ 官方 openid 数据：用户列表改为合并 `scopes` 与 KV 实际键（`Yz:agent:mem:*` / `Yz:agent:profile:*`），新增 `/api/recall/users`、`/api/profile/users` |
 | **v1.47.1** | 修复 QQ 官方机器人长任务回复失败（`40034005` 被动回复已过期）：事件缺 timestamp 时按首次收到消息时间判断 5 分钟窗口（预留 15s 余量）；客户端在平台仍返回过期错误时自动重发一次主动消息（不带 `msg_id`），文本/markdown/富媒体均覆盖 |

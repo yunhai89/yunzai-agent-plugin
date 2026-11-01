@@ -5,7 +5,7 @@
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
-import { PersonaStore, PersonaService, slugify, normalizePersona, BUILTIN_PERSONAS, PersonaLore, PersonaAdoptionQueue, groundingText, assertSafeLore, parseCompletionOutput, buildLoreDraft } from './index.js'
+import { PersonaStore, PersonaService, slugify, normalizePersona, BUILTIN_PERSONAS, PersonaLore, PersonaAdoptionQueue, groundingText, assertSafeLore, parseCompletionOutput, buildLoreDraft, isCompletionToolAllowed } from './index.js'
 import { memoryKv } from '../agent/store/kv.js'
 
 let passed = 0
@@ -351,6 +351,16 @@ await test('completion：JSON 解析 + 草稿组装', async () => {
   ok(!parseCompletionOutput('我只是随便说说').ok, '非 JSON 判失败')
   // 异常：无事实/关系
   ok(!parseCompletionOutput('{"summary":"x"}').ok, '无条目判失败')
+})
+
+await test('completion：工具白名单只允许只读取材（防补齐任务产生副作用）', async () => {
+  const allow = (name) => isCompletionToolAllowed({ name })
+  ok(allow('web_search') && allow('web_crawl') && allow('miyoushe_search') && allow('bilibili__search'), '检索/抓取工具允许')
+  ok(allow('stagehand__goto') && allow('stagehand__observe') && allow('stagehand__extract'), '浏览器只读原语允许')
+  ok(!allow('stagehand__act'), '浏览器写动作拒绝')
+  ok(!allow('terminal') && !allow('memory') && !allow('reminder_set') && !allow('schedule_task'), '终端/记忆/提醒/定时拒绝')
+  ok(!allow('bilibili__download') && !allow('read_pdf'), '下载/本地文件读取拒绝')
+  ok(!allow('unknown_new_tool'), '未知新工具默认拒绝（防能力漂移）')
 })
 
 // ---------- 7. 长尾知识：入库 + 检索（BM25 降级）----------

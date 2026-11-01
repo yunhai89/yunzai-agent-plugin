@@ -17,7 +17,7 @@ import { PersonaService } from './service.js'
 import { BUILTIN_PERSONAS } from './defaults.js'
 import { PersonaLore, normalizeLore, normalizeCanonical, normalizeSources, groundingText, assertSafeLore } from './lore.js'
 import { PersonaAdoptionQueue } from './adoptions.js'
-import { PERSONA_COMPLETION_SYSTEM, buildCompletionInput, parseCompletionOutput, buildLoreDraft, formatDraftSummary } from './completion.js'
+import { PERSONA_COMPLETION_SYSTEM, buildCompletionInput, parseCompletionOutput, buildLoreDraft, formatDraftSummary, isCompletionToolAllowed } from './completion.js'
 
 export {
   PersonaStore,
@@ -39,4 +39,5 @@ export {
   parseCompletionOutput,
   buildLoreDraft,
   formatDraftSummary,
+  isCompletionToolAllowed,
 }

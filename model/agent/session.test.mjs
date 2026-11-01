@@ -77,5 +77,15 @@ const OLD = 'Yz:agent:sess:conv:g1:__group__:c1'
   ok(Array.isArray(c) && c.length === 0, '个人作用域不会读到 __group__ 的旧键（返回空历史）')
 }
 
+// 6) peekActiveConversation：只读活跃对话，不凭空创建
+{
+  const kv = mkKv()
+  const s = mk(kv)
+  ok((await s.peekActiveConversation('u1', 'g1')) === null, '无活跃对话返回 null')
+  ok(kv.map.size === 0, '只读查询不写入 KV（不创建空对话）')
+  const created = await s.getActiveConversation('u1', 'g1')
+  ok((await s.peekActiveConversation('u1', 'g1')) === created, '有活跃对话时返回 id')
+}
+
 console.log(`\nsession 迁移/护栏测试：通过 ${pass}，失败 ${fail}`)
 process.exit(fail ? 1 : 0)

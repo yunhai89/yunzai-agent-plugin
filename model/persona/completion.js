@@ -34,6 +34,26 @@ export const PERSONA_COMPLETION_SYSTEM = [
   '不要输出 JSON 以外的解释。',
 ].join('\n')
 
+/**
+ * 补齐任务是「只读取材」：只允许这些工具进入临时代理的工具表。
+ * 不靠 category 粗筛——terminal（沙箱命令）、stagehand__act、bilibili__download、
+ * memory/reminder 等都可能改变外部/持久状态。新增工具默认拒绝，避免能力漂移。
+ */
+const COMPLETION_READ_TOOLS = new Set([
+  'web_search', 'web_extract', 'web_crawl',
+  'miyoushe_search', 'miyoushe_post', 'miyoushe_replies',
+  'tool_search', 'context_recall', 'kb_search', 'memory_search',
+])
+const COMPLETION_READ_PREFIXES = [
+  /^stagehand__(?:goto|observe|extract)$/,
+  /^bilibili__(?:search|video|analyze|subtitle|comments|danmaku|ranking|popular|user)$/,
+]
+export function isCompletionToolAllowed(tool) {
+  const name = String(tool?.name || '')
+  if (COMPLETION_READ_TOOLS.has(name)) return true
+  return COMPLETION_READ_PREFIXES.some((re) => re.test(name))
+}
+
 /** 构建补齐任务的用户输入（角色名 + 已有设定摘要）。 */
 export function buildCompletionInput(persona) {
   const name = String(persona?.name || persona?.id || '').trim()

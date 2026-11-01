@@ -279,6 +279,14 @@ export class SessionStore {
     })
   }
 
+  /** 只读当前活跃对话 id（不自动创建）；人设补齐等临时任务用它避免凭空产生空对话。 */
+  async peekActiveConversation(userId, groupId) {
+    try {
+      const v = await this.kv.get(this.activeKey(userId, groupId))
+      return v ? String(v) : null
+    } catch { return null }
+  }
+
   async setActiveConversation(userId, groupId, convId) {
     // 旧群共享键也算存在（第 8 轮审计 medium-1），否则恢复历史对话时会判为不存在
     const exists = await this._readConv(userId, groupId, String(convId), { migrate: true })
