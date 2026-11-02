@@ -168,6 +168,7 @@
     },
     template: `
     <div>
+      <page-head title="群聊小世界" icon="globe" desc="群聊社会记忆层 · 画像/关系/事件/圈子；观察群聊如何被理解，而不是替代群聊"/>
       <!-- 顶栏：配置 / 数据浏览 -->
       <div class="seg" style="display:inline-flex;margin-bottom:14px;background:var(--paper-2);border:1px solid var(--line);border-radius:10px;padding:3px">
         <button class="btn" :class="tab==='config' ? 'b-pri' : 'b-line'" @click="switchTab('config')"><v-icon name="config"/> 配置</button>

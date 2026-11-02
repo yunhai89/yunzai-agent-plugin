@@ -216,7 +216,9 @@
       }
     },
     template: `
-    <div class="cf-wrap">
+    <div>
+      <page-head title="语音合成" icon="music" desc="TTS 服务配置 + 参考音频库 · 情绪化支持（pro/max）；总开关默认关闭"/>
+      <div class="cf-wrap">
       <div class="cf-nav">
         <a v-for="s in sections" :key="s.id" :class="{on: open[s.id]}" @click="jump(s.id)">{{ s.name }}</a>
       </div>
@@ -447,6 +449,7 @@
             </div>
           </template>
         </v-modal>
+      </div>
       </div>
     </div>`,
   }

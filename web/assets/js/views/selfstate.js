@@ -67,6 +67,7 @@
     },
     template: `
     <div>
+      <page-head title="自我状态" icon="bot" desc="自我认知与情绪 · 心境/情绪/期待/心事；管理员调试视图"/>
       <div class="seg" style="display:inline-flex;margin-bottom:14px;border:1px solid var(--line);border-radius:10px;padding:3px">
         <button class="btn" :class="tab==='state' ? 'b-pri' : 'b-line'" @click="switchTab('state')"><v-icon name="bot"/> 状态概览</button>
         <button class="btn" :class="tab==='relations' ? 'b-pri' : 'b-line'" @click="switchTab('relations')"><v-icon name="group"/> 关系情感</button>
@@ -83,6 +84,14 @@
       </div>
 
       <div v-if="!dataGroups.length" class="note n-rose"><v-icon name="warn"/><div>伪人白名单为空——SelfState 挂在伪人链路上，先在「伪人模式」加群。</div></div>
+      <div v-if="!dataGroups.length" class="card pad">
+        <div class="empty">
+          <span class="empty-ico"><v-icon name="bot"/></span>
+          <div style="font-weight:700">还没有可观察的群</div>
+          <div style="font-size:12px">先在「伪人模式」配置白名单，SelfState 才会开始记录心境、情绪与关系。</div>
+          <a class="btn b-line mt8" href="#/humanize"><v-icon name="group"/>去伪人模式</a>
+        </div>
+      </div>
 
       <!-- 状态概览 -->
       <div v-else-if="tab==='state'">

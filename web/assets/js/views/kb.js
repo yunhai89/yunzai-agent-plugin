@@ -19,7 +19,7 @@
         busy.value = true; msg.value = '入库中（分块 + 向量化）…'
         try {
           const r = await window.api.post('/kb', { title: title.value.trim(), text: text.value })
-          msg.value = `✓ 已入库 ${r.id}：${r.chunkCount} 块${r.embedded ? '（已向量化）' : '（未配 embedding，关键词检索）'}`
+          msg.value = `已入库 ${r.id}：${r.chunkCount} 块${r.embedded ? '（已向量化）' : '（未配 embedding，关键词检索）'}`
           title.value = ''; text.value = ''; await reload()
         } catch (e) { msg.value = '入库失败：' + (e?.message || e) }
         finally { busy.value = false }
@@ -29,7 +29,7 @@
         busy.value = true; msg.value = '抓取入库中（可能需数秒）…'
         try {
           const r = await window.api.post('/kb/url', { url: url.value.trim(), title: urlTitle.value.trim() })
-          msg.value = `✓ 已抓取入库 ${r.id}：${r.title}（${r.chunkCount} 块，via ${r.via}）`
+          msg.value = `已抓取入库 ${r.id}：${r.title}（${r.chunkCount} 块，via ${r.via}）`
           url.value = ''; urlTitle.value = ''; await reload()
         } catch (e) { msg.value = '抓取入库失败：' + (e?.message || e) }
         finally { busy.value = false }
@@ -38,7 +38,7 @@
         busy.value = true; msg.value = `刷新中（${id}）…`
         try {
           const r = await window.api.post('/kb/' + id + '/refresh', {})
-          msg.value = `✓ 已刷新 ${id}：${r.chunkCount} 块（via ${r.via}）`; await reload()
+          msg.value = `已刷新 ${id}：${r.chunkCount} 块（via ${r.via}）`; await reload()
         } catch (e) { msg.value = '刷新失败：' + (e?.message || e) }
         finally { busy.value = false }
       }
@@ -55,7 +55,7 @@
       }
       const rebuild = async () => {
         busy.value = true; msg.value = '重建索引中…'
-        try { const r = await window.api.post('/kb/rebuild', {}); msg.value = `✓ 重建 ${r.rebuilt} 块` }
+        try { const r = await window.api.post('/kb/rebuild', {}); msg.value = `已重建 ${r.rebuilt} 块` }
         catch (e) { msg.value = '重建失败：' + (e?.message || e) }
         finally { busy.value = false; await reload() }
       }
@@ -104,7 +104,7 @@
       <div class="card mt16" style="--i:3;overflow:hidden">
         <div class="ct" style="padding:16px 20px">
           <span class="ct-ico" style="background:var(--grad)"><v-icon name="db"/></span>
-          <div><div class="ct-t">已入库文档</div><div class="ct-s">{{ docs.length }} 篇 · 🌐 网页 / 📄 文本</div></div>
+          <div><div class="ct-t">已入库文档</div><div class="ct-s">{{ docs.length }} 篇 · 网页 / 文本</div></div>
         </div>
         <div class="tbl-w">
         <table class="tbl">
@@ -112,13 +112,13 @@
           <tbody>
             <tr v-for="d in docs" :key="d.id">
               <td>
-                <span>{{ d.url ? '🌐' : '📄' }}</span> {{ d.title }}
+                <v-icon :name="d.url ? 'globe' : 'file'" style="display:inline-block;vertical-align:-2px;width:13px;height:13px;margin-right:4px"/><span>{{ d.title }}</span>
                 <div v-if="d.url" class="mut2" style="font-size:11px;word-break:break-all">{{ d.url }}</div>
               </td>
               <td class="mono mut" style="font-size:11px">{{ d.id }}</td>
               <td><span class="pill">{{ d.chunkCount }}</span></td>
               <td class="mut" style="font-size:11px">
-                <span v-if="d.refreshCron">⏰ {{ d.refreshCron }}</span>
+                <span v-if="d.refreshCron"><v-icon name="clock" style="display:inline-block;vertical-align:-2px;width:12px;height:12px;margin-right:3px"/>{{ d.refreshCron }}</span>
                 <span v-else class="mut2">—</span>
                 <div v-if="d.lastCrawled" class="mut2">刷新 {{ dateStr(d.lastCrawled) }}</div>
                 <div class="mut2">入库 {{ dateStr(d.createdAt) }}</div>

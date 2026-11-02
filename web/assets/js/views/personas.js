@@ -23,7 +23,7 @@
       const busy = ref('')
 
       const openCreate = () => {
-        editor.value = { show: true, idx: -1, form: { id: '', name: '', description: '', tags: [], avatar: '🙂', greeting: '', systemPrompt: '', builtin: false, creator: '2854196310', createdAt: Date.now() } }
+        editor.value = { show: true, idx: -1, form: { id: '', name: '', description: '', tags: [], avatar: '新', greeting: '', systemPrompt: '', builtin: false, creator: '2854196310', createdAt: Date.now() } }
       }
       const openEdit = (p, i) => {
         if (p.builtin) { toast('内置人设为代码常量,只读不可改', 'warn'); return }
@@ -117,7 +117,7 @@
             <span v-if="p.builtin" class="pill p-line"><v-icon name="lock"/>内置</span>
             <span v-else class="pill p-vio">自定义</span>
             <span v-if="lorePending(p)" class="pill p-pri" style="font-size:10px">待审草稿</span>
-            <span v-else-if="loreOf(p) && loreOf(p).status === 'active'" class="pill p-mint" style="font-size:10px">资料✓</span>
+            <span v-else-if="loreOf(p) && loreOf(p).status === 'active'" class="pill p-mint" style="font-size:10px">资料已启用</span>
             <span v-else-if="loreOf(p)" class="pill p-pri" style="font-size:10px">资料草稿</span>
           </div>
           <div>

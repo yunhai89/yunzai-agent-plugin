@@ -164,7 +164,9 @@
       }
     },
     template: `
-    <div class="cf-wrap">
+    <div>
+      <page-head title="表情包" icon="smile" desc="配置 + 库概览 · 发送策略 / 自动发现；只读展示库容量与发现状态"/>
+      <div class="cf-wrap">
       <div class="cf-nav">
         <a v-for="s in sections" :key="s.id" :class="{on: activeSec === s.id}" @click="jump(s.id)">{{ s.name }}</a>
       </div>
@@ -288,6 +290,7 @@
             </div>
           </div>
         </Transition>
+      </div>
       </div>
     </div>`,
   }

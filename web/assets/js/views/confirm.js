@@ -66,6 +66,7 @@
     },
     template: `
     <div>
+      <page-head title="审批门" icon="confirm" desc="高危工具人工把关 · 工具确认不持久化；人设采纳持久待审，批准后才生效"/>
       <div class="card pad row-b wrap g14" style="--i:0">
         <div class="ct">
           <span class="ct-ico" style="background:var(--cinnabar)"><v-icon name="confirm"/></span>

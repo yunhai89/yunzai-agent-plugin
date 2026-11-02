@@ -62,11 +62,12 @@
     },
     template: `
     <div>
+      <page-head title="进化建议" icon="evolution" desc="自评审产出的待审改进项 · 采纳后写入记忆/提示/技能，也可在筛选里回看已拒绝项"/>
       <div class="card pad row-b wrap g14" style="--i:0">
         <div class="ct">
           <span class="ct-ico" style="background:var(--grad-rose)"><v-icon name="evolution"/></span>
           <div>
-            <div class="ct-t">进化建议</div>
+            <div class="ct-t">建议队列</div>
             <div class="ct-s">后台自评审产出 · memory 类可自动应用，prompt/skill 类默认落盘待人工把关</div>
           </div>
         </div>

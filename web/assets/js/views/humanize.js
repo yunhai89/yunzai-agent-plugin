@@ -201,7 +201,9 @@
       }
     },
     template: `
-    <div class="cf-wrap">
+    <div>
+      <page-head title="伪人模式" icon="group" desc="群聊环境参与者 · 旁听/门控/决策/发送；默认 shadow 只记录决策、不实发"/>
+      <div class="cf-wrap">
       <!-- 锚点导航 -->
       <div class="cf-nav">
         <a v-for="s in sections" :key="s.id" :class="{on: activeSec === s.id}" @click="jump(s.id)">{{ s.name }}</a>
@@ -526,6 +528,7 @@
             </div>
           </div>
         </Transition>
+      </div>
       </div>
     </div>`,
   }

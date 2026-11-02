@@ -42,7 +42,9 @@
       return { convs, activeId, conv, session, showReasoning, showArgs, toggleR, toggleA, parseArgs, fmt }
     },
     template: `
-    <div class="grid cols-320" style="align-items:start">
+    <div>
+      <page-head title="会话回放" icon="session" desc="对话列表与消息历史 · 推理过程与工具调用可展开查看"/>
+      <div class="grid cols-320" style="align-items:start">
       <!-- 对话列表 -->
       <div class="card pad" style="--i:0">
         <div class="ct mb8">
@@ -119,6 +121,7 @@
           </template>
           <empty-state v-if="!session.messages.length" icon="session" text="该对话暂无消息记录"/>
         </div>
+      </div>
       </div>
     </div>`,
   }

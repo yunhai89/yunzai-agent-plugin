@@ -149,7 +149,7 @@
             const dist = b ? ` · 分布 身份${b.identity}/工具${b.tools}/记忆${b.memory}/技能${b.skills}/对话${b.conversation}` : ''
             return `第 ${e.turn} 轮 · finish=${e.finish} · ${uIn(u)}+${uOut(u)} tok${dist} · ${e.ms}ms`
           }
-          case 'tool': return `${e.name} · ${e.success ? '✓' : '✗'}${e.errorClass ? ' ' + e.errorClass : ''} · ${e.duration ?? e.ms}ms${e.summary ? ' · ' + e.summary : ''}`
+          case 'tool': return `${e.name} · ${e.success ? '成功' : '失败'}${e.errorClass ? ' ' + e.errorClass : ''} · ${e.duration ?? e.ms}ms${e.summary ? ' · ' + e.summary : ''}`
           case 'tool_discovery': return `检索「${e.query}」· 命中 ${e.availableCount ?? (e.hits?.length || 0)} · 激活 [${(e.activated||[]).join(', ')}]${e.rejected?.length ? ' · 淘汰 ' + e.rejected.length : ''}`
           case 'reflect': return e.revise ? `需修正:${e.feedback}` : `通过:${e.feedback}`
           case 'recall_extract': return `scopeUser=${e.scopeUserId} · LLM=${e.hasLlm} · ${e.ms}ms`
@@ -232,7 +232,9 @@
       return { files, fileIdx, pickFile, traces, activeTrace, events, expanded, toggle, EV, evMeta, summary, cachePct, uIn, uCached, uOut, uTotal, fmt, filter, hitTotal, runFilter, resetFilter }
     },
     template: `
-    <div class="grid cols-300" style="align-items:start">
+    <div>
+      <page-head title="日志时间线" icon="log" desc="devLog 全链路 · traceId 串联；按文件与事件筛选，展开查看真实请求与工具结果"/>
+      <div class="grid cols-300" style="align-items:start">
       <!-- 会话文件 -->
       <div class="card" style="--i:0;overflow:hidden">
         <div style="padding:16px 18px;border-bottom:1px solid var(--line)">
@@ -350,6 +352,7 @@
           </div>
         </div>
         <empty-state v-if="!events.length" icon="log" text="请选择一条链路"/>
+      </div>
       </div>
     </div>`,
   }

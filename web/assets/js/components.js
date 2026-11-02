@@ -121,6 +121,17 @@
     },
   })
 
+  /* ---------------- <brand-mark> 产品标记：Agent 节点 ---------------- */
+  const BrandMark = defineComponent({
+    name: 'BrandMark',
+    template: `
+    <svg class="brand-mark-svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+      <path d="M16 4.4 27 10.7v10.6L16 27.6 5 21.3V10.7L16 4.4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
+      <circle cx="16" cy="16" r="3.7" fill="currentColor"/>
+      <path d="M16 4.4v7.9M27 10.7l-7.1 4M27 21.3l-7.1-4M16 27.6V20M5 21.3l7.1-4M5 10.7l7.1 4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" opacity=".55"/>
+    </svg>`,
+  })
+
   /* ---------------- <v-switch> ---------------- */
   const VSwitch = defineComponent({
     name: 'VSwitch',
@@ -167,7 +178,7 @@
     <div class="pagehead" style="--i:0">
       <span v-if="icon" class="ph-ico"><v-icon :name="icon"/></span>
       <div class="ph-main">
-        <div class="ph-t">{{ title }}</div>
+        <h1 class="ph-t">{{ title }}</h1>
         <div class="ph-s" v-if="desc">{{ desc }}</div>
       </div>
       <div class="ph-acts"><slot/></div>
@@ -367,7 +378,7 @@
   })
 
   /* 底层定制入口（载荷字段见 dialogState 初值）：prompt 时 resolve 收到输入串，其余 resolve true。
-     Esc / ✕ / 取消 → 不 resolve（调用方 await 一直挂起——与原生 confirm 的「取消后什么都不做」等价），
+     Esc / 关闭按钮 / 取消 → 不 resolve（调用方 await 一直挂起——与原生 confirm 的「取消后什么都不做」等价），
      故调用方不要用 .finally 做清理：取消时后续动作本就不该执行。 */
   function dialog(options = {}) {
     const seq = ++_dlgSeq
@@ -569,6 +580,7 @@
     dialog: dialogService, alert: dialogAlert, confirm: dialogConfirm, dialogState,
     register(app) {
       app.component('VIcon', VIcon)
+      app.component('BrandMark', BrandMark)
       app.component('VSwitch', VSwitch)
       app.component('VModal', VModal)
       app.component('PageHead', PageHead)

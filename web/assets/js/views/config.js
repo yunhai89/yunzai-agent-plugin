@@ -1081,7 +1081,7 @@
         const denyAll = deny.some((s) => s === '0.0.0.0/0' || s === '::/0' || s === '0/0')
         if (!denyAll || allow.length || net.allowInternet === false) return null
         const legacy = deny.length === 1
-        return `⚠ 出口配置自相矛盾：denyOut 含 0.0.0.0/0 且白名单为空 → 沙箱会**拒绝一切出口（含 DNS）**，网络与域名解析都不通。`
+        return `出口配置自相矛盾：denyOut 含 0.0.0.0/0 且白名单为空 → 沙箱会**拒绝一切出口（含 DNS）**，网络与域名解析都不通。`
           + (legacy
             ? '这是 v1.24.0 之前的默认值（旧版是「兜底拒绝」），插件启动时会自动清理并写回；也可现在清空该字段保存。'
             : '请从「额外拒绝网段」删掉 0.0.0.0/0；只想封禁个别网段请写具体 CIDR。')
@@ -1110,7 +1110,11 @@
       }
     },
     template: `
-    <div class="cf-wrap">
+    <div>
+      <page-head title="配置中心" icon="config" desc="config.yaml 全量配置项 · 修改会校验、保存并热加载；常用项、安全项与高级项都在这一页">
+        <span class="pill p-green"><span class="st-dot"></span>热加载</span>
+      </page-head>
+      <div class="cf-wrap">
       <div v-if="loadError" class="card" style="margin:16px;padding:14px">
         <b>配置加载失败</b>
         <div class="mut2" style="margin-top:6px;font-size:12px">读取 /api/config 失败：{{ loadError }}。修复后请刷新页面重试。</div>
@@ -1216,7 +1220,7 @@
             </div>
             <div class="full" v-if="mainProv?.preset === 'openrouter'" style="margin-top:6px;padding:10px;border:1px dashed var(--line);border-radius:10px">
               <div class="row-b mb8">
-                <div style="font-weight:800;font-size:13px">🔍 OpenRouter 模型搜索</div>
+                <div style="font-weight:800;font-size:13px">OpenRouter 模型搜索</div>
                 <button class="btn b-soft b-sm" @click="loadOrModels">{{ orLoading ? '加载中…' : (orModels.length ? '已加载 '+orModels.length+' 个' : '加载模型目录') }}</button>
               </div>
               <div v-if="orModels.length">
@@ -1239,7 +1243,7 @@
             <div class="cf-sub"><v-icon name="cpu"/>Jev 判断模型（TypeSafe，opt-in）</div>
             <div class="full note n-rose" style="margin:0 0 6px">
               <v-icon name="shield"/>
-              <div style="flex:1"><b>⚠️ 数据外发警告：</b>启用后会把<b>用户对话内容 / shell 命令</b>发往第三方 TypeSafe（typesafe.ai）做结构化判断。默认关闭；失败/低置信一律无感回退现有方案，不阻塞对话。请先在「厂商配置」添加一个 <b>Jev 预设</b>（或 OpenRouter）厂商并填 Key，再到「模型列表」给它挂上 jev 模型，然后在此开启并选择。</div>
+              <div style="flex:1"><b>数据外发警告：</b>启用后会把<b>用户对话内容 / shell 命令</b>发往第三方 TypeSafe（typesafe.ai）做结构化判断。默认关闭；失败/低置信一律无感回退现有方案，不阻塞对话。请先在「厂商配置」添加一个 <b>Jev 预设</b>（或 OpenRouter）厂商并填 Key，再到「模型列表」给它挂上 jev 模型，然后在此开启并选择。</div>
             </div>
             <cfg-row name="启用 Jev" desc="opt-in 总开关：关闭时各卡片的 jev 决策选项不显示、不生效">
               <v-switch v-model="form.jev.enable"/>
@@ -2063,7 +2067,7 @@
                 <option value="jev">jev 决策</option>
               </select>
             </cfg-row>
-            <cfg-row name="工具数组跨轮恒定" desc="★缓存关键:tools 数组只要变化一个条目(哪怕只追加一个工具),整段 prompt 前缀缓存立即归零。开=每轮下发全量工具定义(首轮多付约 1 万 token,之后全部命中);关=旧的追加式增长,每次激活工具都会打穿缓存">
+            <cfg-row name="工具数组跨轮恒定" desc="缓存关键:tools 数组只要变化一个条目(哪怕只追加一个工具),整段 prompt 前缀缓存立即归零。开=每轮下发全量工具定义(首轮多付约 1 万 token,之后全部命中);关=旧的追加式增长,每次激活工具都会打穿缓存">
               <v-switch v-model="form.toolDiscovery.stableList"/>
             </cfg-row>
 
@@ -2205,7 +2209,7 @@
                 <cfg-row name="临时文件保留(分)" desc="data/diagram/ TTL 清理">
                   <input type="number" class="inp" style="width:90px" min="5" v-model.number="form.diagram.tempTtlMinutes">
                 </cfg-row>
-                <cfg-row class="full" danger name="允许公共 Kroki" desc="⚠️ 开启后图中标题/节点/架构信息将发送到第三方渲染服务（强制 HTTPS）；默认关闭且不作为静默回退">
+                <cfg-row class="full" danger name="允许公共 Kroki" desc="风险：开启后图中标题/节点/架构信息将发送到第三方渲染服务（强制 HTTPS）；默认关闭且不作为静默回退">
                   <v-switch v-model="form.diagram.kroki.allowPublicEndpoint"/>
                 </cfg-row>
               </div>
@@ -2515,7 +2519,7 @@
               <cfg-row name="允许互联网" desc="network.allowInternet：true=放通全部出口（默认）；false=断网（配了白名单时白名单仍放行）"><v-switch v-model="form.sandbox.network.allowInternet"/></cfg-row>
               <cfg-row name="候选验证超时(ms)"><input type="number" class="inp" style="width:120px" min="100" step="500" v-model.number="form.sandbox.toolEvoVerifyTimeoutMs"></cfg-row>
               <cfg-row name="候选验证沙箱模板" desc="verifyTemplate：工具进化候选验证单独使用的 E2B 模板（留空=沿用上方「沙箱模板」）"><input class="inp mono" style="width:170px" v-model="form.sandbox.verifyTemplate" placeholder="留空=沿用沙箱模板"></cfg-row>
-              <cfg-row class="full" name="额外拒绝网段" desc="network.denyOut（可选，仅 CIDR/IP）：在默认放通基础上额外封禁（如 169.254.169.254/32 防云元数据）。★不要写 0.0.0.0/0——它=拒绝一切出口（含 DNS）">
+              <cfg-row class="full" name="额外拒绝网段" desc="network.denyOut（可选，仅 CIDR/IP）：在默认放通基础上额外封禁（如 169.254.169.254/32 防云元数据）。不要写 0.0.0.0/0——它=拒绝一切出口（含 DNS）">
                 <tag-editor v-model="form.sandbox.network.denyOut" mono placeholder="如 169.254.169.254/32"/>
               </cfg-row>
             </div></div>
@@ -2538,7 +2542,7 @@
             <cfg-row name="启用 Jev 风险检查" :desc="jevReady ? 'terminal 执行前用 Jev 判只读/可逆/破坏性' : '需先在「基础 / 模型」填写并开启 Jev 厂商/模型'">
               <v-switch v-model="form.jev.decisions.terminalRisk" :disabled="!jevReady"/>
             </cfg-row>
-            <cfg-row name="允许破坏性命令" desc="⚠️ 关闭=破坏性一律拒绝（fail-closed，推荐）；开启=仅高置信破坏性放行（终端无审批，谨慎）">
+            <cfg-row name="允许破坏性命令" desc="风险：关闭=破坏性一律拒绝（fail-closed，推荐）；开启=仅高置信破坏性放行（终端无审批，谨慎）">
               <v-switch v-model="form.jev.allowDestructive" :disabled="!jevReady || !form.jev.decisions.terminalRisk"/>
             </cfg-row>
             <cfg-row name="破坏性命令置信阈值" desc="terminalRiskFloor：仅「允许破坏性命令」开启时用于高置信放行判定">
@@ -2680,7 +2684,7 @@
         </Transition>
       </div>
       </template>
-
+      </div>
     </div>`,
   }
 })()
