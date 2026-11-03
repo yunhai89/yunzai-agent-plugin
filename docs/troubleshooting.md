@@ -27,7 +27,7 @@ v1.45.4 起已修：以前 `@机器人 + #指令` 会被本插件的 AI catch-al
 帮助图（`#agent帮助`）有独立超时 `agent.render.helpTimeoutMs`（默认 **300000ms = 5 分钟**）；若首次渲染仍超时（之后会进入冷却、暂时直接回文本），可在 Web 配置中心「进度 / 回复渲染」或锅巴调整该项，或把 `render.card=false` 直接走文本。
 
 **Q4：Token 消耗/费用偏高？**
-① 配置 `contextWindow` 让前缀缓存生效（命中率可达 90%+，见 [记忆体系与上下文缓存](memory-and-context.md)）；② 长任务看 `agent.loop.tokenBudget` 与 `maxTurns`；③ 旁路功能（记忆/评审/伪人）配 `utilityModel` 小模型；④ `#任务状态` 看 turns 与 stop 原因。
+① 上下文窗口/压缩已自动解析（官方接口→本地目录→学习值），无需手填 `contextWindow`（见 [记忆体系与上下文缓存](memory-and-context.md)）；② 长任务看 `agent.loop.tokenBudget` 与 `maxTurns`；③ 旁路功能（记忆/评审/伪人）配 `utilityModel` 小模型；④ `#任务状态` 看 turns 与 stop 原因。
 
 **Q5：QQ 官方机器人连不上？**
 ① 确认 AppID + AppSecret（Token 已废弃，不要填 Token）；② 用 Web「机器人账号」页看状态：4004=密钥错；4013/4914=intents 无权限（默认只订群@+C2C，**不用手填**；填了未开通的位会被拒绝，插件会自动降级并记日志）；4008=频控；③ 首次启用适配器需重启 Yunzai；④ 不要同时开 Yunzai-QQBot-Plugin。

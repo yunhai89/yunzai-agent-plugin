@@ -72,7 +72,7 @@ if (!pc || !pc.apiKey || !pc.model) {
 }
 
 const WINDOW = process.env.SIM_WINDOW ? Number(process.env.SIM_WINDOW) : null
-const HIGH = Number(process.env.SIM_HIGH || 0.65)
+const HIGH = Number(process.env.SIM_HIGH || 0.8)
 const LOW = Number(process.env.SIM_LOW || 0.45)
 const TURNS = Number(process.env.SIM_TURNS || 36)
 const REGISTRY = Number(process.env.SIM_REGISTRY || 0)
@@ -245,7 +245,7 @@ const wp = sum(warm, 'prompt'); const wc = sum(warm, 'cached')
 const all = tp ? tc / tp : 0
 const warmRate = wp ? wc / wp : 0
 console.log('\n===== 缓存命中率实测汇总 =====')
-console.log(`场景 ${TAG}：contextWindow=${WINDOW ?? '未配（消息水位 30→18）'}  high=${HIGH}  low=${LOW}  会话数=${SESSIONS}  每会话 ${RUNS} 次 × ${TURNS} 轮  间隔=${GAP_MS}ms`)
+console.log(`场景 ${TAG}：contextWindow=${WINDOW ?? '自动解析'}  high=${HIGH}  low=${LOW}  会话数=${SESSIONS}  每会话 ${RUNS} 次 × ${TURNS} 轮  间隔=${GAP_MS}ms`)
 console.log(`调用数 ${calls.length}  压缩次数 ${compactEvents}`)
 console.log(`Token 命中率（全部） = ${(100 * all).toFixed(2)}%   (${tc} / ${tp})`)
 console.log(`Token 命中率（warm） = ${(100 * warmRate).toFixed(2)}%   (${wc} / ${wp})`)

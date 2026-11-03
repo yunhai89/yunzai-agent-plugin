@@ -29,6 +29,7 @@ import { compactMessages } from './compact/index.js'
 import { TEMPLATES, SERVICE_DIRECTIVE, SEARCH_VERIFICATION, REFLECTION_DIRECTIVE, buildToolCatalogSection, buildToolDiscoverySection, buildSkillsPromptSection, buildStickerPromptSection, buildAgentSystemPrompt } from '../prompt/index.js'
 import { detectScheduleIntent, isSharedScopeId, SHARED_SCOPE_PREFIX } from './schedule.js'
 import { decideThinkingSmart, classifyComplexity, clampThinkingBudget } from '../llm/thinking.js'
+import { resolveModelContext, notePromptUsage, getPromptCalibration, isContextOverflowError, learnContextFromError } from '../llm/model-context.js'
 import { detectCapabilities } from '../llm/capabilities.js'
 import { decideThinkingWithJev, selectToolsWithJev, assessShellRiskWithJev, decideReflectWithJev, evaluateShellRisk } from './jev/index.js'
 
@@ -44,9 +45,6 @@ function shortHash(str) {
 
 /** 按需发现默认常驻工具（不经过搜索；config.toolDiscovery.alwaysOn 留空时兜底）。tool_search 始终由元工具注入。 */
 const DEFAULT_ALWAYS_ON = ['tool_search', 'clarify', 'memory_search', 'web_search', 'kb_search', 'skill', 'get_chat_history', 'reminder_set', 'schedule_task', 'context_recall', 'diagram_render', 'get_group_file', 'list_group_files'] // context_recall 常驻：压缩档案消息直接引用它恢复原文，不能等 tool_search；diagram_render 常驻：解释流程/架构时随时可用（不等 tool_search 检索）；get_group_file/list_group_files 常驻：否则主代理不知道有此能力，会用 terminal/find/curl 瞎找群文件；schedule_task 常驻：否则"每天/每周"类周期需求只能看到 reminder_set，被当一次性提醒处理（#定时任务列表 里就看不到）
-
-/** contextLowRatio 被静默夹紧的告警只打一次（Agent 每轮可能重建，避免刷屏；进程级） */
-let _lowRatioWarned = false
 
 /** 紧凑用量日志：兼容 per-turn(prompt/completion_tokens) 与 mergeUsage(input/output/total) 两种形态 */
 function fmtUsage(u) {
@@ -274,33 +272,26 @@ export class Agent {
     this.toolChoice = config.tool_choice ?? config.toolChoice ?? null
 
     this.estimateTokens = config.estimateTokens || null
-    // 上下文窗口（token）：合法正整数时启用 token 高低水位滞回压缩（65% 触发 → 压到 45%），
-    // 未配置回退消息条数水位（contextMsgHighWater→LowWater）。
-    // 旧 contextPressureThreshold 已删除：从未被任何路径消费的死配置（曾与 contextWindow 两套互不生效）。
-    this.contextWindow = (Number.isFinite(Number(config.contextWindow)) && Number(config.contextWindow) > 0) ? Number(config.contextWindow) : null
-    // 高低水位滞回压缩（Append-Only Ledger 的分代压缩）：token 水位优先（contextWindow 的
-    // contextHighRatio 触发 → 压到 contextLowRatio），无 contextWindow 用消息数水位（默认 30→18）。
-    // 压缩 = 整 turn-block 丢弃 + cacheEpoch++（跨代才允许前缀重建；未超 highWater 只追加不改写
-    // ——曾 window=20 每轮滑窗，DeepSeek 等整段前缀缓存逐轮全灭）。
-    // 比例可配（缓存经济性）：稳态 token 命中率 ≈ 1 − 2·d·H/(H²−K²)（d=每轮新增、H=高水位、K=压后
-    // 目标）。H 越大越好、K 越小越好——「窗口尽量吃满 + 压得深」比「小窗口勤压」命中率高一倍以上；
-    // 压缩是无损的（原文归档 + context_recall 可恢复），所以压深不掉信息。
-    this.contextMsgHighWater = config.contextMsgHighWater ?? 30
-    this.contextMsgLowWater = config.contextMsgLowWater ?? 18
+    // 上下文窗口：用户不再手填。每轮按「真实模型 + 思考模式」自动解析（模型 API 优先 → 本地目录 →
+    // 学习值 → 保守兜底），入口在 _resolveContextForRun()。
+    // config.contextWindow 仅保留给测试/高级调用方做显式覆盖；不是面板配置项。
+    this.contextWindowOverride = (Number.isFinite(Number(config.contextWindow)) && Number(config.contextWindow) > 0)
+      ? Number(config.contextWindow) : null
+    this.contextWindow = this.contextWindowOverride
+    this.contextWindowTotal = this.contextWindowOverride
+    this.contextMaxOutput = null
+    this._contextMeta = null
+    this._contextWindowIsInput = false
+    this.contextResolver = typeof config.contextResolver === 'function' ? config.contextResolver : null
+    // 压缩比例硬编码（默认 80% 触发 → 45% 目标）；仅测试/高级调用方可覆盖。
+    // 缓存经济性：稳态命中率 ≈ 1 − 2·d·H/(H²−K²)，H 大、K 小命中率更高；无损压缩可恢复。
     const ratio = (v, dflt, min, max) => {
       const n = Number(v)
       return Number.isFinite(n) && n >= min && n <= max ? n : dflt
     }
-    this.contextHighRatio = ratio(config.contextHighRatio, 0.65, 0.3, 0.95)
-    // 低水位必须严格小于高水位：ratio() 的**默认值分支**不经过 max 夹紧，
-    // 若用户只把 contextHighRatio 调到 0.3，默认 0.45 就会出现 low > high（第 9 轮审计 S4）
+    this.contextHighRatio = ratio(config.contextHighRatio, 0.8, 0.3, 0.95)
     const lowCap = Math.max(0.05, this.contextHighRatio - 0.05)
-    const rawLowRatio = config.contextLowRatio
-    this.contextLowRatio = Math.min(ratio(rawLowRatio, 0.45, 0.05, lowCap), lowCap)
-    // 用户显式写的 low≥high 会被静默夹到 lowCap：记录待告警（logger 在下方装配，届时提示一次；行为不变）
-    const nLow = Number(rawLowRatio)
-    const lowRatioClamped = rawLowRatio != null && rawLowRatio !== ''
-      && Number.isFinite(nLow) && nLow >= this.contextHighRatio && this.contextLowRatio !== nLow
+    this.contextLowRatio = Math.min(ratio(config.contextLowRatio, 0.45, 0.05, lowCap), lowCap)
     this.cacheEpoch = 0
     // 无损压缩（Hermes ContextCompressor 可逆化）：compactArchive 注入后压缩 = 原文整块归档
     // （sha256 内容寻址）+ 窗口内结构化台账 + context_recall 恢复；未注入降级为纯台账压缩。
@@ -312,11 +303,6 @@ export class Agent {
     this.keepReasoning = config.keepReasoning === true // 默认 false：不把 reasoning 回灌历史，省 context
     this.contextKeepRecent = config.contextKeepRecent ?? 8 // 压缩时至少保留的尾部消息数
     this.logger = config.logger || (() => {})
-    // 配置 low≥high 被夹紧时提示一次（进程内只提示一次，避免每轮重建 Agent 刷屏）；行为不变
-    if (lowRatioClamped && !_lowRatioWarned) {
-      _lowRatioWarned = true
-      this.logger('warn', `[config] contextLowRatio(${nLow}) ≥ contextHighRatio(${this.contextHighRatio})，运行时已夹到 ${this.contextLowRatio}`)
-    }
     this.devLog = config.devLog || null // 详细 trace 日志（apps 注入，库零依赖）；null 时为 no-op
 
     // opt-in 运营层
@@ -438,11 +424,12 @@ export class Agent {
       if (this.contextWindow) {
         try {
           const fn = this.estimateTokens || estimateTokensApprox
+          const cal = getPromptCalibration(this.model)
           // 压缩前压力（审计 low-1：此前 devLog 的 est 在 this.messages 被替换**之后**才估，
           // 恒 ≤ low、看起来「刚好」，与主循环事件口径不一致 → 断点被读成已解决的轻度压缩）
-          const estBeforeFinalize = this._estimateHistory(wrapSys)
+          const estBeforeFinalize = Math.round(this._estimateHistory(wrapSys) * cal)
           if (estBeforeFinalize > this.contextWindow) {
-            const target = Math.max(128, Math.floor(this.contextWindow * this.contextLowRatio) - fn(String(wrapSys ?? '')) - this._estimateToolsTokens() - 16)
+            const target = Math.max(128, Math.floor((this.contextWindow * this.contextLowRatio) / cal) - fn(String(wrapSys ?? '')) - this._estimateToolsTokens() - 16)
             const ck = ctx ? `${ctx.scopeUserId || ctx.userId || 'u'}:${ctx.groupId || 'p'}:${ctx.conversationId || 'unknown'}` : 'unknown'
             const rr = await compactMessages(this.messages, {
               kind: 'token', value: target, archive: this.compactArchive, convKey: ck, epoch: this.cacheEpoch + 1,
@@ -457,7 +444,7 @@ export class Agent {
               // 收尾前压缩同样 cacheEpoch++（前缀断点），必须写 cache_compact devLog：
               // AGENTS.md 缓存友好约束第 4 条要求压缩可归因，否则命中率报告把这次断点算成「无归因」
               // （第 8 轮审计 low-6）。
-              const afterFinalize = this._estimateHistory(wrapSys)
+              const afterFinalize = Math.round(this._estimateHistory(wrapSys) * cal)
               this.devLog?.('cache_compact', {
                 est: estBeforeFinalize, high: Math.max(1, Math.floor(this.contextWindow * this.contextHighRatio)), low: target,
                 dropped: rr.dropped, pruned: rr.pruned, archived: 0, cacheEpoch: this.cacheEpoch,
@@ -633,6 +620,9 @@ export class Agent {
         this.logger('warn', '[thinking] 自动决策失败，回退静态配置', e?.message || e)
       }
     }
+
+    // 上下文预算：在思考档位确定之后解析（思考模式可能影响输出/窗口），供本轮动态压缩使用
+    this._resolveContextForRun(taskId, ctx)
 
     // guard：入口注入防御
     let userText = rawText
@@ -947,6 +937,7 @@ export class Agent {
         const toolList = this._buildToolList() // 每轮重算：tool_search 命中后 activeTools 扩充，下轮须重新合成
         const __toolListTokens = estimateMessages(toolList.map((t) => ({ content: JSON.stringify({ n: t.name, d: t.description, p: t.parameters }) })))
         breakdown.tools += __toolListTokens; breakdown.total = (breakdown.total || 0) + __toolListTokens
+        let __reqEstimate = breakdown.total || null
         const __t0 = Date.now()
         // 流式增量守卫：本轮已有增量内容送达用户（onDelta 播报/逐字输出）后，
         // 若 provider 中途失败，换 fallback 重跑会把同样的半截内容再发一遍——直接抛出，宁断不重。
@@ -957,7 +948,7 @@ export class Agent {
         // 实测「revise 之后的轮次」命中率仅 13.6%。这里只影响新追加的尾部，前缀仍逐字节命中。
         const __reflectHint = this._pendingReflect
         if (__reflectHint) this._pendingReflect = null // 用一次即清（仅指导紧接的下一次生成，不持久化进历史）
-        const __reqMessages = __reflectHint
+        let __reqMessages = __reflectHint
           ? [...this.messages, { role: 'system', content: reflectHintText(__reflectHint) }]
           : this.messages
         // 主模型失败时依次尝试回退 provider（各自独立 baseURL/apiKey/protocol，可跨厂商）
@@ -972,16 +963,55 @@ export class Agent {
           ...this._extraRunOpts(opts),
         })
         const __tries = [{ provider: this.provider, model: this.model }, ...this.fallbackProviders]
-        let result, lastErr
+        let result, lastErr, __overflowRetry = false, __usedModel = this.model
         for (let ti = 0; ti < __tries.length; ti++) {
           const t = __tries[ti]
           this.devLog?.('provider_attempt', { model: t.model, attempt: ti + 1, isFallback: ti > 0 }, taskId, ctx?.devScope)
-          try { result = await __chatWith(t.provider, t.model); break }
+          try { result = await __chatWith(t.provider, t.model); __usedModel = t.model; break }
           catch (e) {
             lastErr = e
             if (__emitted) {
               this.logger('warn', `[fallback] 模型 ${t.model} 流式中途失败且已输出部分内容，不切换 provider（防重复输出）`, e?.message || e)
               throw e
+            }
+            // 厂商报上下文超限：学习真实上限 → 立即压到低水位 → 同一模型重试一次。
+            // 仅主模型路径（fallback 的窗口可能不同，且 this.model 仍是主模型，学了会记错）。
+            if (!__overflowRetry && ti === 0 && isContextOverflowError(e)) {
+              __overflowRetry = true
+              const cal = getPromptCalibration(this.model)
+              const used = Math.round((__reqEstimate || this._estimateHistory(system)) * cal)
+              const learned = learnContextFromError(this.model, e, used)
+              if (learned) {
+                this.contextWindow = learned
+                this.contextWindowTotal = learned
+                this.contextMaxOutput = null
+                this._contextWindowIsInput = true
+                const fn = this.estimateTokens || estimateTokensApprox
+                const target = Math.max(128, Math.floor((learned * this.contextLowRatio) / cal) - fn(String(system ?? '')) - this._estimateToolsTokens() - 16)
+                const convKey = `${scopeUserId || 'u'}:${ctx?.groupId || 'p'}:${ctx?.conversationId || 'unknown'}`
+                const rr = await compactMessages(this.messages, {
+                  kind: 'token', value: target, archive: this.compactArchive, convKey, epoch: this.cacheEpoch + 1,
+                  estimateTokens: this.estimateTokens, minKeep: Math.max(this.contextKeepRecent, 2), prevLedger: this._compactLedger,
+                })
+                if (rr.dropped || rr.pruned) {
+                  this.messages = rr.messages
+                  this._compactLedger = rr.ledger
+                  this.cacheEpoch++
+                  __reqMessages = this.messages
+                  __reqEstimate = Math.round((this._estimateHistory(system) + 16) * cal)
+                  this._lastCompactMsgsEst = __reqEstimate
+                  this.logger('mark', `[context] 厂商报上下文超限，学习上限 ${learned} 并压缩后重试（归档 ${rr.dropped} 条，修剪 ${rr.pruned} 条）`)
+                  this.devLog?.('cache_compact', {
+                    est: used, high: learned, low: Math.floor(learned * this.contextLowRatio), dropped: rr.dropped, pruned: rr.pruned,
+                    archived: (rr.ledger?.archive_refs || []).length, cacheEpoch: this.cacheEpoch, msgsAfter: this.messages.length,
+                    unresolved: false, reason: 'provider_overflow', archiveError: rr.archiveError || null,
+                  }, taskId, ctx?.devScope)
+                  cb.onContextPressure?.({ estimate: used, threshold: learned, dropped: rr.dropped, pruned: rr.pruned, archived: (rr.ledger?.archive_refs || []).length, cacheEpoch: this.cacheEpoch, messages: this.messages, reason: 'provider_overflow' })
+                  ti-- // 同一 provider 重试
+                  continue
+                }
+                this.logger('warn', `[context] 厂商报上下文超限（学习上限 ${learned}），但历史无法再压缩——继续尝试回退/报错`)
+              }
             }
             if (ti < __tries.length - 1) {
               this.logger('warn', `[fallback] 模型 ${t.model} 失败，切换下一回退`, e?.message || e)
@@ -994,6 +1024,9 @@ export class Agent {
         if (result.usage) {
           usage = mergeUsage(usage, result.usage)
           this.governor?.noteUsage(result.usage, { scope: 'work' }) // 统一口径：主轮 usage 入工作预算
+          // 真实 prompt_tokens 校准估算（忽略测试桩的极小 usage；仅用于压缩水位）
+          const __actualPrompt = result.usage.prompt_tokens ?? result.usage.input_tokens ?? result.usage.input
+          if (__reqEstimate && Number(__actualPrompt) >= 100) notePromptUsage(__usedModel, __reqEstimate, __actualPrompt)
         }
         turns++
         this.logger('debug', `turn ${turns}`, 'model=', this.model, 'finish=', result.finishReason, 'contentLen=', (result.content || '').length, 'toolCalls=', result.toolCalls?.length || 0, 'reasoning=', !!result.reasoning, 'usage=', fmtUsage(result.usage), `ms=${__ms}`)
@@ -1620,49 +1653,105 @@ export class Agent {
     return n
   }
 
+  /** 本轮是否启用思考（用于选择该模型思考模式下的上下文预算） */
+  _thinkingActive() {
+    if (this._turnReasoning) return this._turnReasoning.depth !== 'off'
+    const t = this.thinking
+    if (!t || t === 'off' || t === false) return false
+    if (typeof t === 'object') {
+      if (t.type === 'disabled' || t.enabled === false) return false
+    }
+    return true
+  }
+
   /**
-   * 滞回水位：token 优先（contextWindow × contextHighRatio/contextLowRatio，默认 65%/45%），
-   * 否则消息数（contextMsgHighWater/LowWater）。
+   * 每轮解析上下文预算：模型官方 API（caps-source 缓存）→ 本地模型目录 → 学习值 → 128K 兜底。
+   * 仅在未显式传 contextWindow（测试/高级调用）时生效。解析结果只决定压缩水位，不改变用户配置。
+   */
+  _resolveContextForRun(taskId, ctx) {
+    if (this.contextWindowOverride) {
+      this.contextWindow = this.contextWindowOverride
+      this.contextWindowTotal = this.contextWindowOverride
+      this.contextMaxOutput = null
+      this._contextWindowIsInput = false
+      return
+    }
+    let meta
+    try {
+      const resolver = this.contextResolver || resolveModelContext
+      meta = resolver({
+        model: this.model,
+        protocol: this.providerProtocol,
+        preset: this.providerPreset,
+        thinking: this._thinkingActive(),
+      })
+    } catch (e) {
+      this.logger('warn', '[context] 上下文解析失败，使用保守兜底', e?.message || e)
+      meta = null
+    }
+    const inputBudget = Math.max(1024, Number(meta?.inputBudget) || 128000)
+    this._contextMeta = meta
+    this.contextWindow = inputBudget
+    this.contextWindowTotal = Number(meta?.contextWindow) || inputBudget
+    const mo = Number(meta?.maxOutputTokens)
+    this.contextMaxOutput = Number.isFinite(mo) && mo > 0 ? mo : null
+    this._contextWindowIsInput = true
+    this.logger('debug', `[context] model=${this.model} thinking=${meta?.thinkingMode || '-'} total=${this.contextWindowTotal} input=${inputBudget} output=${this.contextMaxOutput ?? '-'} source=${meta?.source || 'fallback'} (${meta?.sourceId || '-'})`)
+    this.devLog?.('context_resolved', {
+      model: this.model,
+      thinking: meta?.thinkingMode || null,
+      contextWindow: this.contextWindowTotal,
+      inputBudget,
+      maxOutputTokens: this.contextMaxOutput,
+      source: meta?.source || 'fallback',
+      sourceId: meta?.sourceId || null,
+    }, taskId, ctx?.devScope)
+  }
+
+  _lowWaterMetric(_system) {
+    return { kind: 'token', value: Math.floor((this.contextWindow || 128000) * this.contextLowRatio) }
+  }
+
+  /**
+   * 滞回水位：按本轮解析出的「模型可用输入预算」做 token 水位（默认 80% 触发 → 45% 目标）。
    * 返回 null=未超 highWater（只追加）；否则执行压缩并返回摘要。
    * 压缩为无损四阶段（compact/index.js）：被移出的原文整块归档（sha256 内容寻址、
    * context_recall 可恢复）+ 窗口内留结构化台账消息；跨代（epoch++）才允许前缀重建。
    * turn-block = 一条普通 user 起始 + 直到下一条普通 user 之前的全部 assistant/tool_call/tool_result
    * ——块级移动保证原子束不撕裂；messages[0]（首条意图）恒保留。
    */
-  _lowWaterMetric(_system) {
-    if (this.contextWindow) return { kind: 'token', value: Math.floor(this.contextWindow * this.contextLowRatio) }
-    return { kind: 'count', value: this.contextMsgLowWater }
-  }
-
   async _hysteresisPressure(system, ctxMeta = null) {
-    const useToken = !!this.contextWindow
     const fn = this.estimateTokens || estimateTokensApprox
     const REQUEST_OVERHEAD = 16
     const sysTokens = fn(String(system ?? ''))
     const toolsTokens = this._estimateToolsTokens()
     const msgTokens = this._estimateMessagesTokens()
-    const total = sysTokens + msgTokens + toolsTokens + REQUEST_OVERHEAD
-    const est = useToken ? total : this.messages.length
-    const high = useToken ? Math.floor(this.contextWindow * this.contextHighRatio) : this.contextMsgHighWater
+    // 用上一次真实 prompt_tokens 校准估算（CJK/工具结果偏差），无样本时恒为 1
+    const cal = getPromptCalibration(this.model)
+    const total = Math.round((sysTokens + msgTokens + toolsTokens + REQUEST_OVERHEAD) * cal)
+    const est = total
+    const high = Math.floor((this.contextWindow || 128000) * this.contextHighRatio)
     if (est <= high) return null
     // 滞回防抖：floor（尾部保底）+ 台账消息的极限落地可能仍高于 highWater——没有新增量
     // 就不再空转重试（防同 run 逐轮 epoch++，前缀缓存逐轮全灭）。
     if (this._lastCompactMsgsEst != null) {
-      const nowMsgs = useToken ? total : this.messages.length
-      const margin = Math.max(50, Math.floor((useToken ? this.contextWindow : this.contextMsgHighWater) * 0.05))
-      if (nowMsgs < this._lastCompactMsgsEst + margin) return null
+      const margin = Math.max(50, Math.floor((this.contextWindow || 128000) * 0.05))
+      if (total < this._lastCompactMsgsEst + margin) return null
     }
-    const lowTotal = useToken ? Math.floor(this.contextWindow * this.contextLowRatio) : null
-    // 预留模型输出 + 下一轮工具结果 + 安全余量；低水位是「压后完整请求」的目标，不是 messages 独占
-    const reserve = useToken
-      ? Math.max(256, Math.floor(this.contextWindow * 0.08), Math.min(4096, Math.ceil(this.maxTokens || 0)))
-      : 0
-    const msgTarget = useToken
-      ? Math.max(128, lowTotal - sysTokens - toolsTokens - REQUEST_OVERHEAD - reserve)
-      : this.contextMsgLowWater
+    const lowTotal = Math.floor((this.contextWindow || 128000) * this.contextLowRatio)
+    // 若 contextWindow 已经是「可用输入预算」（自动解析路径），不再二次预留输出；
+    // 测试显式传 contextWindow 时仍按旧语义视为总窗口，留出输出/余量。
+    const reserve = this._contextWindowIsInput
+      ? 0
+      : Math.max(256, Math.floor((this.contextWindow || 128000) * 0.08), Math.min(4096, Math.ceil(this.maxTokens || 0)))
+    // 水位是真实 token 预算，估算值需按校准系数换算后再和它比较；
+    // compactMessages 用的是原始估算口径，所以目标也要先除回估算单位。
+    const lowEst = Math.floor(lowTotal / cal)
+    const reserveEst = Math.ceil(reserve / cal)
+    const msgTarget = Math.max(128, lowEst - sysTokens - toolsTokens - REQUEST_OVERHEAD - reserveEst)
     const convKey = ctxMeta ? `${ctxMeta.scopeUserId || 'u'}:${ctxMeta.groupId || 'p'}:${ctxMeta.conversationId || 'unknown'}` : 'unknown'
     const r = await compactMessages(this.messages, {
-      kind: useToken ? 'token' : 'count', value: msgTarget,
+      kind: 'token', value: msgTarget,
       archive: this.compactArchive, convKey, epoch: this.cacheEpoch + 1,
       estimateTokens: this.estimateTokens,
       minKeep: Math.max(this.contextKeepRecent, 2),
@@ -1681,7 +1770,7 @@ export class Agent {
     this.messages = r.messages
     this._compactLedger = r.ledger
     this.cacheEpoch++
-    const after = useToken ? this._estimateHistory(system) : this.messages.length
+    const after = Math.round((this._estimateHistory(system) + REQUEST_OVERHEAD) * cal)
     this._lastCompactMsgsEst = after
     return {
       est, high, low: lowTotal, dropped: r.dropped, pruned: r.pruned, epoch: this.cacheEpoch,

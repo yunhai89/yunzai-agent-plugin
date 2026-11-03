@@ -274,7 +274,6 @@ export function supportGuoba() {
 
         // —— 上下文与流式 ——
         { label: '上下文与流式', component: 'SOFT_GROUP_BEGIN' },
-        { field: 'agent.contextWindow', label: '上下文窗口(token)', bottomHelpMessage: '请填模型真实窗口（如 32000）：留空=按消息条数 30→18 压缩；填写后按 contextHighRatio（默认 65%）→ contextLowRatio（默认 45%）高低水位压缩（保留首条意图）', component: 'InputNumber', componentProps: { min: 1000 } },
         { field: 'agent.maxToolResultChars', label: '工具结果字符上限', bottomHelpMessage: '默认 8000；内容获取类工具可经 meta.resultCap 单独放宽到 12000', component: 'InputNumber', componentProps: { min: 100 } },
         { field: 'agent.keepReasoning', label: '回灌推理(reasoning)到历史', bottomHelpMessage: '默认关：省 context', component: 'Switch' },
         { field: 'agent.stream', label: '逐字流式输出', bottomHelpMessage: '依赖适配器，不稳；默认关', component: 'Switch' },
@@ -290,18 +289,14 @@ export function supportGuoba() {
         { field: 'agent.promptCacheKey', label: 'OpenAI prompt_cache_key', bottomHelpMessage: '稳定会话路由（仅 OpenAI 官方端点/支持该能力的模型下发；兼容网关绝不发）；默认关', component: 'Switch' },
         { field: 'agent.reflect', label: '自我反思/自纠', bottomHelpMessage: '默认 auto：仅多轮或用工具时反思；always=每次最终回复都反思；jev=由 Jev 判断（需开启 Jev）', component: 'Select', componentProps: { options: OPT.reflect } },
 
-        // —— 上下文压缩 · 循环预算 ——
-        { label: '上下文压缩 · 循环预算', component: 'SOFT_GROUP_BEGIN' },
-        { field: 'agent.contextMsgHighWater', label: '消息条数高水位', bottomHelpMessage: '未配置 contextWindow 时的消息条数压缩阈值（默认 30，达到即压缩）；配置了 contextWindow 后由 token 水位接管', component: 'InputNumber', componentProps: { min: 1 } },
-        { field: 'agent.contextMsgLowWater', label: '消息条数低水位', bottomHelpMessage: '消息条数水位压缩后保留的条数（默认 18；须小于高水位）', component: 'InputNumber', componentProps: { min: 1 } },
+        // —— 循环预算 · 工具 ——
+        { label: '循环预算 · 工具', component: 'SOFT_GROUP_BEGIN' },
         { field: 'agent.loop.maxSameAction', label: '同动作连续上限', bottomHelpMessage: '同一工具+相同参数连续允许次数（默认 2；超出→duplicate_action 终止，防 ping 死循环）', component: 'InputNumber', componentProps: { min: 1 } },
         { field: 'agent.loop.maxConsecutiveFailures', label: '连续失败上限', bottomHelpMessage: '连续工具失败次数上限（默认 3；超出→consecutive_failures 终止）', component: 'InputNumber', componentProps: { min: 1 } },
         { field: 'agent.loop.noProgressWindow', label: '无进展窗口(步)', bottomHelpMessage: '连续 N 步无新事实→no_progress 终止（默认 4）', component: 'InputNumber', componentProps: { min: 1 } },
         { field: 'agent.loop.timeBudgetMs', label: '工作时间预算(毫秒)', bottomHelpMessage: '单次对话工作时间预算（默认 3600000=60 分钟，超出终止在途调用并进入收尾）', component: 'InputNumber', componentProps: { min: 60000, step: 60000 } },
         { field: 'agent.loop.tokenBudget', label: '有效工作 token 预算', bottomHelpMessage: '单次对话累计有效工作 token 上限（默认 480000；未命中输入+缓存写+输出，缓存命中读按 0.1x 折算）', component: 'InputNumber', componentProps: { min: 0, step: 10000 } },
         { field: 'agent.loop.finalizeGraceMs', label: '收尾宽限(毫秒)', bottomHelpMessage: '预算/时间耗尽后，收尾总结调用的独立时间窗（默认 45000）', component: 'InputNumber', componentProps: { min: 0, step: 1000 } },
-        { field: 'agent.compaction.enable', label: '无损上下文压缩归档', bottomHelpMessage: '默认开：被移出窗口的原文整块归档（sha256），可用 context_recall 恢复；关=不归档、不注册恢复工具（回滚杠杆）', component: 'Switch' },
-        { field: 'agent.compaction.archiveDir', label: '压缩归档目录', bottomHelpMessage: '默认 data/context-archive（按会话分目录）', component: 'Input', componentProps: { placeholder: 'data/context-archive' } },
         { field: 'agent.toolConcurrency.maxParallel', label: '只读工具并发上限', bottomHelpMessage: '单批工具调用的全局滚动并发池（默认 3；独占/资源类工具另行串行）', component: 'InputNumber', componentProps: { min: 1, max: 16 } },
         { field: 'agent.toolSchemaValidate', label: '工具参数 schema 预校验', bottomHelpMessage: '缺参/类型错误/多余参数在副作用前结构化回报；默认开（关=回滚杠杆）', component: 'Switch' },
         { field: 'agent.finalizeMaxTokens', label: '收尾输出 token 上限', bottomHelpMessage: '异常停止后最后一次交付的输出上限（默认 2048；太小会截断总结/子代理报告）', component: 'InputNumber', componentProps: { min: 1 } },
@@ -406,8 +401,6 @@ export function supportGuoba() {
         { field: 'agent.personaLore.dir', label: '人设资料库目录', bottomHelpMessage: '长尾知识/补齐资料目录；留空=data/persona-lore', component: 'Input', componentProps: { placeholder: '留空=data/persona-lore' } },
         { field: 'agent.personaLore.adoptionsDir', label: '人设采纳队列目录', bottomHelpMessage: '采纳队列目录；留空=data/persona-adoptions', component: 'Input', componentProps: { placeholder: '留空=data/persona-adoptions' } },
         { field: 'agent.persona.styleExamples', label: '沟通风格示例(JSON)', bottomHelpMessage: 'JSON 数组，元素含 sceneType/speechAct/tone/familiarity/text；留空或 [] = 用默认人设内置示例。示例：[{"sceneType":"banter","tone":"playful","text":"就这？我上我也行"}]', component: 'InputTextArea', componentProps: { autosize: { minRows: 2, maxRows: 8 }, placeholder: '[]' } },
-        { field: 'agent.contextHighRatio', label: '压缩高水位比例', bottomHelpMessage: '仅填了 contextWindow 后生效：历史占窗口比例超过它触发压缩（默认 0.65；256K 窗口建议 0.8）。越晚压越省缓存，命中率公式见 README「缓存经济性」', component: 'InputNumber', componentProps: { min: 0.3, max: 0.95, step: 0.05 } },
-        { field: 'agent.contextLowRatio', label: '压缩低水位比例', bottomHelpMessage: '压缩后保留到该比例（默认 0.45，须小于高水位；若 ≥ 高水位会被运行时夹到「高水位−0.05」）。压得越深则每轮新增相对越少、稳态命中率越高', component: 'InputNumber', componentProps: { min: 0.05, max: 0.9, step: 0.05 } },
         { field: 'agent.redactSecrets', label: '回复脱敏(屏蔽 API Key)', bottomHelpMessage: '发送前屏蔽回复里的密钥/token；默认开', component: 'Switch' },
         { field: 'agent.confirmTimeout', label: '审批超时(秒)', bottomHelpMessage: '超时自动拒绝（默认 300 秒）', component: 'InputNumber', componentProps: { min: 10 } },
         {

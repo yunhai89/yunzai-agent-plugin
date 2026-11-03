@@ -61,6 +61,7 @@
     governor_stop: { name: '循环终止', icon: 'warn', color: 'var(--rose)', bg: 'var(--rose-bg)' },
     cache_compact: { name: '上下文压缩', icon: 'refresh', color: 'var(--mint)', bg: 'var(--mint-bg)' },
     deadline: { name: '预算到点', icon: 'clock', color: 'var(--rose)', bg: 'var(--rose-bg)' },
+    context_resolved: { name: '上下文预算', icon: 'cpu', color: 'var(--sky)', bg: 'var(--sky-bg)' },
   }
   /* 未知 event 兜底：后端新增 event 类型时不再让 EV[e.event].color 崩掉整页 */
   const EV_FALLBACK = { name: '其他', icon: 'info', color: 'var(--ink3)', bg: 'var(--honey-bg)' }

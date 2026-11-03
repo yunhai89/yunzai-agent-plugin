@@ -140,15 +140,6 @@
       intercept: []
     },
     maxTokens: null,
-    contextWindow: null,
-    contextMsgHighWater: 30,
-    contextMsgLowWater: 18,
-    contextHighRatio: 0.65,
-    contextLowRatio: 0.45,
-    compaction: {
-      enable: true,
-      archiveDir: "data/context-archive"
-    },
     maxToolResultChars: 8000,
     toolConcurrency: {
       maxParallel: 3

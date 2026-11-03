@@ -6,6 +6,7 @@
 
 | 版本 | 内容 |
 | --- | --- |
+| **v1.48.0** | 上下文配置 P0：移除 `contextWindow`/消息条数水位/压缩比例/`compaction.*` 用户配置，改为每轮按「厂商 `/models` 元数据 → 本地模型目录 → 运行时报错学习 → 128K 兜底」自动解析输入预算；按真实上下文用量 80% 触发、45% 目标动态压缩，并用 `prompt_tokens` 校准估算；思考自动判档会选用对应模式的窗口/输出预算；厂商报超限时自动学习真实上限、压缩并同模型重试一次。Web/锅巴/默认 YAML 同步移除相关配置项 |
 | **v1.47.4** | 人设补齐安全/副作用加固：补齐任务改用只读工具白名单（禁止 terminal、stagehand act、memory、提醒/定时、下载/本地文件；web_crawl 移除 js_code 与 js: 等待），外部资料无法经注入驱动副作用；`PersonaCompletion` 不再为无活跃会话的用户凭空创建空对话 |
 | **v1.47.3** | 无损压缩加强（参考 Hermes/Claude Code auto-compact）：台账新增约束/未决问题/已确认决定/工具错误结构化字段并优先保留；多次压缩合并去重；`context_recall` 检索升级为 BM25（jieba 中文分词）+ 精确短语加权，无需连续子串；devLog 增加各字段计数 |
 | **v1.47.2** | 修复两类长内容问题：① `web_crawl`/知识库抓取 PDF 时不再把 `%PDF-1.5`/FlateDecode 原始字节当正文，自动用 pdfjs 提取文本（`via:"pdf"`，扫描件/加密 PDF 返回明确错误）；② Web「长期记忆/用户画像」看不到 QQ 官方 openid 数据：用户列表改为合并 `scopes` 与 KV 实际键（`Yz:agent:mem:*` / `Yz:agent:profile:*`），新增 `/api/recall/users`、`/api/profile/users` |

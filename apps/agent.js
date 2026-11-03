@@ -587,15 +587,15 @@ async function _buildRuntime(scope) {
   })
   // 官方模型能力（数据驱动）：从厂商 /models 拉取模态元数据（OpenRouter 等）prime 一次，供 detectCapabilities 同步叠加；
   // 未暴露模态的厂商（含小米 MiMo）返回空 → 回退内置注册表 + media.caps 覆盖。best-effort，不阻塞启动失败。
-  if (cfg.media?.capsFromApi !== false) {
-    try {
-      await primeModelCaps({
-        protocol, baseURL: cfg.baseURL, apiKey: cfg.apiKey, preset: cfg.preset,
-        models: [cfg.model, cfg.vision?.model].filter(Boolean),
-        fetchImpl: proxyFetch || undefined,
-      })
-    } catch { /* 忽略：回退注册表 */ }
-  }
+  // 模型上下文窗口始终优先走官方 /models（即使关闭媒体能力拉取）；媒体 caps 仅在开关允许时叠加。
+  try {
+    await primeModelCaps({
+      protocol, baseURL: cfg.baseURL, apiKey: cfg.apiKey, preset: cfg.preset,
+      models: [cfg.model, cfg.vision?.model].filter(Boolean),
+      fetchImpl: proxyFetch || undefined,
+      contextOnly: cfg.media?.capsFromApi === false,
+    })
+  } catch { /* 忽略：回退本地模型目录 */ }
 
   // 按能力路由缓存参数：cacheControl 'auto' 仅官方 Anthropic 端点生效（自定义 baseURL/preset
   // 的兼容网关未知字段可能 400，默认 off）；prompt_cache_key 仅官方 OpenAI preset（绝不发 DeepSeek/兼容网关）
@@ -783,14 +783,12 @@ async function _buildRuntime(scope) {
   if (enabledSearch.length) Log.debug('[search] 已启用搜索源：' + enabledSearch.join('、'))
 
   // 无损上下文压缩（Hermes 可逆化）：原文归档按会话分目录落盘（sha256 内容寻址），
-  // context_recall 工具按 ref/query 恢复。compaction.enable:false 关闭归档与恢复工具
-  // （Agent 仍做台账压缩，只是原文不再可恢复——回滚杠杆）。
+  // context_recall 工具按 ref/query 恢复。配置项已移除：默认始终开启，路径固定。
   let compactArchive = null
-  if (cfg.compaction?.enable !== false) {
-    try {
-      compactArchive = new CompactionArchive({ dir: path.resolve(PLUGIN_ROOT, cfg.compaction?.archiveDir || 'data/context-archive') })
-    } catch (e) { Log.warn('[agent] 压缩归档初始化失败，降级为无归档压缩', e?.message || e) }
-  }
+  try {
+    // archiveDir 仅保留为内部/测试覆盖，不作为用户配置项；默认固定路径。
+    compactArchive = new CompactionArchive({ dir: path.resolve(PLUGIN_ROOT, cfg.compaction?.archiveDir || 'data/context-archive') })
+  } catch (e) { Log.warn('[agent] 压缩归档初始化失败，降级为无归档压缩', e?.message || e) }
 
   // ── E2B 沙箱运行时（terminal 的唯一执行面 + toolEvo 的隔离面）──
   // 装配失败不抛穿：mode=off 或初始化失败都返回 manager:null，由工具层给 fail-closed 结果
@@ -1257,17 +1255,9 @@ async function _buildRuntime(scope) {
     mediaCaps: cfg.media?.caps || null,
     protocol: cfg.protocol || 'openai',
     preset: cfg.preset || '',
-    // 上下文管理：contextWindow（token 高低水位压缩入口：contextHighRatio 触发压到 contextLowRatio；
-    // 未配置走消息数水位）、工具结果上限、是否回灌 reasoning。旧 contextPressureThreshold 已删除。
-    // 缓存经济性：稳态 token 命中率 ≈ 1 − 2·d·H/(H²−K²)（d=每轮新增、H=高水位、K=压后目标），
-    // 故「窗口吃满 + 压得深」优于「小窗口勤压」；压缩无损（原文归档，context_recall 可恢复）。
-    contextWindow: cfg.contextWindow || null,
-    // 未配置 contextWindow 时的消息条数水位（此前代码支持但配置面不可见，FIX v2 D4）
-    contextMsgHighWater: cfg.contextMsgHighWater ?? 30,
-    contextMsgLowWater: cfg.contextMsgLowWater ?? 18,
-    contextHighRatio: cfg.contextHighRatio ?? 0.65,
-    contextLowRatio: cfg.contextLowRatio ?? 0.45,
-    compactArchive, // 无损压缩归档（null=无归档压缩；见上方装配说明）
+    // 上下文窗口不再由用户配置：Agent 每轮按模型官方元数据 / 本地目录 / 学习值自动解析。
+    // 压缩比例硬编码在 Agent（80% 触发 → 45% 目标），用户无需理解窗口与水位。
+    compactArchive, // 无损压缩归档（始终开启；失败时降级为无归档压缩）
     maxToolResultChars: cfg.maxToolResultChars ?? 8000, // 与 yaml 默认 8000 对齐
     // 工具受控并发（P0-2/F10）：全局滚动池上限；未声明并发语义的工具默认独占；跨 Agent 共享同一调度器
     toolConcurrency: { maxParallel: Math.max(1, Number(cfg.toolConcurrency?.maxParallel) || 3) },

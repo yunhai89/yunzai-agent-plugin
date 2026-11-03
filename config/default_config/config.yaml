@@ -85,17 +85,8 @@ agent:
   shell:
     intercept: []          # 需拦截的指令片段列表（大小写不敏感子串匹配；命中即拒绝执行，如 "rm -rf /"）
   maxTokens:              # 单次回复最大 token（留空=厂商默认；Anthropic 默认 4096）
-  contextWindow:          # 模型上下文窗口 token 数（如 200000），按**估算 token** 计数：中文/日文/韩文≈1 token/字，其余≈1 token/4 字符（v1.26.6 起）。
-  # 配置后启用 token 高低水位压缩（超 contextHighRatio 压到 contextLowRatio、保留首条意图、cacheEpoch 分代），未配置按消息条数水位（30→18）压缩。
-  # 请填模型**真实**窗口：填太小会频繁压缩（每次压缩都要重建前缀，命中率下降），填太大可能顶穿上游窗口。
-                          # 缓存经济性：稳态 token 命中率 ≈ 1 − 2·d·H/(H²−K²)（d=每轮新增、H=高水位、K=压后目标），同一窗口下「压得深」比「勤压」命中率高得多；压缩无损（原文归档，context_recall 可恢复）
-  contextMsgHighWater: 30    # 未配置 contextWindow 时的消息条数高水位（达到即压缩）
-  contextMsgLowWater: 18     # 消息条数低水位（压缩后保留条数）
-  contextHighRatio: 0.65  # token 压缩高水位比例（占 contextWindow；0.3~0.95；仅配置 contextWindow 后生效）。想提高缓存命中率可上调（如 0.8），代价是单次请求更长
-  contextLowRatio: 0.45   # token 压缩压后目标比例（占 contextWindow；须小于高水位）。压得更深（如 0.15）能让「新增→再压」的周期更长，命中率更高（无损压缩，历史可用 context_recall 恢复）
-  compaction:               # 无损上下文压缩（Hermes 四阶段可逆化）：被移出窗口的原文整块归档（sha256 校验），
-    enable: true            # 窗口内留结构化台账 + context_recall 工具按 ref/关键词恢复；false 关闭归档与恢复工具（回滚杠杆）
-    archiveDir: "data/context-archive"  # 压缩原文归档目录（按会话分目录，独立于会话数据生命周期）
+  # 上下文窗口/压缩水位由运行时自动解析（官方 /models → 本地模型目录 → 学习值 → 128K 兜底），
+  # 按可用输入预算 80% 触发、45% 目标动态压缩；无需也不支持在此配置。
   maxToolResultChars: 8000  # 单条工具结果字符上限（内容获取类工具可经 meta.resultCap 单独放宽到 12000）
   toolConcurrency:          # 单批工具调用的受控并发（审计 §F03）：未声明并发语义的工具默认独占，内置只读工具显式并发
     maxParallel: 3          # 全局滚动并发池上限（同一批只读工具最多同时执行多少个；独占/资源类工具另行串行）

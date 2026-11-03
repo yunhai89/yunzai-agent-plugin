@@ -1,0 +1,1330 @@
+{
+  "version": 1,
+  "updatedAt": "2026-11-03",
+  "notes": "Runtime API context metadata wins. This catalog is the fallback for providers whose /models endpoint does not expose context/output limits. Context windows are token counts; contextWindowKind=total means context includes output, input means separate input budget.",
+  "sourceUrls": {
+    "openai": "https://platform.openai.com/docs/models",
+    "zhipu": "https://docs.bigmodel.cn/cn/guide/start/model-overview",
+    "minimax": "https://platform.minimaxi.com/docs/guides/models-intro",
+    "mimo": "https://mimo.mi.com/docs/zh-CN/quick-start/model",
+    "volcengine": "https://www.volcengine.com/docs/82379/1330310",
+    "google": "https://ai.google.dev/gemini-api/docs/models",
+    "anthropic": "https://platform.claude.com/docs/en/about-claude/models/overview",
+    "deepseek": "https://api-docs.deepseek.com/quick_start/pricing",
+    "moonshot": "https://platform.kimi.com/docs/models",
+    "xai": "https://docs.x.ai/developers/models",
+    "groq": "https://console.groq.com/docs/models",
+    "mistral": "https://docs.mistral.ai/models",
+    "cohere": "https://docs.cohere.com/v2/docs/models",
+    "commandcode": "https://api.commandcode.ai/provider/v1/models",
+    "jev": "https://docs.typesafe.ai/models.md",
+    "dashscope": "https://www.alibabacloud.com/help/en/model-studio/models",
+    "baidu": "https://cloud.baidu.com/doc/qianfan/s/rmh4stp0j",
+    "tencent": "https://cloud.tencent.com/document/product/1823/130051",
+    "local": "https://huggingface.co/models"
+  },
+  "entries": [
+    {
+      "id": "openai-gpt-6",
+      "match": "^gpt-6(\\.1)?(?!.*-chat)",
+      "contextWindow": 1050000,
+      "maxInputTokens": 922000,
+      "maxOutputTokens": 128000,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "openai",
+      "confidence": "high"
+    },
+    {
+      "id": "openai-gpt-5.6",
+      "match": "^gpt-5\\.6",
+      "contextWindow": 1050000,
+      "maxInputTokens": 922000,
+      "maxOutputTokens": 128000,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "openai",
+      "confidence": "high"
+    },
+    {
+      "id": "openai-gpt-5.5",
+      "match": "^gpt-5\\.5",
+      "contextWindow": 1050000,
+      "maxInputTokens": 922000,
+      "maxOutputTokens": 128000,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "openai",
+      "confidence": "high"
+    },
+    {
+      "id": "openai-gpt-5.4",
+      "match": "^gpt-5\\.4",
+      "contextWindow": 1050000,
+      "maxInputTokens": 922000,
+      "maxOutputTokens": 128000,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "openai",
+      "confidence": "medium"
+    },
+    {
+      "id": "openai-gpt-5.1",
+      "match": "^gpt-5\\.1",
+      "contextWindow": 400000,
+      "maxInputTokens": 272000,
+      "maxOutputTokens": 128000,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "openai",
+      "confidence": "high"
+    },
+    {
+      "id": "openai-gpt-5",
+      "match": "^gpt-5",
+      "contextWindow": 400000,
+      "maxInputTokens": 272000,
+      "maxOutputTokens": 128000,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "openai",
+      "confidence": "high"
+    },
+    {
+      "id": "openai-gpt-4.1",
+      "match": "^gpt-4\\.1",
+      "contextWindow": 1047576,
+      "maxInputTokens": 300000,
+      "maxOutputTokens": 32768,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": false,
+        "modes": [
+          "off"
+        ]
+      },
+      "source": "openai",
+      "confidence": "high"
+    },
+    {
+      "id": "openai-gpt-4o",
+      "match": "^gpt-4o",
+      "contextWindow": 128000,
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 16384,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": false,
+        "modes": [
+          "off"
+        ]
+      },
+      "source": "openai",
+      "confidence": "high"
+    },
+    {
+      "id": "openai-o3-o4",
+      "match": "^o[34]",
+      "contextWindow": 200000,
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 100000,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "openai",
+      "confidence": "high"
+    },
+    {
+      "id": "zhipu-glm-5.3",
+      "match": "^glm-5\\.3",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 131072,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "zhipu",
+      "confidence": "medium"
+    },
+    {
+      "id": "zhipu-glm-5",
+      "match": "^glm-5(?!\\.3)",
+      "contextWindow": 202752,
+      "maxInputTokens": 202752,
+      "maxOutputTokens": 131072,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "zhipu",
+      "confidence": "high"
+    },
+    {
+      "id": "zhipu-glm-4.6v",
+      "match": "^glm-4\\.6v",
+      "contextWindow": 131072,
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 32768,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "zhipu",
+      "confidence": "high"
+    },
+    {
+      "id": "zhipu-glm-4.6",
+      "match": "^glm-4\\.6",
+      "contextWindow": 204800,
+      "maxInputTokens": 204800,
+      "maxOutputTokens": 131072,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "zhipu",
+      "confidence": "high"
+    },
+    {
+      "id": "zhipu-glm-4.5-air",
+      "match": "^glm-4\\.5-air",
+      "contextWindow": 131072,
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 98304,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "zhipu",
+      "confidence": "high"
+    },
+    {
+      "id": "zhipu-glm-4.5",
+      "match": "^glm-4\\.5",
+      "contextWindow": 131072,
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 98304,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "zhipu",
+      "confidence": "high"
+    },
+    {
+      "id": "minimax-m3.1",
+      "match": "^minimax-m3\\.1",
+      "contextWindow": 1000000,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 524288,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "minimax",
+      "confidence": "high"
+    },
+    {
+      "id": "minimax-m3",
+      "match": "^minimax-m3",
+      "contextWindow": 1000000,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 524288,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "minimax",
+      "confidence": "high"
+    },
+    {
+      "id": "minimax-m2.7",
+      "match": "^minimax-m2\\.7",
+      "contextWindow": 204800,
+      "maxInputTokens": 204800,
+      "maxOutputTokens": 204800,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "minimax",
+      "confidence": "high"
+    },
+    {
+      "id": "minimax-m2.5",
+      "match": "^minimax-m2\\.5",
+      "contextWindow": 204800,
+      "maxInputTokens": 204800,
+      "maxOutputTokens": 204800,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "minimax",
+      "confidence": "high"
+    },
+    {
+      "id": "mimo-v2.6",
+      "match": "^mimo-v2\\.6",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 131072,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "mimo",
+      "confidence": "high"
+    },
+    {
+      "id": "mimo-v2.5-asr",
+      "match": "^mimo-v2\\.5-asr",
+      "contextWindow": 8192,
+      "maxInputTokens": 8192,
+      "maxOutputTokens": 2048,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": false,
+        "modes": [
+          "off"
+        ]
+      },
+      "source": "mimo",
+      "confidence": "high"
+    },
+    {
+      "id": "mimo-v2.5-tts",
+      "match": "^mimo-v2\\.5-tts",
+      "contextWindow": 8192,
+      "maxInputTokens": 8192,
+      "maxOutputTokens": 8192,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": false,
+        "modes": [
+          "off"
+        ]
+      },
+      "source": "mimo",
+      "confidence": "high"
+    },
+    {
+      "id": "mimo-v2.5",
+      "match": "^mimo-v2\\.5",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 131072,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "mimo",
+      "confidence": "medium"
+    },
+    {
+      "id": "volc-doubao-seed-evolving",
+      "match": "^doubao-seed-evolving",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 262144,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "volcengine",
+      "confidence": "high"
+    },
+    {
+      "id": "volc-doubao-seed-2.1-turbo",
+      "match": "^doubao-seed-2\\.1-turbo",
+      "contextWindow": 262144,
+      "maxInputTokens": 262144,
+      "maxOutputTokens": 262144,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "volcengine",
+      "confidence": "high"
+    },
+    {
+      "id": "volc-doubao-seed-2.1",
+      "match": "^doubao-seed-2\\.1",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 262144,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "volcengine",
+      "confidence": "high"
+    },
+    {
+      "id": "volc-doubao-seed-2.0-lite",
+      "match": "^doubao-seed-2\\.0-lite",
+      "contextWindow": 262144,
+      "maxInputTokens": 229376,
+      "maxOutputTokens": 131072,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "volcengine",
+      "confidence": "high"
+    },
+    {
+      "id": "gemini-4",
+      "match": "^gemini-4",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "google",
+      "confidence": "high"
+    },
+    {
+      "id": "gemini-3.8",
+      "match": "^gemini-3\\.8",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "google",
+      "confidence": "high"
+    },
+    {
+      "id": "gemini-3.6",
+      "match": "^gemini-3\\.6",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "google",
+      "confidence": "high"
+    },
+    {
+      "id": "gemini-3.5",
+      "match": "^gemini-3\\.5",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "google",
+      "confidence": "high"
+    },
+    {
+      "id": "gemini-3.1-pro",
+      "match": "^gemini-3\\.1-pro",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "google",
+      "confidence": "high"
+    },
+    {
+      "id": "gemini-3.1",
+      "match": "^gemini-3\\.1",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "google",
+      "confidence": "medium"
+    },
+    {
+      "id": "gemini-2.5",
+      "match": "^gemini-2\\.5",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 65536,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "google",
+      "confidence": "high"
+    },
+    {
+      "id": "anthropic-5",
+      "match": "^claude-(opus|sonnet|haiku)-5",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 128000,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "anthropic",
+      "confidence": "high"
+    },
+    {
+      "id": "anthropic-4",
+      "match": "^claude-.*4",
+      "contextWindow": 200000,
+      "maxInputTokens": 200000,
+      "maxOutputTokens": 64000,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "anthropic",
+      "confidence": "medium"
+    },
+    {
+      "id": "deepseek-v4",
+      "match": "^deepseek-(v4|flash)",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 393216,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "deepseek",
+      "confidence": "high"
+    },
+    {
+      "id": "deepseek-legacy",
+      "match": "^deepseek",
+      "contextWindow": 131072,
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 32768,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "deepseek",
+      "confidence": "low"
+    },
+    {
+      "id": "kimi-k3",
+      "match": "^kimi-k3",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 131072,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "moonshot",
+      "confidence": "high"
+    },
+    {
+      "id": "kimi-k2.6",
+      "match": "^kimi-k2\\.6",
+      "contextWindow": 262144,
+      "maxInputTokens": 262144,
+      "maxOutputTokens": 32768,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "moonshot",
+      "confidence": "medium"
+    },
+    {
+      "id": "kimi-k2",
+      "match": "^kimi",
+      "contextWindow": 262144,
+      "maxInputTokens": 262144,
+      "maxOutputTokens": 32768,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": false,
+        "modes": [
+          "off"
+        ]
+      },
+      "source": "moonshot",
+      "confidence": "low"
+    },
+    {
+      "id": "xai-grok-4.7",
+      "match": "^grok-4\\.7",
+      "contextWindow": 500000,
+      "maxInputTokens": 500000,
+      "maxOutputTokens": 128000,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "xai",
+      "confidence": "high"
+    },
+    {
+      "id": "xai-grok-4",
+      "match": "^grok-4",
+      "contextWindow": 1000000,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "xai",
+      "confidence": "medium"
+    },
+    {
+      "id": "xai-grok-3",
+      "match": "^grok-3",
+      "contextWindow": 131072,
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 8192,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": false,
+        "modes": [
+          "off"
+        ]
+      },
+      "source": "xai",
+      "confidence": "medium"
+    },
+    {
+      "id": "groq-gpt-oss",
+      "match": "^openai/gpt-oss",
+      "contextWindow": 131072,
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 65536,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "groq",
+      "confidence": "high"
+    },
+    {
+      "id": "groq-qwen",
+      "match": "^qwen/",
+      "contextWindow": 131072,
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 16384,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "groq",
+      "confidence": "medium"
+    },
+    {
+      "id": "groq-minimax",
+      "match": "^minimax",
+      "contextWindow": 196608,
+      "maxInputTokens": 196608,
+      "maxOutputTokens": 131072,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "groq",
+      "confidence": "medium"
+    },
+    {
+      "id": "mistral-large-4",
+      "match": "^mistral-large-4",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 262144,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "mistral",
+      "confidence": "medium"
+    },
+    {
+      "id": "mistral-small-4",
+      "match": "^mistral-small-4",
+      "contextWindow": 262144,
+      "maxInputTokens": 262144,
+      "maxOutputTokens": 209715,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "mistral",
+      "confidence": "medium"
+    },
+    {
+      "id": "mistral-medium-3",
+      "match": "^mistral-medium-3",
+      "contextWindow": 262144,
+      "maxInputTokens": 262144,
+      "maxOutputTokens": 209715,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "mistral",
+      "confidence": "medium"
+    },
+    {
+      "id": "cohere-command-a-plus",
+      "match": "^command-a-plus",
+      "contextWindow": 128000,
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 64000,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "cohere",
+      "confidence": "high"
+    },
+    {
+      "id": "cohere-command-a-reasoning",
+      "match": "^command-a-reasoning",
+      "contextWindow": 256000,
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 32000,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "cohere",
+      "confidence": "high"
+    },
+    {
+      "id": "cohere-command-a-vision",
+      "match": "^command-a-vision",
+      "contextWindow": 128000,
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 8000,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": false,
+        "modes": [
+          "off"
+        ]
+      },
+      "source": "cohere",
+      "confidence": "high"
+    },
+    {
+      "id": "cohere-command-a",
+      "match": "^command-a",
+      "contextWindow": 256000,
+      "maxInputTokens": 256000,
+      "maxOutputTokens": 8000,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": false,
+        "modes": [
+          "off"
+        ]
+      },
+      "source": "cohere",
+      "confidence": "high"
+    },
+    {
+      "id": "cohere-command-r7b",
+      "match": "^command-r7b",
+      "contextWindow": 128000,
+      "maxInputTokens": 128000,
+      "maxOutputTokens": 4000,
+      "contextWindowKind": "input",
+      "thinking": {
+        "supported": false,
+        "modes": [
+          "off"
+        ]
+      },
+      "source": "cohere",
+      "confidence": "high"
+    },
+    {
+      "id": "commandcode-gpt-6.1-sol",
+      "match": "^gpt-6\\.1-sol",
+      "contextWindow": 1050000,
+      "maxInputTokens": 922000,
+      "maxOutputTokens": 128000,
+      "contextWindowKind": "total",
+      "source": "commandcode",
+      "confidence": "medium"
+    },
+    {
+      "id": "commandcode-claude-sonnet-5.5",
+      "match": "^claude-sonnet-5\\.5",
+      "contextWindow": 1000000,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 128000,
+      "contextWindowKind": "total",
+      "source": "commandcode",
+      "confidence": "medium"
+    },
+    {
+      "id": "commandcode-deepseek-v4.1",
+      "match": "^deepseek-v4\\.1",
+      "contextWindow": 1000000,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 393216,
+      "contextWindowKind": "total",
+      "source": "commandcode",
+      "confidence": "medium"
+    },
+    {
+      "id": "commandcode-kimi-k3.1",
+      "match": "^kimi-k3\\.1",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 131072,
+      "contextWindowKind": "total",
+      "source": "commandcode",
+      "confidence": "medium"
+    },
+    {
+      "id": "jev-1",
+      "match": "^jev-1",
+      "contextWindow": 65536,
+      "maxInputTokens": 65536,
+      "maxOutputTokens": null,
+      "contextWindowKind": "input",
+      "source": "jev",
+      "confidence": "high"
+    },
+    {
+      "id": "dashscope-qwen3-max",
+      "match": "^qwen3-max",
+      "contextWindow": 262144,
+      "maxInputTokens": 258048,
+      "maxOutputTokens": 65536,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ],
+        "maxOutputByMode": {
+          "off": 65536,
+          "on": 32768
+        }
+      },
+      "source": "dashscope",
+      "confidence": "medium"
+    },
+    {
+      "id": "dashscope-qwen3-coder",
+      "match": "^qwen3-coder",
+      "contextWindow": 1000000,
+      "maxInputTokens": 1000000,
+      "maxOutputTokens": 65536,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "dashscope",
+      "confidence": "medium"
+    },
+    {
+      "id": "dashscope-qwen3-vl",
+      "match": "^qwen3-vl",
+      "contextWindow": 262144,
+      "maxInputTokens": 260096,
+      "maxOutputTokens": 32768,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "dashscope",
+      "confidence": "high"
+    },
+    {
+      "id": "dashscope-qwen-long",
+      "match": "^qwen-long",
+      "contextWindow": 10000000,
+      "maxInputTokens": 10000000,
+      "maxOutputTokens": 8192,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": false,
+        "modes": [
+          "off"
+        ]
+      },
+      "source": "dashscope",
+      "confidence": "high"
+    },
+    {
+      "id": "dashscope-qwen-plus",
+      "match": "^qwen-plus",
+      "contextWindow": 1000000,
+      "maxInputTokens": 997952,
+      "maxOutputTokens": 32768,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "dashscope",
+      "confidence": "high"
+    },
+    {
+      "id": "dashscope-qwen-flash",
+      "match": "^qwen-flash",
+      "contextWindow": 1000000,
+      "maxInputTokens": 997952,
+      "maxOutputTokens": 32768,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "dashscope",
+      "confidence": "high"
+    },
+    {
+      "id": "baidu-ernie-5.1",
+      "match": "^ernie-5",
+      "contextWindow": 131072,
+      "maxInputTokens": 121856,
+      "maxOutputTokens": 65536,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "baidu",
+      "confidence": "medium"
+    },
+    {
+      "id": "tencent-hy3",
+      "match": "^hy3",
+      "contextWindow": 262144,
+      "maxInputTokens": 196608,
+      "maxOutputTokens": 131072,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "tencent",
+      "confidence": "high"
+    },
+    {
+      "id": "tencent-hy4",
+      "match": "^hy4",
+      "contextWindow": 1048576,
+      "maxInputTokens": 983040,
+      "maxOutputTokens": 65536,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "tencent",
+      "confidence": "high"
+    },
+    {
+      "id": "local-llama-3.3",
+      "match": "^llama-3\\.3",
+      "contextWindow": 131072,
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 32768,
+      "contextWindowKind": "total",
+      "source": "local",
+      "confidence": "high"
+    },
+    {
+      "id": "local-llama-4-scout",
+      "match": "^llama-4-scout",
+      "contextWindow": 10485760,
+      "maxInputTokens": 10485760,
+      "maxOutputTokens": null,
+      "contextWindowKind": "total",
+      "source": "local",
+      "confidence": "high"
+    },
+    {
+      "id": "local-llama-4-maverick",
+      "match": "^llama-4-maverick",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": null,
+      "contextWindowKind": "total",
+      "source": "local",
+      "confidence": "high"
+    },
+    {
+      "id": "local-qwen3.8",
+      "match": "^qwen3\\.8",
+      "contextWindow": 262144,
+      "maxInputTokens": 262144,
+      "maxOutputTokens": null,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "local",
+      "confidence": "high"
+    },
+    {
+      "id": "local-qwen3.5",
+      "match": "^qwen3\\.5",
+      "contextWindow": 262144,
+      "maxInputTokens": 262144,
+      "maxOutputTokens": null,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "local",
+      "confidence": "high"
+    },
+    {
+      "id": "local-qwen3-32b",
+      "match": "^qwen3-32b",
+      "contextWindow": 32768,
+      "maxInputTokens": 32768,
+      "maxOutputTokens": null,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "local",
+      "confidence": "high"
+    },
+    {
+      "id": "local-gemma-4",
+      "match": "^gemma-4",
+      "contextWindow": 262144,
+      "maxInputTokens": 262144,
+      "maxOutputTokens": null,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "local",
+      "confidence": "high"
+    },
+    {
+      "id": "local-gemma-3",
+      "match": "^gemma-3",
+      "contextWindow": 131072,
+      "maxInputTokens": 131072,
+      "maxOutputTokens": null,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": false,
+        "modes": [
+          "off"
+        ]
+      },
+      "source": "local",
+      "confidence": "high"
+    },
+    {
+      "id": "local-mistral-large-3",
+      "match": "^mistral-large-3",
+      "contextWindow": 262144,
+      "maxInputTokens": 262144,
+      "maxOutputTokens": null,
+      "contextWindowKind": "total",
+      "source": "local",
+      "confidence": "high"
+    },
+    {
+      "id": "local-phi-4",
+      "match": "^phi-4",
+      "contextWindow": 16384,
+      "maxInputTokens": 16384,
+      "maxOutputTokens": null,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": false,
+        "modes": [
+          "off"
+        ]
+      },
+      "source": "local",
+      "confidence": "high"
+    },
+    {
+      "id": "local-gpt-oss",
+      "match": "^gpt-oss",
+      "contextWindow": 131072,
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 65536,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "local",
+      "confidence": "high"
+    },
+    {
+      "id": "local-deepseek-v4",
+      "match": "^deepseek-v4",
+      "contextWindow": 1048576,
+      "maxInputTokens": 1048576,
+      "maxOutputTokens": 393216,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "off",
+          "on"
+        ]
+      },
+      "source": "local",
+      "confidence": "high"
+    },
+    {
+      "id": "local-deepseek-r1",
+      "match": "^deepseek-r1",
+      "contextWindow": 131072,
+      "maxInputTokens": 131072,
+      "maxOutputTokens": 32768,
+      "contextWindowKind": "total",
+      "thinking": {
+        "supported": true,
+        "modes": [
+          "on"
+        ]
+      },
+      "source": "local",
+      "confidence": "high"
+    }
+  ]
+}

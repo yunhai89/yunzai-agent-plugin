@@ -449,7 +449,7 @@ await test('contextWindow 配置进入 token 压缩：epoch 递增/首条意图�
     estimateTokens: (t) => Math.ceil(String(t || '').length / 4),
   })
   const pressures = [] // 每次压缩后立即采样 messages token（应 ≤ 高水位）
-  const high = Math.floor(1600 * 0.65)
+  const high = Math.floor(1600 * 0.8)
   const epochs = []
   for (let i = 1; i <= 5; i++) {
     await agent.run(`问题${i} ${long}`, {

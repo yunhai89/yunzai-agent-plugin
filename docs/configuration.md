@@ -12,7 +12,7 @@
 | **基础与回复** | `trigger` `triggerCommand` `commandPassThrough` `privateChat` `isolation.enable` `progress` `progressRecall` `reply.mode/atSender/quote/narrate/renderScale` `render.*` | 触发方式、私聊开关、数据隔离、进度与回复渲染 |
 | **模型** | `providerId` `modelId` `llmProviders[]` `llmModels[]` `fallbackModels[]` `utilityModel` `proxy` `reasoningFields` `temperature` `maxTokens` | 引用制厂商/模型、回退、旁路小模型、代理 |
 | **思考** | `thinking` `thinkingAuto.*` `jev.*` | 手动思考 / 自动判档（规则·小模型·Jev） |
-| **上下文与缓存** | `contextWindow` `contextMsgHighWater/LowWater` `contextHighRatio/LowRatio` `compaction.*` `cacheControl` `promptCacheKey` `keepReasoning` `stream` `reflect*` `finalizeMaxTokens` `rootTokenBudget` | 压缩水位、缓存策略、收尾与预算 |
+| **上下文与缓存** | `cacheControl` `promptCacheKey` `keepReasoning` `stream` `reflect*` `finalizeMaxTokens` `rootTokenBudget` | 上下文窗口与压缩水位已自动解析，无配置项；保留缓存策略、收尾与预算 |
 | **循环与工具** | `maxTurns` `loop.*` `maxToolResultChars` `toolConcurrency.maxParallel` `toolSchemaValidate` `toolDiscovery.*` `taskStore.*` | 轮次预算与智能终止、工具发现/并发/账本 |
 | **记忆** | `memoryLimits` `memory.*` `recall.*` `profile.*` `kb.*` | 声明式记忆、长期召回、用户画像、知识库 |
 | **自动化** | `schedule.*` `selfReview.*` `evolution.*` `toolEvo.*` | 定时任务、自评审进化、工具进化 |
@@ -60,11 +60,7 @@
 | `maxTurns` | `200` | 单次对话工具调用轮次预算（面板上限已放宽到 1000；旧版面板上限 100 会把默认值静默截断） |
 | `temperature` | `0.2` | 采样温度 |
 | `maxTokens` | 空 | 单次回复最大 token（留空=厂商默认；Anthropic 默认 4096） |
-| `contextWindow` | 空 | 模型上下文窗口 token 数（如 `100000`）；配置后启用 token 高低水位压缩（超 `contextHighRatio` 压到 `contextLowRatio`、保留首条意图、`cacheEpoch` 分代），未配置按下面两个消息条数水位（默认 30→18）压缩。**这是提升多轮缓存命中率的头号开关**：窗口吃满后每轮几乎全量命中前缀缓存，见 [记忆体系与上下文缓存](memory-and-context.md) |
-| `contextMsgHighWater` | `30` | **未配置 `contextWindow` 时**生效：会话历史达到该消息条数即触发压缩 |
-| `contextMsgLowWater` | `18` | 消息条数水位下的压后目标：压缩后保留最近 N 条消息 |
-| `contextHighRatio` | `0.65` | token 压缩高水位比例（占 `contextWindow`，0.3~0.95）。想进一步提高命中率可上调（如 `0.8`），代价是单次请求更长 |
-| `contextLowRatio` | `0.45` | 压后目标比例（须小于高水位）。压得更深（如 `0.15`）能让「新增→再压」周期更长、命中率更高；压缩无损（原文归档，`context_recall` 可恢复） |
+| 上下文窗口 / 压缩 | 自动 | 不再提供配置项。运行时按模型官方 `/models` 元数据 → 本地模型目录 → 学习值 → 128K 兜底解析；按可用输入预算 **80% 触发、45% 目标**压缩，始终开启无损归档（`context_recall` 可恢复）。厂商报上下文超限时会自动学习真实上限并压缩重试一次。详见 [记忆体系与上下文缓存](memory-and-context.md) |
 | `maxToolResultChars` | `8000` | 单条工具结果字符上限，超长截断防上下文膨胀 |
 | `promptCacheKey` | `false` | OpenAI 官方 `prompt_cache_key` 稳定会话路由（多轮命中前缀缓存的命中率更高）。仅当当前 provider 声明支持该能力（OpenAI 官方 preset）时才下发，兼容网关/其它厂商一律不发 |
 | `keepReasoning` | `false` | 是否把推理(`reasoning_content`)回灌历史；默认 `false` 省 context。thinking 模式下带工具调用的轮次按协议必需始终回传（不受此开关影响），否则上游会报 "reasoning_content must be passed back" |

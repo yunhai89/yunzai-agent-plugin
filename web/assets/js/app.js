@@ -271,7 +271,7 @@
             </div>
           </template>
         </nav>
-        <div class="rail-foot"><span class="st-dot"></span><span>面板运行中</span><span class="rail-ver mono">v1.47.4</span></div>
+        <div class="rail-foot"><span class="st-dot"></span><span>面板运行中</span><span class="rail-ver mono">v1.48.0</span></div>
       </aside>
 
       <div class="stage">

@@ -114,7 +114,7 @@ search:
 | `replyLen` | 最终回复字符数 |
 | `totalMs` | 本轮总耗时（毫秒），仅 `run end` 有 |
 
-> **排查要点**：`turns` 很大 / `stop=max_turns` → 多步任务卡住或工具反复失败；`usage.in` 持续偏高 → 上下文/记忆膨胀，考虑设 `contextWindow` 开压缩；`ctx` 字数 → 判断情境注入量是否过大。
+> **排查要点**：`turns` 很大 / `stop=max_turns` → 多步任务卡住或工具反复失败；`usage.in` 持续偏高 → 上下文/记忆膨胀，上下文窗口与压缩已自动处理，无需手填；`ctx` 字数 → 判断情境注入量是否过大。
 
 **MCP 连不上时先看报错措辞**：`request timeout: initialize` = 服务端进程起来了但没在超时内响应握手（npx 首次下载慢 / 网络不通 / 命令错误）；`ENOENT spawn npx` / `进程退出码-2` = 容器里压根没有 npx（精简 Docker 镜像常见）—— 解决方案见 [配置参考](configuration.md) 的 `agent.mcp` 章节 ⚠️ 说明；`进程退出码 N` + stderr = 服务端启动即崩溃（缺 API Key / 依赖 / Node 版本，看 stderr 末尾）。
 

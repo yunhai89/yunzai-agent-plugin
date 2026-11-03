@@ -1898,8 +1898,10 @@ await test('会话前缀：30 轮逐字节前缀 + 滞回压缩只跨 epoch 重�
   }
   const agent = new Agent({
     provider, tools, session, maxTurns: 5, reflect: 'off',
-    // 消息水位滞回：high=10 触发压缩 → low=5；无 contextWindow 走消息数
-    contextMsgHighWater: 10, contextMsgLowWater: 5,
+    // token 水位滞回（显式覆盖仅用于测试）：80% 触发 → 45% 目标。
+    // 消息条数水位已随 contextMsg* 配置一起移除，压缩始终按可用输入预算计算。
+    contextWindow: 2000, contextKeepRecent: 4,
+    estimateTokens: (t) => Math.ceil(String(t || '').length / 4),
   })
   const epochsSeen = []
   let illegalBreaks = 0
@@ -1938,7 +1940,7 @@ await test('会话前缀：30 轮逐字节前缀 + 滞回压缩只跨 epoch 重�
   eq(illegalBreaks, 0, `同 epoch 内零前缀断裂（非法断裂 ${illegalBreaks} 次；全部重建均跨代）`)
 })
 
-await test('会话前缀：token 水位滞回（65% 触发压到 45%）优先于消息水位', async () => {
+await test('会话前缀：token 水位滞回（80% 触发压到 45%）优先于消息水位', async () => {
   const kv = memoryKv()
   const session = new SessionStore({ kv })
   await session.createConversation('u1', null, 'c1')
@@ -1959,7 +1961,7 @@ await test('会话前缀：token 水位滞回（65% 触发压到 45%）优先于
     // 中文 1 token/字 → 这里的长中文内容估算翻倍，会顶住 minKeep 导致压不到低水位）
     estimateTokens: (t) => Math.ceil(String(t || '').length / 4),
   })
-  const high = Math.floor(1600 * 0.65)
+  const high = Math.floor(1600 * 0.8)
   const postCompact = []
   const epochs = []
   // 5 轮 × 4 条消息 = 20 条，不触消息数水位（默认 30）——只有 contextWindow 的 token 路径会压缩
@@ -1992,12 +1994,12 @@ await test('压缩水位比例可配：contextHighRatio/contextLowRatio 生效�
   eq(a.contextLowRatio, 0.15, '低水位比例生效')
   eq(a._lowWaterMetric().value, 150, '低水位目标 = 窗口 × contextLowRatio')
   const b = mk({ contextWindow: 1000, contextHighRatio: 5, contextLowRatio: -1 })
-  eq(b.contextHighRatio, 0.65, '非法高水位回退 0.65')
+  eq(b.contextHighRatio, 0.8, '非法高水位回退 0.8')
   eq(b.contextLowRatio, 0.45, '非法低水位回退 0.45')
   const c = mk({ contextWindow: 1000, contextHighRatio: 0.5, contextLowRatio: 0.9 })
   eq(c.contextLowRatio, 0.45, '低水位不得 ≥ 高水位（回退到 高水位−0.05）')
   const d = mk({ contextWindow: 1000 })
-  eq(d.contextHighRatio, 0.65, '未配置时默认 0.65')
+  eq(d.contextHighRatio, 0.8, '未配置时默认 0.8')
   eq(d.contextLowRatio, 0.45, '未配置时默认 0.45')
 })
 
@@ -2670,7 +2672,7 @@ await test('缓存可观测性：压缩断点写出 cache_compact 事件（epoch
   }
   ok(events.length >= 1, `压缩时写出 cache_compact 事件（${events.length} 次）——面板/报告据此归因「前缀被打断」`)
   const e0 = events[0] || {}
-  eq(Number(e0.high), Math.floor(1600 * 0.65), '事件里的高水位来自可配的 contextHighRatio（默认 0.65 → 1040）')
+  eq(Number(e0.high), Math.floor(1600 * 0.8), '事件里的高水位来自 contextHighRatio（默认 0.8 → 1280）')
   ok(Number(e0.cacheEpoch) >= 1 || e0.unresolved === true, `事件明确报告结果：epoch 递增（${e0.cacheEpoch}）或 unresolved=true（压不动时不虚增 epoch，避免假断点）`)
   ok(Number(e0.est) > Number(e0.high), `事件记录触发压力 est=${e0.est} > high=${e0.high}`)
 })

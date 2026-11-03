@@ -227,9 +227,14 @@
         if (!form.personaLore) form.personaLore = {}
         if (form.personaLore.dir == null) form.personaLore.dir = ''
         if (form.personaLore.adoptionsDir == null) form.personaLore.adoptionsDir = ''
-        // 无损压缩 + 网页抓取引擎兜底（旧 config 无此字段时 v-model 不报错）
-        if (!form.compaction) form.compaction = {}
-        if (form.compaction.enable == null) form.compaction.enable = true
+        // 上下文窗口/压缩水位/归档目录已转为运行时自动解析，不再作为用户配置项。
+        // 旧配置里的字段直接丢弃，避免保存时继续写回。
+        delete form.contextWindow
+        delete form.contextMsgHighWater
+        delete form.contextMsgLowWater
+        delete form.contextHighRatio
+        delete form.contextLowRatio
+        delete form.compaction
         if (!form.kb) form.kb = {}
         if (form.kb.vectorStore == null) form.kb.vectorStore = true
         if (form.kb.vectorBackend == null) form.kb.vectorBackend = 'auto'
@@ -292,9 +297,6 @@
         if (!form.selfState.planner) form.selfState.planner = {}
         if (!form.selfState.replyer) form.selfState.replyer = {}
         if (!form.loop) form.loop = {}
-        // D4：未配置 contextWindow 时按消息条数水位压缩（contextMsgHighWater→LowWater）
-        if (form.contextMsgHighWater == null) form.contextMsgHighWater = 30
-        if (form.contextMsgLowWater == null) form.contextMsgLowWater = 18
         if (!form.multiagent) form.multiagent = {}
         if (!form.toolDiscovery) form.toolDiscovery = {}
         if (!Array.isArray(form.reasoningFields)) form.reasoningFields = []
@@ -313,7 +315,6 @@
         if (form.toolSchemaValidate == null) form.toolSchemaValidate = true
         if (!form.taskStore) form.taskStore = {}
         if (!form.skill) form.skill = {}
-        if (!form.compaction) form.compaction = {}
         // 思考自动决策兜底（UI 绑定需完整对象树）
         if (!form.thinkingAuto) form.thinkingAuto = {}
         if (form.thinkingAuto.enable == null) form.thinkingAuto.enable = false
@@ -1248,7 +1249,7 @@
             <cfg-row name="启用 Jev" desc="opt-in 总开关：关闭时各卡片的 jev 决策选项不显示、不生效">
               <v-switch v-model="form.jev.enable"/>
             </cfg-row>
-            <cfg-row name="Jev 厂商" :desc="'仅列出 preset=jev / OpenRouter / 地址含 typesafe 的厂商。' + (jevProviders.length ? '' : '还没有 Jev 厂商：去「厂商配置」添加一个预设为 Jev(TypeSafe) 的厂商（或 OpenRouter）。')">
+            <cfg-row class="full" name="Jev 厂商" :desc="'仅列出 preset=jev / OpenRouter / 地址含 typesafe 的厂商。' + (jevProviders.length ? '' : '还没有 Jev 厂商：去「厂商配置」添加一个预设为 Jev(TypeSafe) 的厂商（或 OpenRouter）。')">
               <div class="row g6">
                 <select class="sel" style="width:280px" v-model="form.jev.providerId" :disabled="!form.jev.enable" @change="form.jev.modelId = ''">
                   <option value="">（未选择）</option>
@@ -1257,7 +1258,7 @@
                 <button type="button" class="btn b-line b-sm" @click="jump('providers')"><v-icon name="edit"/>管理厂商</button>
               </div>
             </cfg-row>
-            <cfg-row name="Jev 模型" desc="从该 Jev 厂商下的模型条目选（在「模型列表」添加，如 jev-latest）">
+            <cfg-row class="full" name="Jev 模型" desc="从该 Jev 厂商下的模型条目选（在「模型列表」添加，如 jev-latest）">
               <div class="row g6">
                 <select class="sel" style="width:220px" v-model="form.jev.modelId" :disabled="!form.jev.enable || !form.jev.providerId">
                   <option value="">（未选择）</option>
@@ -1612,24 +1613,6 @@
             <cfg-row name="单次回复最大 token" desc="留空=厂商默认">
               <input type="number" class="inp" style="width:130px" min="1" v-model.number="form.maxTokens" placeholder="null">
             </cfg-row>
-            <cfg-row name="上下文窗口" desc="填模型真实窗口(按估算 token 计,中文≈1字1token)。配置后按 token 高低水位压缩；留空=按消息条数水位（下方两项）压缩。缓存经济性:命中率≈1−2·d·H/(H²−K²),压得深(H大K小)命中率更高">
-              <input type="number" class="inp" style="width:130px" min="1000" v-model.number="form.contextWindow">
-            </cfg-row>
-            <cfg-row name="消息条数高水位" desc="contextMsgHighWater：未配置上下文窗口时，消息条数超过该值触发压缩（默认 30）">
-              <input type="number" class="inp" style="width:110px" min="2" max="200" v-model.number="form.contextMsgHighWater">
-            </cfg-row>
-            <cfg-row name="消息条数低水位" desc="contextMsgLowWater：按消息条数压缩后的目标条数（默认 18，须小于高水位）">
-              <input type="number" class="inp" style="width:110px" min="1" max="199" v-model.number="form.contextMsgLowWater">
-            </cfg-row>
-            <cfg-row name="压缩高水位比例" desc="占上下文窗口比例(0.3~0.95)。调大=单次请求更长但缓存命中率更高">
-              <input type="number" class="inp" style="width:110px" min="0.3" max="0.95" step="0.05" v-model.number="form.contextHighRatio">
-            </cfg-row>
-            <cfg-row name="压缩低水位比例" desc="压后目标(须小于高水位)。调小=压得更深,重建前缀代价更小、命中率更高;无损压缩可恢复">
-              <input type="number" class="inp" style="width:110px" min="0.05" max="0.9" step="0.05" v-model.number="form.contextLowRatio">
-            </cfg-row>
-            <cfg-row name="无损压缩" desc="原文归档+台账,context_recall 可恢复">
-              <v-switch v-model="form.compaction.enable"/>
-            </cfg-row>
             <cfg-row name="工具结果字符上限" desc="超出截断,防爆 context">
               <input type="number" class="inp" style="width:130px" min="100" v-model.number="form.maxToolResultChars">
             </cfg-row>
@@ -1661,9 +1644,6 @@
               {{ adv.reason ? '▾' : '▸' }} 高级参数
             </div>
             <div v-show="adv.reason" data-cf-adv class="full"><div class="cf-grid">
-              <cfg-row name="压缩归档目录" desc="compaction.archiveDir（留空=默认 data/context-archive）">
-                <input class="inp mono" style="width:220px" v-model="form.compaction.archiveDir" placeholder="data/context-archive">
-              </cfg-row>
               <cfg-row name="Anthropic 缓存断点" desc="cacheControl：off / auto(官方端点开) / explicit">
                 <select class="sel" style="width:140px" v-model="form.cacheControl">
                   <option value="off">off</option><option value="auto">auto</option><option value="explicit">explicit</option>
