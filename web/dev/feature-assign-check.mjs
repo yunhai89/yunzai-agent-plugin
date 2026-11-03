@@ -126,15 +126,16 @@ for (const f of ['llmTool', 'terminalRisk']) {
 ok(/^\s*enable: false/m.test(jevBlock), '默认配置 agent.jev.enable=false')
 ok(/^\s*allowDestructive: false/m.test(jevBlock), '默认配置 agent.jev.allowDestructive=false（破坏性默认拒绝）')
 ok(/^\s*shell:/m.test(defYaml), '默认配置含 agent.shell 块')
-ok(/^\s*method: llm/m.test(defYaml.slice(defYaml.indexOf('  toolDiscovery:'))), '默认配置 agent.toolDiscovery.method=llm')
+ok(!/^\s*toolDiscovery:/m.test(defYaml), '默认配置不再包含 toolDiscovery（工具全量常驻）')
 const guobaSrc = read('../guoba.support.js')
-for (const field of ['agent.jev.enable', 'agent.jev.providerId', 'agent.jev.modelId', 'agent.jev.model', 'agent.jev.decisions.llmTool', 'agent.jev.decisions.terminalRisk', 'agent.jev.allowDestructive', 'agent.jev.thresholds.toolNoulFloor', 'agent.jev.thresholds.terminalRiskFloor', 'agent.jev.thresholds.thinkingMinConfidence', 'agent.jev.thresholds.reflectFloor', 'agent.shell.intercept', 'agent.toolDiscovery.method']) {
+for (const field of ['agent.jev.enable', 'agent.jev.providerId', 'agent.jev.modelId', 'agent.jev.model', 'agent.jev.decisions.llmTool', 'agent.jev.decisions.terminalRisk', 'agent.jev.allowDestructive', 'agent.jev.thresholds.terminalRiskFloor', 'agent.jev.thresholds.thinkingMinConfidence', 'agent.jev.thresholds.reflectFloor', 'agent.shell.intercept']) {
   ok(guobaSrc.includes(`'${field}'`), `锅巴 schema 含字段 ${field}`)
 }
 const viewSrc = read('assets/js/views/config.js')
-for (const f of ['form.jev.enable', 'form.jev.providerId', 'form.jev.modelId', 'form.jev.decisions.llmTool', 'form.jev.decisions.terminalRisk', 'form.jev.allowDestructive', 'form.shell.intercept', 'form.toolDiscovery.method', "form.thinkingAuto.classifier", 'reflectOptions', 'jevReady']) {
+for (const f of ['form.jev.enable', 'form.jev.providerId', 'form.jev.modelId', 'form.jev.decisions.llmTool', 'form.jev.decisions.terminalRisk', 'form.jev.allowDestructive', 'form.shell.intercept', "form.thinkingAuto.classifier", 'reflectOptions', 'jevReady']) {
   ok(viewSrc.includes(f), `Web 视图绑定字段 ${f}`)
 }
+ok(!/form\.toolDiscovery\./.test(viewSrc), 'Web 视图不再绑定 toolDiscovery 配置')
 ok(viewSrc.includes("['jev', 'Jev(TypeSafe 判断模型)']"), '厂商预设含 jev')
 ok(!/表情包<\/b>配置已移至独立页/.test(viewSrc), '已移除「表情包配置已移至独立页」提示')
 

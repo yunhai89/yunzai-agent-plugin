@@ -52,7 +52,6 @@ agent:
     timeoutMs: 4000        # 单请求超时（毫秒；超时/失败自动回退。Jev 典型延迟 ~100-300ms，4s 已很宽松）
     maxRetries: 1          # 408/429/5xx 重试次数（401/422 不重试；遵守 Retry-After）。连续失败 3 次熔断 30s
     maxStateChars: 32000   # LLM jev 工具单次 state 字符上限（防上下文/计费失控）
-    toolSelectionMaxTools: 80  # 工具选择最多发给 Jev 的候选工具数（64k 上下文保护）
     decisions:             # 各决策点是否走 Jev（多数由对应卡片的选择器派生；见 apps/agent.js）
       llmTool: false       # 注册 jev 工具供主 LLM 主动调用（把 state+questions 发给 Jev 取结构化答案）
       terminalRisk: false  # shell 命令执行前用 Jev 判定风险（破坏性默认拒绝；回退：现有行为）
@@ -62,7 +61,6 @@ agent:
       lowConfidence: 0.5       # 通用低置信边界（低→回退）
       highConfidence: 0.9      # 通用高置信边界（高→才允许破坏性动作）
       thinkingMinConfidence: 0.5  # 思考档位低于此值回退规则判档
-      toolNoulFloor: 0.6       # 工具 noul 概率达此值才激活
       terminalRiskFloor: 0.75  # 破坏性命令需达此置信度才允许执行（allowDestructive=true 时）
       reflectFloor: 0.5        # reflect noul 概率达此值才触发反思
   # shell 安全：自定义拦截指令（在 terminal 执行前做确定性拦截，与 Jev 是否开启无关）
@@ -260,13 +258,8 @@ agent:
   tools:
     builtin: true
     dir: "tools"
-  toolDiscovery:
-    enable: true              # 工具按需发现（默认开）：控制 system 工具速查与 tool_search/activeTools 记录；注意 stableList=true 时 tools schema 仍全量下发（见下）
-    method: llm               # 工具选择方法：llm=主 LLM 经 tool_search 自主发现（默认）/ jev=由 Jev 从全量工具目录选择（需开启 Jev）
-    alwaysOn: []              # 常驻核心工具（不经过搜索，写入 system 工具速查）；空数组/留空=用内置默认（model/agent/Agent.js DEFAULT_ALWAYS_ON，含 context_recall/schedule_task/kb_search/reminder_set 等 13 项）
-    topK: 8                   # tool_search 默认返回数
-    minScore: 0.3             # 最低相似度（query 覆盖率/cosine；0.3=至少 30% 命中，平衡召回与精度）。注意 stableList=true 时工具 schema 仍全量下发，tool_search 只影响目录/记录
-    stableList: true          # ★工具数组跨轮恒定（缓存关键，默认开）：实测 tools 数组哪怕只追加一个工具，整段 prompt 前缀缓存立即归零（命中率 97.6%→0%）。开=每轮下发全量工具定义（首轮多付约 1 万 token，之后全部命中）；false=旧的追加式增长
+  # 工具定义已全量常驻（缓存优先）：tools 数组跨轮恒定，首轮多付约 1 万 token，之后全部命中；
+  # tool_search 仅作目录速查，不再提供按需发现配置。
   miyoushe:
     cookie: ""
     defaultGid: 2

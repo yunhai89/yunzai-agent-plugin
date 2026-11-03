@@ -13,7 +13,7 @@
 | **模型** | `providerId` `modelId` `llmProviders[]` `llmModels[]` `fallbackModels[]` `utilityModel` `proxy` `temperature` `maxTokens` | 引用制厂商/模型、回退、旁路小模型、代理 |
 | **思考** | `thinking` `thinkingAuto.enable/classifier/maxBudget` `jev.*` | 手动思考 / 自动判档（深度预算、判档模型与超时已内置） |
 | **上下文与缓存** | `reflect` | 上下文窗口、压缩、缓存断点、推理回灌、流式与收尾预算均已内置，无配置项 |
-| **循环与工具** | `maxTurns` `maxToolResultChars` `toolDiscovery.*` `taskStore.*` | 轮次预算、工具结果上限、工具发现与账本 |
+| **循环与工具** | `maxTurns` `maxToolResultChars` `taskStore.*` | 轮次预算、工具结果上限、工具全量常驻、账本 |
 | **记忆** | `memoryLimits` `memory.*` `recall.*` `profile.*` `kb.*` | 声明式记忆、长期召回、用户画像、知识库 |
 | **自动化** | `schedule.*` `selfReview.*` `evolution.*` `toolEvo.*` | 定时任务、自评审进化、工具进化 |
 | **安全与权限** | `masters` `chatPermission` `masterSkipConfirm` `confirmTimeout` `guardAction` `guardSensitivity` `untrustedGuard` `redactSecrets` `policy.categoryMin` | 主人、审批、注入防御、脱敏、RBAC |
@@ -61,7 +61,7 @@
 | `maxTokens` | 空 | 单次回复最大 token（留空=厂商默认；Anthropic 默认 4096） |
 | 上下文窗口 / 压缩 | 自动 | 不再提供配置项。运行时按模型官方 `/models` 元数据 → 本地模型目录 → 学习值 → 128K 兜底解析；按可用输入预算 **80% 触发、45% 目标**压缩，始终开启无损归档（`context_recall` 可恢复）。厂商报上下文超限时会自动学习真实上限并压缩重试一次。详见 [记忆体系与上下文缓存](memory-and-context.md) |
 | `maxToolResultChars` | `8000` | 单条工具结果字符上限，超长截断防上下文膨胀 |
-| 推理/循环/收尾（内置） | 固定 | 不再提供配置项：循环护栏（同动作 4 / 连续失败 6 / 无进展 8 步）、根任务时间 2 小时、有效 token 2,000,000、收尾宽限 2 分钟、收尾输出 8192、工具并发 4、参数校验开启、反思回环 1 次、推理不回灌、逐字流式关闭；缓存策略按官方端点自动启用（Anthropic 显式断点 / OpenAI `prompt_cache_key`），兼容网关不下发。 |
+| 推理/循环/收尾（内置） | 固定 | 不再提供配置项：循环护栏（同动作 4 / 连续失败 6 / 无进展 8 步）、根任务时间 2 小时、有效 token 2,000,000、收尾宽限 2 分钟、收尾输出 8192、工具并发 4、参数校验开启、反思回环 1 次、推理不回灌、逐字流式关闭；工具定义全量常驻（缓存优先）；缓存策略按官方端点自动启用（Anthropic 显式断点 / OpenAI `prompt_cache_key`），兼容网关不下发。 |
 | `progress` | `true` | 工具调用时推送节流进度消息（消除"干等"，默认开） |
 | `progressRecall` | `3` | 进度消息多少秒后自动撤回（适配器不支持则忽略） |
 | `reply.mode` | `image` | 回复渲染：`image`（markdown→浅色图片，默认）/ `text`（纯文本）。**QQ 官方机器人下自动走 Markdown 直发，本项被忽略** |

@@ -243,6 +243,7 @@
         delete form.promptCacheKey
         delete form.reflectMaxIterations
         delete form.rootTokenBudget
+        delete form.toolDiscovery
         if (form.thinkingAuto && typeof form.thinkingAuto === 'object') {
           delete form.thinkingAuto.model
           delete form.thinkingAuto.timeoutMs
@@ -311,7 +312,6 @@
         if (!form.selfState.planner) form.selfState.planner = {}
         if (!form.selfState.replyer) form.selfState.replyer = {}
         if (!form.multiagent) form.multiagent = {}
-        if (!form.toolDiscovery) form.toolDiscovery = {}
         if (!form.kb) form.kb = {}
         if (!form.schedule) form.schedule = {}
         if (!form.toolEvo) form.toolEvo = {}
@@ -337,27 +337,23 @@
         if (form.jev.model == null) form.jev.model = ''
         if (form.jev.timeoutMs == null) form.jev.timeoutMs = 4000
         if (form.jev.maxRetries == null) form.jev.maxRetries = 1
-        if (form.jev.toolSelectionMaxTools == null) form.jev.toolSelectionMaxTools = 80
         if (!form.jev.decisions) form.jev.decisions = {}
         for (const k of ['llmTool', 'terminalRisk']) {
           if (form.jev.decisions[k] == null) form.jev.decisions[k] = false
         }
         if (!form.jev.thresholds) form.jev.thresholds = {}
-        for (const k of ['lowConfidence', 'highConfidence', 'thinkingMinConfidence', 'toolNoulFloor', 'terminalRiskFloor', 'reflectFloor']) {
-          if (form.jev.thresholds[k] == null) form.jev.thresholds[k] = { lowConfidence: 0.5, highConfidence: 0.9, thinkingMinConfidence: 0.5, toolNoulFloor: 0.6, terminalRiskFloor: 0.75, reflectFloor: 0.5 }[k]
+        for (const k of ['lowConfidence', 'highConfidence', 'thinkingMinConfidence', 'terminalRiskFloor', 'reflectFloor']) {
+          if (form.jev.thresholds[k] == null) form.jev.thresholds[k] = { lowConfidence: 0.5, highConfidence: 0.9, thinkingMinConfidence: 0.5, terminalRiskFloor: 0.75, reflectFloor: 0.5 }[k]
         }
         if (form.jev.allowDestructive == null) form.jev.allowDestructive = false
         // shell 自定义拦截指令
         if (!form.shell) form.shell = {}
         if (!Array.isArray(form.shell.intercept)) form.shell.intercept = []
         // 工具选择方法 / 反思模式 / 判档方式：缺失时补默认（jev 由对应卡片选择器派生，无需单独 decisions）
-        if (form.toolDiscovery && form.toolDiscovery.method == null) form.toolDiscovery.method = 'llm'
-        if (form.toolDiscovery && form.toolDiscovery.stableList == null) form.toolDiscovery.stableList = true // 缓存关键：tools 数组跨轮恒定
         if (form.reflect == null) form.reflect = 'auto'
         // Jev 未启用/未配齐时，退出 jev 选项，避免下拉无匹配项显示空白
         const _jevReady = !!(form.jev.enable && form.jev.providerId && (form.jev.modelId || form.jev.model))
         if (!_jevReady && form.thinkingAuto.classifier === 'jev') form.thinkingAuto.classifier = 'auto'
-        if (!_jevReady && form.toolDiscovery?.method === 'jev') form.toolDiscovery.method = 'llm'
         if (!_jevReady && form.reflect === 'jev') form.reflect = 'auto'
         if (!form.devLog) form.devLog = {}
         if (!form.humanize) form.humanize = {}
@@ -721,22 +717,8 @@
           if (el && el.getBoundingClientRect().top > 60 && el.getBoundingClientRect().top < 240) { activeSec.value = s.id; break }
         }
       }
-      /* 常驻工具勾选：从已注册工具列表（/tools）按类别选，避免用户手输工具名 */
-      const allTools = computed(() => M.tools || [])
       // 现有人设（内置 + 自定义）：用于「默认人设」下拉
       const personas = computed(() => M.personas || [])
-      const toolCats = computed(() => [...new Set(allTools.value.map((t) => t.category))].sort())
-      const toolsByCat = (cat) => allTools.value.filter((t) => t.category === cat)
-      const toggleAlwaysOn = (id) => {
-        const a = Array.isArray(form.toolDiscovery?.alwaysOn) ? form.toolDiscovery.alwaysOn : []
-        form.toolDiscovery.alwaysOn = a.includes(id) ? a.filter((x) => x !== id) : [...a, id]
-      }
-      // 常驻工具里「配置已有但当前未注册」的条目（工具包禁用/MCP 未就绪等）：
-      // 旧面板整块隐藏 → 幽灵常驻条目看不见、删不掉；这里单独列出且可点击删除。
-      const staleAlwaysOn = computed(() => {
-        const a = Array.isArray(form.toolDiscovery?.alwaysOn) ? form.toolDiscovery.alwaysOn : []
-        return a.filter((id) => !allTools.value.some((t) => t.id === id))
-      })
 
       onMounted(async () => {
         window.addEventListener('scroll', onScroll, { passive: true })
@@ -1088,7 +1070,7 @@
         mcpServersToUi, delMcp, mcpModal, openNewMcp, confirmNewMcp,
         thinkingOn, tempPct, memoryLimitMemory, memoryLimitUser,
         orModels, orSearch, orLoading, loadOrModels, orFiltered, pickOrModel, orKey, loadOrKey,
-        allTools, toolCats, toolsByCat, toggleAlwaysOn, staleAlwaysOn, personas,
+        personas,
         // 厂商/模型注册表 + 功能分配
         delProvider, testProvider, testing, provById, provName, provModal, openProvView, openProvEdit, saveProv,
         delModel, modelModal, openModelView, openModelEdit, saveModel, THK_ZH, knownModels, provSameAsMain, onProvPreset,
@@ -1959,61 +1941,6 @@
             <cfg-row full name="视觉模型" desc="已移至 模型配置（功能分配）（模型 ID / 接口 / Key）">
               <span class="mut2 mono" style="font-size:12px">{{ form.vision?.model || '(留空=复用主模型)' }}{{ form.vision?.baseURL ? ' @ ' + form.vision.baseURL : '' }}</span>
             </cfg-row>
-            <cfg-row name="工具按需发现" desc="常驻少数工具,其余动态注入（llm 走 tool_search，jev 走 Jev 选择）">
-              <v-switch v-model="form.toolDiscovery.enable"/>
-            </cfg-row>
-            <cfg-row v-if="jevReady" name="工具选择方法" desc="jev=由 Jev 从全量工具目录选本轮激活工具；llm=主 LLM 经 tool_search 自主发现">
-              <select class="sel" style="width:220px" :disabled="!form.toolDiscovery.enable" v-model="form.toolDiscovery.method">
-                <option value="llm">llm 自主发现和选择</option>
-                <option value="jev">jev 决策</option>
-              </select>
-            </cfg-row>
-            <cfg-row name="工具数组跨轮恒定" desc="缓存关键:tools 数组只要变化一个条目(哪怕只追加一个工具),整段 prompt 前缀缓存立即归零。开=每轮下发全量工具定义(首轮多付约 1 万 token,之后全部命中);关=旧的追加式增长,每次激活工具都会打穿缓存">
-              <v-switch v-model="form.toolDiscovery.stableList"/>
-            </cfg-row>
-
-            <template v-if="!(jevReady && form.toolDiscovery.method === 'jev')">
-              <cfg-row name="tool_search 返回数 / 最低分" desc="topK 与 minScore">
-                <div class="row g6">
-                  <input type="number" class="inp" style="width:80px" min="1" max="20" v-model.number="form.toolDiscovery.topK">
-                  <input type="number" class="inp" style="width:90px" min="0" max="1" step="0.05" v-model.number="form.toolDiscovery.minScore">
-                </div>
-              </cfg-row>
-              <cfg-row class="full" name="常驻工具" desc="不经搜索始终可用；从已注册工具勾选（留空=用内置默认）">
-                <div style="max-height:240px;overflow-y:auto;border:1px solid var(--line);border-radius:8px;padding:8px 12px;background:var(--paper-2)">
-                  <div v-if="!allTools.length" class="mut2" style="font-size:12px">工具列表加载中或运行时未就绪…<span v-if="staleAlwaysOn.length">（下方为配置里已有但当前未注册的条目）</span></div>
-                  <div v-for="cat in toolCats" :key="cat" style="margin-bottom:8px">
-                    <div class="mut" style="font-size:11px;margin:3px 0 4px;text-transform:uppercase;letter-spacing:.5px">{{ cat }}</div>
-                    <div style="display:flex;flex-wrap:wrap;gap:4px">
-                      <label v-for="t in toolsByCat(cat)" :key="t.id" :title="t.description" class="pill" :class="{'p-pri': (form.toolDiscovery.alwaysOn||[]).includes(t.id)}" style="cursor:pointer;user-select:none;font-size:12px">
-                        <input type="checkbox" :checked="(form.toolDiscovery.alwaysOn||[]).includes(t.id)" @change="toggleAlwaysOn(t.id)" style="display:none">
-                        {{ t.name }}
-                      </label>
-                    </div>
-                  </div>
-                  <div v-if="staleAlwaysOn.length" style="margin-top:4px;border-top:1px dashed var(--line);padding-top:8px">
-                    <div class="mut" style="font-size:11px;margin:3px 0 4px">配置里已有但当前未注册（点击删除）</div>
-                    <div style="display:flex;flex-wrap:wrap;gap:4px">
-                      <span v-for="id in staleAlwaysOn" :key="id" class="pill p-honey mono" style="cursor:pointer;user-select:none;font-size:12px" :title="'点击从常驻列表删除：' + id" @click="toggleAlwaysOn(id)">{{ id }} <v-icon name="x"/></span>
-                    </div>
-                  </div>
-                </div>
-              </cfg-row>
-            </template>
-
-            <template v-else>
-              <cfg-row name="Jev 工具候选上限" desc="toolSelectionMaxTools：单次最多发给 Jev 的候选工具数（64k 上下文保护）">
-                <input type="number" class="inp" style="width:110px" min="1" max="255" v-model.number="form.jev.toolSelectionMaxTools">
-              </cfg-row>
-              <cfg-row name="工具激活阈值" desc="toolNoulFloor：noul 概率达标才激活（0~1）">
-                <input type="number" class="inp" style="width:110px" min="0" max="1" step="0.05" v-model.number="form.jev.thresholds.toolNoulFloor">
-              </cfg-row>
-              <div class="full note n-honey" style="margin:0">
-                <v-icon name="info"/>
-                <div style="flex:1">Jev 决策模式：主 LLM 只常驻核心工具，其余由 <b>Jev 判断模型</b>按需选择激活（失败/低置信回退 tool_search）。</div>
-              </div>
-            </template>
-
             <cfg-row name="网页抓取引擎" desc="crawl4ai 真浏览器渲染(未装自动降级 fetch)">
               <select class="sel" style="width:150px" v-model="form.kb.crawl.engine"><option v-for="o in OPT.crawlEngine" :value="o[0]">{{ o[1] }}</option></select>
             </cfg-row>

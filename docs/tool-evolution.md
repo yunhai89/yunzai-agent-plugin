@@ -13,7 +13,7 @@
   → LLM 生成（json_schema 结构化）
   → typescript AST 静态门（禁 require / child_process / process.env / eval / 一切 import；危险候选不入库）
   → 隔离行为验证（E2B 沙箱 / 本地子进程双档 + 测试断言 + 性能/超时门）
-  → #采纳工具 <id>（master 审批）→ stable + 注入 → agent 经 tool_search 调用
+  → #采纳工具 <id>（master 审批）→ stable + 注入 → agent 直接调用（工具定义全量常驻）
   → 调用埋点 → 适应度 / 失败聚类 → #工具健康 检测 → #进化工具 修复 <工具名> <描述> 生成改进候选 → #回滚工具 切回旧版 / #淘汰工具 下线
 ```
 

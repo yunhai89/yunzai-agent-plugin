@@ -10,7 +10,7 @@
 
 一个插件，从「能回话」到「能干活、能记住、能进化」的完整闭环。
 
-<img src="https://img.shields.io/badge/version-v1.49.0-blueviolet" alt="Version">
+<img src="https://img.shields.io/badge/version-v1.49.1-blueviolet" alt="Version">
 <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License">
 <img src="https://img.shields.io/badge/platform-Yunzai-9cf" alt="Yunzai Plugin">
 <img src="https://img.shields.io/badge/AI-Agent-7c3aed" alt="AI Agent">
@@ -30,7 +30,7 @@
 
 一个跑在 Yunzai / Miao-Yunzai 里的 AI Agent 插件：把大模型对话、工具调用、长期记忆、人设、多模态、MCP、群管、沙箱和 Web 管理面板做成一套完整运行时。
 
-- **对话与工具**：ReAct 多轮、并行工具、按需工具发现、结果截断、预算与终止器。
+- **对话与工具**：ReAct 多轮、并行工具、全量工具常驻（缓存优先）、结果截断、预算与终止器。
 - **模型接入**：OpenAI / Anthropic / Gemini 三协议；厂商 + 模型引用制；跨厂商回退。
 - **记忆与人设**：`MEMORY.md` / `USER.md`、长期记忆召回、用户画像、知识库 RAG、人设资料库。
 - **官方机器人**：自实现 QQ 官方适配器（AppID + AppSecret），支持 Markdown / inline keyboard / 被动回复。

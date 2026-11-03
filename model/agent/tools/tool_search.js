@@ -28,10 +28,8 @@ export function makeToolSearchTool(registry, agent, cfg = {}) {
   return {
     name: 'tool_search',
     description: [
-      '搜索并激活当前未常驻的工具。当已有常驻工具不足以完成用户任务时调用：',
-      '用一句自然语言描述"你要做什么/需要什么能力"，返回最匹配的工具（按类别分组，含一句话说明与必填参数），',
-      '并自动激活它们——激活后下一轮即可像常驻工具一样直接调用。同类需求换关键词可重搜。',
-      '未命中时可传 category 浏览某类下全部工具。',
+      '工具目录速查。所有工具定义已全量常驻、可直接调用；本工具只用于按自然语言快速查找工具名/说明/必填参数，',
+      '不会改变可用工具集。需要确认某个能力对应哪个工具、或想按类别浏览时调用；同类需求换关键词可重搜。',
     ].join(''),
     category: 'query',
     meta: { summary: '搜索并激活工具' },
@@ -114,7 +112,7 @@ function formatDiscoveryText(fresh, already) {
       }
     }
   }
-  if (already.length) lines.push(`（另有 ${already.length} 个已常驻/已激活：${already.map((h) => h.name).join(',')}）`)
+  if (already.length) lines.push(`（另有 ${already.length} 个匹配工具：${already.map((h) => h.name).join(',')}）`)
   lines.push('如不够，换关键词或调大 topK 重搜；也可传 category 浏览某类全部工具。')
   return lines.join('\n')
 }

@@ -35,7 +35,7 @@
 | 能力 | 说明 | 状态 |
 | --- | --- | --- |
 | 工具调用内核 | ReAct 多轮、并行工具、结果截断、工具 schema 预校验、工具受控并发 | ✅ |
-| 工具按需发现 | 常驻核心工具 + `tool_search` 动态激活；`stableList` 保证 tools 数组跨轮恒定（缓存关键） | ✅ |
+| 工具全量常驻 | 每轮下发完整 tools schema，跨轮逐字节恒定（缓存优先）；`tool_search` 仅作目录速查，无按需发现配置 | ✅ |
 | 工具开发 SDK | `tools/*.js` 自动加载、`tool.config.js` 声明式配置（含主页/字段 schema） | ✅ |
 | 终端执行 | E2B 沙箱（Firecracker microVM）；all-users；出口全放通/白名单可收紧；fail-closed | ⚠️ 可选高危 |
 | 浏览器自动化 | Stagehand：goto / observe / extract / act；本地 or Browserbase 云 | 🧪 |

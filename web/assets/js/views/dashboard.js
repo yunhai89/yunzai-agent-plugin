@@ -222,9 +222,7 @@
         return [
           { name: '声明式记忆', on: cfg.memory?.enable },
           { name: '威胁扫描', on: cfg.memory?.threatScan },
-          { name: '工具按需发现', on: cfg.toolDiscovery?.enable },
           { name: '后台自评审', on: cfg.selfReview?.enable },
-          { name: '流式输出', on: cfg.stream },
           { name: '多模态', on: cfg.media?.enable },
           { name: '视觉子模型', on: cfg.vision?.enable },
           { name: '终端(E2B 沙箱)', on: cfg.sandbox?.mode === 'e2b', danger: true },

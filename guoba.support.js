@@ -59,7 +59,6 @@ function linesToArray(v) {
 /** 面板「多行文本 ↔ 数组」字段（getConfigData 侧 join、setConfigData 侧 split） */
 const MULTILINE_FIELDS = new Set([
   'agent.masters',
-  'agent.toolDiscovery.alwaysOn',
   'agent.shell.intercept',
   'agent.sandbox.network.allowOut',
   'agent.sandbox.network.denyOut',
@@ -302,13 +301,7 @@ export function supportGuoba() {
         { field: 'agent.profile.maxChars', label: '画像注入上限(字符)', bottomHelpMessage: '注入 system 动态块的字符上限（默认 600），防膨胀', component: 'InputNumber', componentProps: { min: 100, max: 2000, step: 50 } },
         { field: 'agent.profile.maxPerFacet', label: '每分面保留条数', bottomHelpMessage: '身份/偏好/沟通风格等每个分面最多保留条数（默认 8），低置信先淘汰', component: 'InputNumber', componentProps: { min: 1, max: 20 } },
 
-        // —— 工具按需发现 ——
-        { label: '工具按需发现（Tool Discovery）', component: 'SOFT_GROUP_BEGIN' },
-        { field: 'agent.toolDiscovery.enable', label: '启用按需发现', bottomHelpMessage: '控制 system 工具速查与 tool_search/激活记录；默认开。注意 stableList=true 时 tools schema 仍每轮全量下发（缓存优先），本开关不减少 schema token', component: 'Switch' },
-        { field: 'agent.toolDiscovery.alwaysOn', label: '常驻工具(每行一个)', bottomHelpMessage: '不经过搜索、始终可用的工具名（每行一个）；留空=用内置默认（含 tool_search / clarify / memory_search / web_search / kb_search / skill / get_chat_history / reminder_set / schedule_task / context_recall / diagram_render / 群文件工具等）', component: 'InputTextArea' },
-        { field: 'agent.toolDiscovery.topK', label: 'tool_search 返回数', bottomHelpMessage: '默认 8', component: 'InputNumber', componentProps: { min: 1, max: 20 } },
-        { field: 'agent.toolDiscovery.stableList', label: '工具数组跨轮恒定', bottomHelpMessage: '每轮下发全量工具定义（首轮多付约 1 万 token，之后全部命中缓存）。关掉会随工具激活改变 tools 数组，实测任何变化都会让整段 prompt 缓存归零（命中率 0%）', component: 'Switch' },
-        { field: 'agent.toolDiscovery.minScore', label: '最低相似度', bottomHelpMessage: '低于此值不返回（默认 0.3；jaccard 下 0.1 较宽松）', component: 'InputNumber', componentProps: { min: 0, max: 1, step: 0.05 } },
+        // 工具定义已全量常驻（缓存优先），不再提供按需发现配置。
 
         { label: '在线自进化', component: 'SOFT_GROUP_BEGIN' },
         { field: 'agent.selfReview.enable', label: '后台自评审', bottomHelpMessage: '每 N 轮对话后台异步自我评审，产出改进 suggestion；不阻塞回复；默认开', component: 'Switch' },
@@ -353,7 +346,6 @@ export function supportGuoba() {
         { field: 'agent.jev.allowDestructive', label: 'shell：允许破坏性命令', bottomHelpMessage: '⚠️ 关闭=破坏性一律拒绝（fail-closed，推荐）；开启=仅当 Jev 置信度≥破坏性阈值才放行', component: 'Switch' },
         { field: 'agent.jev.thresholds.lowConfidence', label: '通用低置信阈值', bottomHelpMessage: '低于此值回退现有方案（默认 0.5；与 thinkingMinConfidence 取更严者决定思考回退）', component: 'InputNumber', componentProps: { min: 0, max: 1, step: 0.05 } },
         { field: 'agent.jev.thresholds.highConfidence', label: '通用高置信阈值', bottomHelpMessage: '破坏性命令放行下限（默认 0.9；实际取 max(terminalRiskFloor, 本值)）', component: 'InputNumber', componentProps: { min: 0, max: 1, step: 0.05 } },
-        { field: 'agent.jev.thresholds.toolNoulFloor', label: '工具激活阈值', bottomHelpMessage: '工具 noul 概率达到此值才激活（默认 0.6，0~1）', component: 'InputNumber', componentProps: { min: 0, max: 1, step: 0.05 } },
         { field: 'agent.jev.thresholds.terminalRiskFloor', label: '破坏性命令置信阈值', bottomHelpMessage: '仅「允许破坏性命令」开启时用于高置信放行判定（默认 0.75，0~1）', component: 'InputNumber', componentProps: { min: 0, max: 1, step: 0.05 } },
         { field: 'agent.jev.thresholds.thinkingMinConfidence', label: '思考档位置信阈值', bottomHelpMessage: 'thinkingMinConfidence：低于则回退规则判档（默认 0.5，0~1）', component: 'InputNumber', componentProps: { min: 0, max: 1, step: 0.05 } },
         { field: 'agent.jev.thresholds.reflectFloor', label: '反思触发阈值', bottomHelpMessage: 'reflectFloor：noul 概率达标才反思（默认 0.5，0~1）', component: 'InputNumber', componentProps: { min: 0, max: 1, step: 0.05 } },
@@ -361,7 +353,6 @@ export function supportGuoba() {
         // —— Shell 命令安全 + 工具选择方法 ——
         { label: 'Shell 命令安全', component: 'SOFT_GROUP_BEGIN' },
         { field: 'agent.shell.intercept', label: '自定义拦截指令', bottomHelpMessage: '大小写不敏感子串匹配，命中即拒绝 terminal 执行；每行一条（如 rm -rf /）。留空=不拦截。推荐用 Web 配置中心编辑', component: 'InputTextArea', componentProps: { rows: 3, placeholder: '每行一条，如：\nrm -rf /\nmkfs' } },
-        { field: 'agent.toolDiscovery.method', label: '工具选择方法', bottomHelpMessage: 'llm=主 LLM 经 tool_search 自主发现（默认）/ jev=由 Jev 从全量工具目录选择（需开启 Jev）', component: 'Select', componentProps: { options: [{ label: 'llm 自主发现和选择', value: 'llm' }, { label: 'jev 决策', value: 'jev' }] } },
 
         // —— 安全与审批 ——
         { label: '安全与审批', component: 'SOFT_GROUP_BEGIN' },

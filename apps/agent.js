@@ -148,6 +148,9 @@ const BUILTIN_THINKING = Object.freeze({
   classifierTimeoutMs: 2500,
   budgets: Object.freeze({ low: 4096, medium: 8192, high: 32768 }),
 })
+// 工具定义全量常驻（缓存优先）：tools 数组跨轮逐字节恒定；tool_search 仅保留为目录速查/帮助，
+// 不再提供「按需发现」开关。首轮多付约 1 万 token，之后全部命中前缀缓存。
+const BUILTIN_TOOL_DISCOVERY = Object.freeze({ enable: true, method: 'llm', stableList: true })
 
 // ─── 进度反馈：工具调用时推送节流进度消息，消除"干等几十秒"的僵化感 ───
 // 真正的逐字流式依赖 QQ 适配器（icqq/napcat 差异大、编辑消息不稳），故默认只做可靠的进度反馈；
@@ -1213,7 +1216,7 @@ async function _buildRuntime(scope) {
       const decisions = {
         thinking: cfg.thinkingAuto?.classifier === 'jev',
         reflect: cfg.reflect === 'jev',
-        toolSelection: cfg.toolDiscovery?.method === 'jev',
+        toolSelection: false, // 工具定义已全量常驻，不再需要 Jev 选择激活集
         terminalRisk: d.terminalRisk === true,
         llmTool: d.llmTool === true,
       }
@@ -1221,7 +1224,7 @@ async function _buildRuntime(scope) {
         client,
         decisions,
         thresholds: resolveThresholds(cfg.jev.thresholds),
-        toolSelectionMaxTools: Number(cfg.jev.toolSelectionMaxTools) > 0 ? Number(cfg.jev.toolSelectionMaxTools) : 80,
+        toolSelectionMaxTools: 80, // 工具全量常驻后不再使用；保留字段兼容 Jev 决策层
         allowDestructive: cfg.jev.allowDestructive === true, // shell 风险：破坏性命令默认拒绝，显式开启才允许高置信放行
       }
       if (decisions.llmTool) {
@@ -1314,14 +1317,7 @@ async function _buildRuntime(scope) {
     taskStore, // 可恢复任务账本（P0-3；null=关闭）
     keepReasoning: false, // 不回灌推理，省上下文；工具轮协议必需字段仍会保留
     // 工具按需发现：LLM 只常驻少数核心工具，其余经 tool_search 检索后动态注入（默认开；关则回退全量常驻）
-    toolDiscovery: {
-      enable: cfg.toolDiscovery?.enable !== false,
-      method: cfg.toolDiscovery?.method === 'jev' ? 'jev' : 'llm',
-      alwaysOn: Array.isArray(cfg.toolDiscovery?.alwaysOn) ? cfg.toolDiscovery.alwaysOn : undefined,
-      topK: cfg.toolDiscovery?.topK ?? 8,
-      minScore: cfg.toolDiscovery?.minScore ?? 0.3,
-      stableList: cfg.toolDiscovery?.stableList !== false, // 工具数组跨轮恒定（缓存关键；false=旧的追加式增长）
-    },
+    toolDiscovery: { ...BUILTIN_TOOL_DISCOVERY }, // 全量常驻；tool_search 仅作目录速查
     shellIntercept: Array.isArray(cfg.shell?.intercept) ? cfg.shell.intercept : [],
     reflect: cfg.reflect ?? 'auto',
     cacheControl: 'auto', // 仅官方 Anthropic 端点自动开；兼容网关不下发未知字段

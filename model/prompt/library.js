@@ -241,11 +241,12 @@ const TOOL_CATEGORY_DESC = {
  * @param {object} p { alwaysOnTools: 常驻工具对象数组, categories: 分类列表 }
  */
 export function buildToolDiscoverySection({ alwaysOnTools = [], categories = [] } = {}) {
-  const lines = ['## 工具（按需发现）']
-  lines.push('你只常驻少数核心工具。完成需要其它能力的任务时，先调用 `tool_search`（用一句自然语言描述"你要做什么"），它会检索并激活匹配的工具，激活后即可直接调用。')
+  const lines = ['## 工具（全量常驻）']
+  lines.push('本轮已下发完整工具定义，所有工具均可直接调用，无需先搜索/激活。')
+  lines.push('`tool_search` 仅用于按自然语言速查工具名、说明与必填参数，不会改变可用工具集，可选。')
   const on = (alwaysOnTools || []).filter(Boolean)
   if (on.length) {
-    lines.push('常驻工具（可直接用）：')
+    lines.push('常用工具（可直接用）：')
     for (const t of on) {
       const raw = String(t.meta?.summary || t.description || '').replace(/\s+/g, ' ').trim()
       const short = raw.length > 40 ? raw.slice(0, 40) + '…' : raw
@@ -253,9 +254,9 @@ export function buildToolDiscoverySection({ alwaysOnTools = [], categories = [] 
     }
   }
   if (categories.length) {
-    lines.push('可发现的工具类别（用 tool_search 的 query 自然语言搜，或传 category 浏览某类）：')
+    lines.push('工具类别（可用 tool_search 的 query 自然语言搜，或传 category 浏览某类）：')
     for (const c of categories) lines.push(`- ${c}：${TOOL_CATEGORY_DESC[c] || ''}`)
-    lines.push('（被搜到的高危类工具，调用时仍需审批——安全不变）')
+    lines.push('（高危类工具调用时仍需审批——安全不变）')
   }
   return lines.join('\n')
 }

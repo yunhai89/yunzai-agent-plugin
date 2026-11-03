@@ -104,7 +104,6 @@
       timeoutMs: 4000,
       maxRetries: 1,
       maxStateChars: 32000,
-      toolSelectionMaxTools: 80,
       decisions: {
         llmTool: false,
         terminalRisk: false
@@ -114,7 +113,6 @@
         lowConfidence: 0.5,
         highConfidence: 0.9,
         thinkingMinConfidence: 0.5,
-        toolNoulFloor: 0.6,
         terminalRiskFloor: 0.75,
         reflectFloor: 0.5
       }
@@ -276,14 +274,6 @@
     tools: {
       builtin: true,
       dir: "tools"
-    },
-    toolDiscovery: {
-      enable: true,
-      method: "llm",
-      alwaysOn: [],
-      topK: 8,
-      minScore: 0.3,
-      stableList: true
     },
     miyoushe: {
       cookie: "",
