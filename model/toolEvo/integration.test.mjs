@@ -133,11 +133,19 @@ await test('P1-8：seed 绑定版本 → 调用埋点关联版本，三次失败
   await flushNow()
   const ev = await evaluateVersion(b1.versionId)
   assert.equal(ev.invocations, 3, `三次调用关联到版本（实际 ${ev.invocations}）`)
+  // 进化健康只看 evolved namespace：内置工具不应淹没统计
   const clusters = await failureClusters()
-  assert.ok(clusters.some((c) => c.toolName === 'builtin_one'), 'health 聚类包含内置工具')
+  assert.ok(!clusters.some((c) => c.toolName === 'builtin_one'), 'health 聚类排除内置工具')
+  for (let i = 0; i < 3; i++) recordInvocation({ versionId: adoptedVersionId, toolName: 'double_it', args: { i }, success: false, latencyMs: 5, errorClass: 'timeout' })
+  await flushNow()
+  const evolvedClusters = await failureClusters()
+  assert.ok(evolvedClusters.some((c) => c.toolName === 'double_it'), 'health 聚类包含 evolved 工具')
   const metrics = await convergenceMetrics()
-  assert.equal(metrics.invocations >= 3, true, 'metrics 统计调用次数')
+  assert.equal(metrics.invocations >= 3, true, 'metrics 统计 evolved 调用次数')
   assert.equal(typeof metrics.reuseRate, 'number', 'reuseRate 有定义')
+  const evolvedVersions = await reg.listVersions({ namespace: 'evolved' })
+  assert.ok(evolvedVersions.every((v) => v.namespace === 'evolved'), 'namespace 过滤只返回 evolved')
+  assert.ok(!(await reg.listVersions({ namespace: 'evolved' })).some((v) => v.name === 'builtin_one'), 'namespace 过滤排除内置')
 })
 
 await test('seed：历史失败残留的「无版本空壳工具」会被补建版本并绑定（自愈）', async () => {
@@ -157,6 +165,18 @@ await test('seed：历史失败残留的「无版本空壳工具」会被补建�
   // 幂等：再次 seed 不应重复建版本
   const r2 = await seedBuiltinTools(reg, [{ name: 'builtin_shell', description: '空壳修复工具', parameters: { type: 'object' }, sideEffects: ['none'] }])
   assert.equal(r2.added, 0, '再次 seed 幂等（不重复建版本）')
+})
+
+await test('seed：已有 stable 但 active 指针为空 → 恢复绑定，不重复建 1.0.0', async () => {
+  const first = await seedBuiltinTools(reg, [{ name: 'builtin_recover', description: '待恢复的内置工具', parameters: { type: 'object' }, sideEffects: ['none'] }])
+  const vid = first.bindings.find((b) => b.name === 'builtin_recover')?.versionId
+  assert.ok(vid, '首次 seed 绑定版本')
+  await dao.run('UPDATE tools SET active_version_id=NULL WHERE name=?', ['builtin_recover'])
+  const again = await seedBuiltinTools(reg, [{ name: 'builtin_recover', description: '待恢复的内置工具', parameters: { type: 'object' }, sideEffects: ['none'] }])
+  const binding = again.bindings.find((b) => b.name === 'builtin_recover')
+  assert.equal(binding?.versionId, vid, '恢复既有 stable 绑定')
+  assert.equal(again.added, 0, '不重复创建版本（避免 1.0.0 UNIQUE 冲突）')
+  assert.ok(again.warnings.some((w) => /恢复绑定/.test(w)), '告警说明恢复路径')
 })
 
 await test('seed：脏 sideEffects（别名/未知值）自动归一化，不连累整批入库', async () => {

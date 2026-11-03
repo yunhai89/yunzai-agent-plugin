@@ -349,11 +349,34 @@ router.get('/suggestions', asyncHandler(async (req, res) => {
 }))
 
 // ── Tool Evolution（工具进化：版本/状态/审批）──
-// GET /api/tevo/tools —— 所有工具版本（id/tool_id/semver/status/source_hash/created_at）
+// GET /api/tevo/tools —— 工具进化版本（默认只返回 evolved namespace；?all=1 可查看内置元数据）
 router.get('/tevo/tools', asyncHandler(async (req, res) => {
   const r = await getRt(res); if (!r) return
   if (!r.toolEvo?.registry) return ok(res, [])
-  return ok(res, await r.toolEvo.registry.listVersions())
+  const namespace = req.query.all === '1' ? undefined : 'evolved'
+  return ok(res, await r.toolEvo.registry.listVersions({ namespace }))
+}))
+
+// GET /api/tevo/tools/:versionId —— 版本详情（源码/测试/验证证据），供面板审阅
+router.get('/tevo/tools/:versionId', asyncHandler(async (req, res) => {
+  const r = await getRt(res); if (!r) return
+  if (!r.toolEvo?.registry) return fail(res, CODE.BAD, '工具进化未启用')
+  const reg = r.toolEvo.registry
+  const v = await reg.getVersion(req.params.versionId)
+  if (!v) return fail(res, CODE.NOTFOUND, '版本不存在')
+  const tool = await reg.getById(v.tool_id)
+  const { manifest_json: _mj, tests_json: _tj, source_text: _st, ...rest } = v
+  const storedTests = await reg.getTests(v.id).catch(() => [])
+  return ok(res, {
+    ...rest,
+    name: tool?.name || v.tool_id,
+    namespace: tool?.namespace || null,
+    active: !!tool?.active_version_id && tool.active_version_id === v.id,
+    tests: storedTests.length ? storedTests : (v.tests || []),
+    manifest: v.manifest,
+    source: v.source,
+    evidence: v.evidence || null,
+  })
 }))
 
 // POST /api/tevo/tools/:versionId/approve —— verified→stable 并注入 ToolRegistry
@@ -363,6 +386,8 @@ router.post('/tevo/tools/:versionId/approve', asyncHandler(async (req, res) => {
   const reg = r.toolEvo.registry
   const v = await reg.getVersion(req.params.versionId)
   if (!v) return fail(res, CODE.NOTFOUND, '版本不存在')
+  const tool = await reg.getById(v.tool_id)
+  if (reg.isTrustedVersion(v, tool)) return fail(res, CODE.BAD, '内置/受信工具版本不可采纳为进化工具')
   if (v.status !== 'verified') return fail(res, CODE.BAD, `仅 verified 候选可采纳（当前 ${v.status}）`)
   await reg.setStatus(req.params.versionId, 'stable', { actor: 'web:' + (req.master || 'unknown'), reason: 'web 面板采纳' })
   const stable = (await reg.listStable()).find((s) => s.versionId === req.params.versionId)
@@ -379,6 +404,7 @@ router.post('/tevo/tools/:versionId/decommission', asyncHandler(async (req, res)
   if (!v) return fail(res, CODE.NOTFOUND, '版本不存在')
   // 淘汰只影响目标版本（审计 §4.1）：active 淘汰→自动回滚到另一 stable 或下线；非 active→仅 DB deprecated，注入不变
   const tool = await reg.getById(v.tool_id)
+  if (reg.isTrustedVersion(v, tool)) return fail(res, CODE.BAD, '内置/受信工具版本不可淘汰')
   const wasActive = tool?.active_version_id === req.params.versionId
   await reg.setStatus(req.params.versionId, 'deprecated', { actor: 'web:' + (req.master || 'unknown'), reason: 'web 面板淘汰' })
   let msg = '已淘汰（非 active，注入不变）'
@@ -405,6 +431,7 @@ router.post('/tevo/tools/:versionId/rollback', asyncHandler(async (req, res) => 
   const reg = r.toolEvo.registry
   const v = await reg.getVersion(req.params.versionId)
   if (!v) return fail(res, CODE.NOTFOUND, '版本不存在')
+  if (reg.isTrustedVersion(v, await reg.getById(v.tool_id))) return fail(res, CODE.BAD, '内置/受信工具版本不可回滚')
   if (v.status !== 'stable') return fail(res, CODE.BAD, '仅 stable 版本可设为当前上线（回滚目标须是已上线版本）')
   await reg.setActiveVersion(v.tool_id, req.params.versionId, { actor: 'web:' + (req.master || 'unknown'), reason: 'web 面板回滚' })
   r.tools.unregister(v.manifest.name)

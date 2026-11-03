@@ -12,7 +12,7 @@
   const MOCK = window.MOCK = reactive({
     config: null, scopes: [], memories: {}, recall: {}, recallUsers: [], profile: {}, profileUsers: [], personas: [], personaLore: [], skills: [], tools: [], toolPacks: [], kb: [],
     conversations: [], sessions: {}, logFiles: [], logFilesTotal: 0, schedules: [], confirms: [], personaAdoptions: [],
-    suggestions: [], perceptions: [], tokenTrend: [], requestTrend: [], toolTop: [],
+    suggestions: [], perceptions: [], tokenTrend: [], requestTrend: [], toolTop: [], tevoTools: [],
     totalRequests: 0, totalToolCalls: 0, totalTokens: 0,
     stickerLib: null, tts: null,
   })
@@ -127,6 +127,7 @@
     async loadPersonas() { MOCK.personas = await api.get('/personas') },
     async loadPersonaLore() { MOCK.personaLore = await api.get('/persona-lore') },
     async loadSkills() { MOCK.skills = await api.get('/skills') },
+    async loadTevo() { MOCK.tevoTools = await api.get('/tevo/tools'); return MOCK.tevoTools },
     async loadConversations(userId, groupId) { MOCK.conversations = userId ? await api.get('/conversations', { userId, groupId }) : await api.get('/conversations') },
     async loadSession(convId, userId, groupId) { MOCK.sessions[convId] = await api.get('/sessions', { convId, userId, groupId }) },
     async loadLogFiles(query) {

@@ -15,12 +15,14 @@ import { verifyBehavior, VERIFIER_VERSION } from './verifier/behavior.js'
 import { makeManifest } from './manifest.js'
 
 export class EvolutionEngine {
-  constructor({ synthesizer, registry, logger = () => {}, verifySession = null, verifyTimeoutMs = 3000 }) {
+  constructor({ synthesizer, registry, logger = () => {}, verifySession = null, verifyTimeoutMs = 3000, isNameReserved = null }) {
     this.synthesizer = synthesizer
     this.registry = registry
     this.logger = logger
     this.verifySession = verifySession
     this.verifyTimeoutMs = Math.max(500, Number(verifyTimeoutMs) || 3000)
+    // 运行时已占用名称（内置/Meta/MCP 等）由 apps 注入；空函数=不额外限制
+    this.isNameReserved = typeof isNameReserved === 'function' ? isNameReserved : () => false
   }
 
   /**
@@ -79,25 +81,38 @@ export class EvolutionEngine {
             parent = await this._parentVersionId(tid)
           }
         } else {
+          // 运行时保留名（tool_search / MCP / 多代理等未必进 seed DB）也必须避让，
+          // 否则采纳后会遮蔽 Meta 工具或让 tools 数组出现重名。
+          let reserved = false
+          try { reserved = !!this.isNameReserved(manifest.name) } catch { reserved = false }
+          if (reserved) {
+            return { ok: false, status: 'rejected', reason: `名字冲突：「${manifest.name}」已被运行时内置/Meta/MCP 工具占用，请改名后重新描述能力` }
+          }
           tid = 'tool_' + crypto.randomBytes(6).toString('hex')
           await this.registry.createTool({ id: tid, name: manifest.name, namespace: 'evolved' })
         }
       }
 
       // 4. 注册 draft（semver 由注册表原子分配；显式传入则遵守）
+      // 同名改进继承父版本测试，形成回归护栏；候选自测与父测试都进入新版本，防“改进版”丢掉旧能力。
+      const inheritedTests = parent ? await this.registry.getTests(parent).catch(() => []) : []
+      const mergedTests = mergeTests(inheritedTests, tests)
       const v = await this.registry.createVersion({
-        toolId: tid, manifest, source, tests,
+        toolId: tid, manifest, source, tests: mergedTests,
         parentVersionId: parent, generatorModel: this.synthesizer.model,
       })
       this.logger('mark', `[toolEvo] 候选注册 ${manifest.name}@${v.semver} → draft，开始行为验证`)
 
       // 5. 行为验证：候选 tests + 受信验收 examples（一个候选一个会话复用）
-      const allTests = [...tests.map((t) => ({ kind: t.kind || 'unit', name: t.name, input: t.input, expected: t.expected, trusted: false })),
-        ...accept.map((t, i) => ({ kind: 'acceptance', name: t.name || `acceptance_${i + 1}`, input: t.input, expected: t.expected, trusted: true }))]
+      const allTests = [
+        ...inheritedTests.map((t) => ({ kind: t.kind || 'unit', name: t.name, input: t.input, expected: t.expected, trusted: true })),
+        ...tests.map((t) => ({ kind: t.kind || 'unit', name: t.name, input: t.input, expected: t.expected, trusted: false })),
+        ...accept.map((t, i) => ({ kind: 'acceptance', name: t.name || `acceptance_${i + 1}`, input: t.input, expected: t.expected, trusted: true })),
+      ]
       const bv = await verifyBehavior({ source, tests: allTests, timeoutMs: this.verifyTimeoutMs, createSession: this.verifySession })
       if (bv.passed) {
         await this.registry.setStatus(v.id, 'verified', {
-          actor: 'engine', verifier: VERIFIER_VERSION,
+          actor: 'engine', verifier: VERIFIER_VERSION, evidence: bv.evidence,
           reason: `行为验证 ${bv.evidence.passed}/${bv.evidence.totalTests} 通过，avgMs=${bv.evidence.avgMs}`,
         })
         this.logger('mark', `[toolEvo] ${manifest.name}@${v.semver} → verified（${bv.evidence.passed}/${bv.evidence.totalTests} tests）`)
@@ -160,7 +175,7 @@ export class EvolutionEngine {
       ...accept.map((t, i) => ({ kind: 'acceptance', name: t.name || `acceptance_${i + 1}`, input: t.input, expected: t.expected, trusted: true }))]
     const bv = await verifyBehavior({ source: parent.source, tests: allTests, timeoutMs: this.verifyTimeoutMs, createSession: this.verifySession })
     if (bv.passed) {
-      await this.registry.setStatus(v.id, 'verified', { actor, verifier: VERIFIER_VERSION, reason: `修订行为验证 ${bv.evidence.passed}/${bv.evidence.totalTests} 通过` })
+      await this.registry.setStatus(v.id, 'verified', { actor, verifier: VERIFIER_VERSION, evidence: bv.evidence, reason: `修订行为验证 ${bv.evidence.passed}/${bv.evidence.totalTests} 通过` })
       return { ok: true, status: 'verified', versionId: v.id, version: v.semver, evidence: bv.evidence }
     }
     const failReasons = bv.results.filter((r) => !r.passed).map((r) => r.reason).join('; ')
@@ -176,6 +191,19 @@ export class EvolutionEngine {
     const served = list.find((v) => v.status === 'verified' || v.status === 'stable')
     return (served || list[0])?.id || null
   }
+}
+
+/** 合并父版本回归测试与候选自测（按 kind/name/input/expected 去重，保留先出现的父测试） */
+function mergeTests(parentTests = [], candidateTests = []) {
+  const out = [], seen = new Set()
+  for (const t of [...parentTests, ...candidateTests]) {
+    if (!t || typeof t !== 'object') continue
+    const key = JSON.stringify([t.kind || 'unit', t.name || '', t.input ?? null, t.expected ?? null])
+    if (seen.has(key)) continue
+    seen.add(key)
+    out.push(t)
+  }
+  return out
 }
 
 /** 规整受信验收用例：必须有 oracle（expected 键存在，值可为 null/false/0） */

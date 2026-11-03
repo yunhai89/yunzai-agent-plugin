@@ -170,10 +170,6 @@
         if (form.temperature == null) form.temperature = 1
         // 顶层 debug（D7：GET /api/config 额外下发，面板「调试日志」开关；保存时单独以 changes.debug 提交）
         if (form.debug == null) form.debug = false
-        // cacheControl 三态字符串：兼容旧布尔配置（false=off / true=explicit），否则 select 无匹配项显示空白
-        if (form.cacheControl === false) form.cacheControl = 'off'
-        else if (form.cacheControl === true) form.cacheControl = 'explicit'
-        else if (form.cacheControl == null) form.cacheControl = 'off'
         if (form.commandPassThrough == null) form.commandPassThrough = true
         if (form.render && form.render.helpTimeoutMs == null) form.render.helpTimeoutMs = 300000
         if (!form.webApi) form.webApi = {}
@@ -235,6 +231,24 @@
         delete form.contextHighRatio
         delete form.contextLowRatio
         delete form.compaction
+        // 推理/循环/收尾/兼容性参数已内置，旧配置字段直接丢弃，避免保存时继续写回。
+        delete form.reasoningFields
+        delete form.loop
+        delete form.toolConcurrency
+        delete form.toolSchemaValidate
+        delete form.keepReasoning
+        delete form.stream
+        delete form.finalizeMaxTokens
+        delete form.cacheControl
+        delete form.promptCacheKey
+        delete form.reflectMaxIterations
+        delete form.rootTokenBudget
+        if (form.thinkingAuto && typeof form.thinkingAuto === 'object') {
+          delete form.thinkingAuto.model
+          delete form.thinkingAuto.timeoutMs
+          delete form.thinkingAuto.budgets
+          delete form.thinkingAuto.style
+        }
         if (!form.kb) form.kb = {}
         if (form.kb.vectorStore == null) form.kb.vectorStore = true
         if (form.kb.vectorBackend == null) form.kb.vectorBackend = 'auto'
@@ -296,10 +310,8 @@
         if (!form.selfState.eventDetection) form.selfState.eventDetection = {}
         if (!form.selfState.planner) form.selfState.planner = {}
         if (!form.selfState.replyer) form.selfState.replyer = {}
-        if (!form.loop) form.loop = {}
         if (!form.multiagent) form.multiagent = {}
         if (!form.toolDiscovery) form.toolDiscovery = {}
-        if (!Array.isArray(form.reasoningFields)) form.reasoningFields = []
         if (!form.kb) form.kb = {}
         if (!form.schedule) form.schedule = {}
         if (!form.toolEvo) form.toolEvo = {}
@@ -309,23 +321,14 @@
         if (!form.miyoushe) form.miyoushe = {}
         if (!form.vision) form.vision = {}
         if (!form.tools) form.tools = {}
-        if (!form.toolConcurrency) form.toolConcurrency = {}
         if (!form.render) form.render = {}
-        if (form.toolConcurrency.maxParallel == null) form.toolConcurrency.maxParallel = 3
-        if (form.toolSchemaValidate == null) form.toolSchemaValidate = true
         if (!form.taskStore) form.taskStore = {}
         if (!form.skill) form.skill = {}
         // 思考自动决策兜底（UI 绑定需完整对象树）
         if (!form.thinkingAuto) form.thinkingAuto = {}
         if (form.thinkingAuto.enable == null) form.thinkingAuto.enable = false
         if (form.thinkingAuto.classifier == null) form.thinkingAuto.classifier = 'auto'
-        if (form.thinkingAuto.model == null) form.thinkingAuto.model = ''
-        if (form.thinkingAuto.timeoutMs == null) form.thinkingAuto.timeoutMs = 2500
         if (form.thinkingAuto.maxBudget == null) form.thinkingAuto.maxBudget = 32768
-        if (!form.thinkingAuto.budgets) form.thinkingAuto.budgets = {}
-        if (form.thinkingAuto.budgets.low == null) form.thinkingAuto.budgets.low = 4096
-        if (form.thinkingAuto.budgets.medium == null) form.thinkingAuto.budgets.medium = 8192
-        if (form.thinkingAuto.budgets.high == null) form.thinkingAuto.budgets.high = 16384
         // Jev（TypeSafe 判断模型，opt-in）兜底：UI 绑定需完整对象树。Jev 现作为「厂商+模型」注册。
         if (!form.jev) form.jev = {}
         if (form.jev.enable == null) form.jev.enable = false
@@ -468,9 +471,6 @@
       }
 
       const save = async () => {
-        // cacheControl 兼容旧布尔配置：保存即归一为三态字符串（false→off / true→explicit）
-        if (form.cacheControl === false) form.cacheControl = 'off'
-        else if (form.cacheControl === true) form.cacheControl = 'explicit'
         mcpServersFromUi()
         if (mcpMissingUrl.value.length) {
           toast(`MCP 服务缺 url：${mcpMissingUrl.value.join('、')}（http 型必须填 url 才能保存）`, 'error')
@@ -694,7 +694,7 @@
       // 仅「基础/模型」默认展开，其余收起（配置多时便于查找）
       const open = reactive(Object.fromEntries(sections.map((s) => [s.id, s.id === 'basic'])))
       // 各卡片内「高级参数」折叠态（默认折叠）
-      const adv = reactive({ reason: false, evolution: false, security: false, ext: false, sandbox: false, selfstate: false })
+      const adv = reactive({ evolution: false, security: false, ext: false, sandbox: false, selfstate: false })
       const activeSec = ref('basic')
       // Web 面板：启动默认登录地址（带 token）——等同启动日志，用于面板内复制/排障
       const webUrl = ref(null)
@@ -1002,20 +1002,12 @@
 
       /* thinking 开关兼容 */
       const thinkingOn = computed({
-        get: () => !!form.thinking,
+        get: () => !!form.thinking && form.thinking !== 'off' && form.thinking !== false && form.thinking?.type !== 'disabled',
         set: (v) => { form.thinking = v ? { type: 'enabled', budget_tokens: 16000 } : null },
       })
 
       // 复用 parseNum：清空输入框（''）时回落到默认值，而不是被 Number('')===0 当成 0（第 6 轮审计）
       const numOr = (v, def) => parseNum(v) ?? def
-
-      /* thinking 预算：默认配置 agent.thinking 为 null（thinkingAuto 接管时也会置 null），
-       * 直接 v-model 到 form.thinking.budget_tokens 会在渲染期抛 TypeError 并把整行变成注释节点（L-116）。
-       * 用可写 computed 承载：无 thinking 时展示默认 16000，用户输入时按需建出对象。 */
-      const thinkingBudget = computed({
-        get: () => (form.thinking?.budget_tokens != null ? form.thinking.budget_tokens : 16000),
-        set: (v) => { form.thinking = { ...(form.thinking || {}), type: form.thinking?.type || 'enabled', budget_tokens: numOr(v, 16000) } },
-      })
 
       /* 记忆字符上限：agent.memoryLimits 默认为 null，同样不能在渲染期解引用（M-050）。 */
       const memoryLimitMemory = computed({
@@ -1094,7 +1086,7 @@
         webUrl, webUrlLoading, loadWebUrl, copyWebUrl,
         addFallback, delFallback, masterInput, addMaster, delMaster,
         mcpServersToUi, delMcp, mcpModal, openNewMcp, confirmNewMcp,
-        thinkingOn, tempPct, thinkingBudget, memoryLimitMemory, memoryLimitUser,
+        thinkingOn, tempPct, memoryLimitMemory, memoryLimitUser,
         orModels, orSearch, orLoading, loadOrModels, orFiltered, pickOrModel, orKey, loadOrKey,
         allTools, toolCats, toolsByCat, toggleAlwaysOn, staleAlwaysOn, personas,
         // 厂商/模型注册表 + 功能分配
@@ -1538,7 +1530,7 @@
         <div :id="'cfg-reason'" class="card cf-sec" :class="{open: open.reason}">
           <div class="cf-sh" @click="open.reason = !open.reason">
             <span class="ct-ico" style="background:var(--grad-sky)"><v-icon name="zap"/></span>
-            <div><div class="ct-t">推理参数</div><div class="ct-s">采样、轮次、思考预算与上下文</div></div>
+            <div><div class="ct-t">推理参数</div><div class="ct-s">只保留常用项；循环护栏、预算、收尾与兼容性参数已内置</div></div>
             <v-icon class="cf-arrow" name="chevron"/>
           </div>
           <div class="cf-body" v-show="open.reason"><div class="cf-grid">
@@ -1553,29 +1545,8 @@
                    就显示越界的 200、箭头被卡在 100（2026-10-17 回归审计 low） -->
               <input type="number" class="inp" style="width:110px" min="1" max="1000" v-model.number="form.maxTurns">
             </cfg-row>
-            <cfg-row name="重复动作上限" desc="同工具+相同参数连续允许次数(超出→终止,防死循环)">
-              <input type="number" class="inp" style="width:90px" min="1" v-model.number="form.loop.maxSameAction">
-            </cfg-row>
-            <cfg-row name="连续失败上限" desc="连续工具失败次数(超出→终止)">
-              <input type="number" class="inp" style="width:90px" min="1" v-model.number="form.loop.maxConsecutiveFailures">
-            </cfg-row>
-            <cfg-row name="无进展窗口" desc="连续 N 步无新事实→终止">
-              <input type="number" class="inp" style="width:90px" min="1" v-model.number="form.loop.noProgressWindow">
-            </cfg-row>
-            <cfg-row name="时间预算(ms)" desc="单次对话超时(0=不限)">
-              <input type="number" class="inp" style="width:120px" min="0" step="1000" v-model.number="form.loop.timeBudgetMs">
-            </cfg-row>
-            <cfg-row name="token 预算" desc="单次对话累计「有效 token」上限(0=不限;缓存命中读按 0.1x 折算,收尾不占)">
-              <input type="number" class="inp" style="width:120px" min="0" step="1000" v-model.number="form.loop.tokenBudget">
-            </cfg-row>
-            <cfg-row name="收尾宽限(ms)" desc="预算耗尽后收尾总结的独立时间窗">
-              <input type="number" class="inp" style="width:120px" min="1000" step="1000" v-model.number="form.loop.finalizeGraceMs">
-            </cfg-row>
             <cfg-row name="深度思考" :desc="form.thinkingAuto.enable ? '已由「思考自动决策」接管（手动深度思考已关闭）' : '模型先思考再作答(更慢更耗 token)'">
               <v-switch v-model="thinkingOn" :disabled="form.thinkingAuto.enable"/>
-            </cfg-row>
-            <cfg-row name="思考预算 tokens" desc="thinking.budget_tokens">
-              <input type="number" class="inp" style="width:130px" min="1024" max="128000" step="1024" :disabled="!form.thinking || form.thinkingAuto.enable" v-model.number="thinkingBudget">
             </cfg-row>
             <cfg-row name="思考自动决策" desc="按提问复杂度自动决定是否思考与深度(覆盖手动 thinking；模型级覆盖仍优先)">
               <v-switch v-model="form.thinkingAuto.enable"/>
@@ -1588,27 +1559,8 @@
                 <option v-if="jevReady" value="jev">jev（Jev 决策）</option>
               </select>
             </cfg-row>
-            <cfg-row v-if="form.thinkingAuto.classifier !== 'jev'" name="判档小模型" desc="留空=utilityModel→主模型；建议廉价小模型">
-              <select class="sel" style="width:220px" :disabled="!form.thinkingAuto.enable || form.thinkingAuto.classifier==='off'" v-model="form.thinkingAuto.model">
-                <option value="">（留空 = utilityModel → 主模型）</option>
-                <option v-for="m in knownModels" :key="(m.fromRegistry ? m.id : 'raw:' + m.model)" :value="m.model">{{ m.label }}</option>
-                <option v-if="form.thinkingAuto.model && !knownModels.some((x) => x.model === form.thinkingAuto.model)" :value="form.thinkingAuto.model">{{ form.thinkingAuto.model }}（不在列表）</option>
-              </select>
-            </cfg-row>
-            <cfg-row v-if="form.thinkingAuto.classifier !== 'jev'" name="判档超时(ms)" desc="小模型超时/失败自动回退规则">
-              <input type="number" class="inp" style="width:130px" min="500" step="500" :disabled="!form.thinkingAuto.enable || form.thinkingAuto.classifier==='off'" v-model.number="form.thinkingAuto.timeoutMs">
-            </cfg-row>
             <cfg-row name="自动预算上限" desc="单轮思考预算硬顶(tokens)">
               <input type="number" class="inp" style="width:130px" min="1024" max="128000" step="1024" :disabled="!form.thinkingAuto.enable" v-model.number="form.thinkingAuto.maxBudget">
-            </cfg-row>
-            <cfg-row name="低深度预算" desc="简单问题">
-              <input type="number" class="inp" style="width:130px" min="1024" step="1024" :disabled="!form.thinkingAuto.enable" v-model.number="form.thinkingAuto.budgets.low">
-            </cfg-row>
-            <cfg-row name="中深度预算" desc="常规解释/编程">
-              <input type="number" class="inp" style="width:130px" min="1024" step="1024" :disabled="!form.thinkingAuto.enable" v-model.number="form.thinkingAuto.budgets.medium">
-            </cfg-row>
-            <cfg-row name="高深度预算" desc="复杂多步/架构/数学">
-              <input type="number" class="inp" style="width:130px" min="1024" step="1024" :disabled="!form.thinkingAuto.enable" v-model.number="form.thinkingAuto.budgets.high">
             </cfg-row>
             <cfg-row name="单次回复最大 token" desc="留空=厂商默认">
               <input type="number" class="inp" style="width:130px" min="1" v-model.number="form.maxTokens" placeholder="null">
@@ -1616,47 +1568,16 @@
             <cfg-row name="工具结果字符上限" desc="超出截断,防爆 context">
               <input type="number" class="inp" style="width:130px" min="100" v-model.number="form.maxToolResultChars">
             </cfg-row>
-            <cfg-row name="工具并发上限" desc="单批只读工具滚动池上限;未声明并发语义的工具默认独占">
-              <input type="number" class="inp" style="width:110px" min="1" max="16" v-model.number="form.toolConcurrency.maxParallel">
-            </cfg-row>
-            <cfg-row name="工具参数校验" desc="副作用前校验 schema(缺参/类型/多余参数结构化回报)">
-              <v-switch v-model="form.toolSchemaValidate"/>
-            </cfg-row>
             <cfg-row name="反思模式" desc="回复前自检回环；jev=由 Jev 判断是否需要反思（需开启 Jev）">
               <select class="sel" style="width:150px" v-model="form.reflect"><option v-for="o in reflectOptions" :value="o[0]">{{ o[1] }}</option></select>
             </cfg-row>
-            <cfg-row name="反思回环次数" desc="reflectMaxIterations">
-              <input type="number" class="inp" style="width:110px" min="1" max="5" v-model.number="form.reflectMaxIterations">
-            </cfg-row>
-            <cfg-row name="收尾输出上限" desc="finalizeMaxTokens：异常停止后最后一次交付的 token 上限；太小会截断总结/子代理报告">
-              <input type="number" class="inp" style="width:130px" min="256" max="8192" v-model.number="form.finalizeMaxTokens">
-            </cfg-row>
-            <cfg-row name="回灌推理到历史" desc="默认关:省 context">
-              <v-switch v-model="form.keepReasoning"/>
-            </cfg-row>
-            <cfg-row name="逐字流式输出" desc="依赖适配器,不稳,默认关">
-              <v-switch v-model="form.stream"/>
-            </cfg-row>
-            <cfg-row class="full" name="reasoning 字段映射" desc="不同厂商的推理字段名">
-              <tag-editor v-model="form.reasoningFields"/>
-            </cfg-row>
-            <div class="full" style="cursor:pointer;user-select:none;font-size:12px;font-weight:700;color:var(--ink3);padding:8px 2px;border-top:1px dashed var(--line)" @click="adv.reason = !adv.reason">
-              {{ adv.reason ? '▾' : '▸' }} 高级参数
+            <div class="full" style="padding:9px 12px;border:1px dashed var(--line);border-radius:10px">
+              <div class="mut2" style="font-size:12px"><v-icon name="info"/> 循环护栏、时间/token 预算、收尾、工具并发/校验、缓存与流式等参数已内置为偏宽松的最优值，不再提供配置。</div>
             </div>
-            <div v-show="adv.reason" data-cf-adv class="full"><div class="cf-grid">
-              <cfg-row name="Anthropic 缓存断点" desc="cacheControl：off / auto(官方端点开) / explicit">
-                <select class="sel" style="width:140px" v-model="form.cacheControl">
-                  <option value="off">off</option><option value="auto">auto</option><option value="explicit">explicit</option>
-                </select>
-              </cfg-row>
-              <cfg-row name="OpenAI 会话路由键" desc="promptCacheKey：官方 prompt_cache_key，仅 OpenAI 官方端点下发（兼容网关绝不发）">
-                <v-switch v-model="form.promptCacheKey"/>
-              </cfg-row>
-            </div></div>
           </div></div>
         </div>
 
-        <!-- ===== §1.2b 任务账本 ===== -->
+
         <div :id="'cfg-task'" class="card cf-sec" :class="{open: open.task}">
           <div class="cf-sh" @click="open.task = !open.task">
             <span class="ct-ico" style="background:var(--grad-vio)"><v-icon name="schedule"/></span>

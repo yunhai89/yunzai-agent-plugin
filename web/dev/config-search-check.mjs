@@ -80,7 +80,7 @@ const rows = [
   mkRow({ name: 'Token 预算', desc: LONG_DESC, valueText: '1800000' }), // 长说明行
   mkRow({ name: '主人任务免确认', desc: '主人发起的确认类工具跳过审批', danger: true, secId: 'security' }), // 高危行
   mkRow({ name: '重复动作上限', desc: '同工具+相同参数连续允许次数', secId: 'reason' }), // 折叠分区主区行
-  mkRow({ name: '压缩归档目录', desc: 'compaction.archiveDir', secId: 'reason', advBox: true }), // 高级参数块内行
+  mkRow({ name: '日志目录', desc: 'devLog.dir', secId: 'security', advBox: true }), // 高级参数块内行
 ]
 sandbox.document.querySelectorAll = (sel) => (sel === '[data-cf-row], .mem-row' ? rows : [])
 sandbox.document.querySelector = () => null
@@ -101,16 +101,16 @@ eq(bindings.hitName(bindings.search.hits[0]), '主人任务免确认', '命中�
 
 /* 3. 折叠分区展开：主区行不碰高级块；高级块内行才展开 */
 bindings.open.reason = false
-bindings.adv.reason = false
+bindings.adv.security = false
 search('重复动作上限')
 bindings.nextHit()
 eq(bindings.open.reason, true, '跳转展开所在分区')
-eq(bindings.adv.reason, false, '主区行不展开高级参数块（修复前被顺带展开）')
-bindings.open.reason = false
-bindings.adv.reason = false
-search('压缩归档目录')
+eq(bindings.adv.security, false, '主区行不展开高级参数块（修复前被顺带展开）')
+bindings.open.security = false
+bindings.adv.security = false
+search('日志目录')
 bindings.nextHit()
-eq(bindings.adv.reason, true, '高级块内行照常展开高级参数')
+eq(bindings.adv.security, true, '高级块内行照常展开高级参数')
 
 /* 4. IME 组词 Enter 不触发「下一个」 */
 search('工具')
@@ -132,7 +132,7 @@ ok(/workerTimeBudgetMs/.test(src) && /workerMaxTokens/.test(src) && /resultCap/.
 const wmt = src.split('\n').find((l) => l.includes('v-model.number="form.multiagent.workerMaxTurns"'))
 ok(!!wmt && !/max="50"/.test(wmt), 'workerMaxTurns 输入不再被 max=50 卡死（须容忍默认 200）')
 const advLines = src.split('\n').filter((l) => /v-show="adv\./.test(l))
-ok(advLines.length >= 6 && advLines.every((l) => l.includes('data-cf-adv')), `全部 ${advLines.length} 个高级参数块已标记 data-cf-adv`)
+ok(advLines.length >= 5 && advLines.every((l) => l.includes('data-cf-adv')), `全部 ${advLines.length} 个高级参数块已标记 data-cf-adv`)
 
 console.log(`\n========================================`)
 console.log(`通过 ${passed}，失败 ${failed}`)

@@ -13,6 +13,7 @@ import { errorMiddleware } from './response.js'
 import { initDb, closeDb, dao } from '../toolEvo/db.js'
 import { ToolEvoRegistry } from '../toolEvo/registry.js'
 import { makeManifest } from '../toolEvo/manifest.js'
+import { seedBuiltinTools } from '../toolEvo/seed.js'
 
 let passed = 0, failed = 0
 function ok(c, m) { if (c) { passed++; console.log('  ✓', m) } else { failed++; console.error('  ✗ FAIL', m) } }
@@ -39,6 +40,10 @@ await registry.setStatus(ap1.id, 'verified'); await registry.setStatus(ap1.id, '
 const ap2 = await registry.createVersion({ toolId: 'tool_ap', semver: '0.1.1', manifest: makeManifest({ name: 'approve_demo', version: '0.1.1', description: '审批示例工具二', inputSchema: { type: 'object' } }), source: 'export async function run(){return{v:2}}', tests: [], parentVersionId: ap1.id })
 await registry.setStatus(ap2.id, 'verified')
 
+// 内置工具版本：进化列表默认不展示，且不可被 Web 淘汰/回滚
+const seeded = await seedBuiltinTools(registry, [{ name: 'builtin_demo', description: '内置演示工具', parameters: { type: 'object' }, sideEffects: ['none'] }])
+const builtinVersionId = seeded.bindings[0].versionId
+
 const fakeTools = { register() {}, unregister() {} }
 let toolEvoEnabled = true
 const runtimeProvider = async () => ({ toolEvo: toolEvoEnabled ? { registry, runner: null } : null, tools: fakeTools })
@@ -63,6 +68,31 @@ await test('启用：GET /api/tevo/health 命中高失败率工具', async () =>
   const r = await get('/api/tevo/health')
   ok(r.status === 200 && r.body.code === 0, 'HTTP 200 / code 0')
   ok(Array.isArray(r.body.data) && r.body.data.some((c) => c.toolName === 'health_demo'), '聚类含 health_demo')
+})
+
+await test('GET /api/tevo/tools：默认只返回 evolved，内置工具需 ?all=1', async () => {
+  const r = await get('/api/tevo/tools')
+  ok(r.status === 200 && Array.isArray(r.body.data), 'HTTP 200 / 数组')
+  ok(!r.body.data.some((v) => v.name === 'builtin_demo'), '默认隐藏内置工具')
+  const all = await get('/api/tevo/tools?all=1')
+  ok(all.body.data.some((v) => v.name === 'builtin_demo'), '?all=1 可查看内置元数据')
+})
+
+await test('GET /api/tevo/tools/:id：返回源码/测试/证据供审阅', async () => {
+  const r = await get(`/api/tevo/tools/${hv.id}`)
+  ok(r.status === 200 && r.body.code === 0, '详情 HTTP 200')
+  ok(r.body.data.source.includes('export async function run'), '详情含源码')
+  ok(Array.isArray(r.body.data.tests), '详情含测试数组')
+  ok(r.body.data.evidence === null || typeof r.body.data.evidence === 'object', '详情含证据字段')
+})
+
+await test('内置工具：Web 淘汰/回滚被拒绝', async () => {
+  const d = await post(`/api/tevo/tools/${builtinVersionId}/decommission`)
+  ok(d.status === 400 && d.body.code !== 0, `内置工具不可淘汰（${d.status}/${d.body.code}）`)
+  const rb = await post(`/api/tevo/tools/${builtinVersionId}/rollback`)
+  ok(rb.status === 400 && rb.body.code !== 0, `内置工具不可回滚（${rb.status}/${rb.body.code}）`)
+  const v = await registry.getVersion(builtinVersionId)
+  ok(v.status === 'stable', '内置版本状态保持 stable')
 })
 
 await test('POST approve：verified → stable 并切换 active', async () => {

@@ -88,30 +88,13 @@
       }
     ],
     proxy: "",
-    reasoningFields: [],
     maxTurns: 200,
-    loop: {
-      maxSameAction: 2,
-      maxConsecutiveFailures: 3,
-      noProgressWindow: 4,
-      timeBudgetMs: 3600000,
-      tokenBudget: 480000,
-      finalizeGraceMs: 45000
-    },
     temperature: 0.2,
     thinking: null,
     thinkingAuto: {
       enable: false,
       classifier: "auto",
-      model: "",
-      timeoutMs: 2500,
-      maxBudget: 32768,
-      budgets: {
-        low: 4096,
-        medium: 8192,
-        high: 16384
-      },
-      style: ""
+      maxBudget: 32768
     },
     jev: {
       enable: false,
@@ -141,27 +124,16 @@
     },
     maxTokens: null,
     maxToolResultChars: 8000,
-    toolConcurrency: {
-      maxParallel: 3
-    },
-    toolSchemaValidate: true,
     taskStore: {
       enable: false,
       dir: "data/tasks"
     },
-    keepReasoning: false,
-    stream: false,
     reflect: "auto",
-    finalizeMaxTokens: 2048,
-    rootTokenBudget: 0,
     render: {
       card: true,
       timeoutMs: 15000,
       replyTimeoutMs: 30000
     },
-    cacheControl: "off",
-    promptCacheKey: false,
-    reflectMaxIterations: 1,
     progress: true,
     progressRecall: 3,
     reply: {

@@ -38,21 +38,25 @@ export async function evaluateVersion(versionId, { evidence } = {}) {
 }
 
 /**
- * 失败聚类：找高失败率的 stable 工具（修复候选）。
+ * 失败聚类：默认只看 evolved namespace 的 stable 工具（修复候选），避免被内置工具淹没。
  * @returns [{ versionId, toolName, total, failed, failRate, topErrors }]
  */
-export async function failureClusters({ minInvocations = 3, minFailRate = 0.3 } = {}) {
+export async function failureClusters({ minInvocations = 3, minFailRate = 0.3, namespace = 'evolved', status = 'stable' } = {}) {
+  const where = ['ti.version_id IS NOT NULL']
+  const params = []
+  if (namespace) { where.push('t.namespace=?'); params.push(namespace) }
+  if (status) { where.push('tv.status=?'); params.push(status) }
   const rows = await dao.all(`
-    SELECT tv.id AS version_id, t.name AS tool_name, ti.success, ti.error_class
+    SELECT tv.id AS version_id, tv.tool_id, tv.semver, t.name AS tool_name, ti.success, ti.error_class
     FROM tool_invocations ti
-    LEFT JOIN tool_versions tv ON tv.id = ti.version_id
-    LEFT JOIN tools t ON t.id = tv.tool_id
-    WHERE ti.version_id IS NOT NULL
-  `)
+    JOIN tool_versions tv ON tv.id = ti.version_id
+    JOIN tools t ON t.id = tv.tool_id
+    WHERE ${where.join(' AND ')}
+  `, params)
   const byVer = {}
   for (const r of rows) {
     const k = r.version_id
-    if (!byVer[k]) byVer[k] = { versionId: k, toolName: r.tool_name, total: 0, failed: 0, errors: {} }
+    if (!byVer[k]) byVer[k] = { versionId: k, toolId: r.tool_id, semver: r.semver, toolName: r.tool_name, total: 0, failed: 0, errors: {} }
     byVer[k].total++
     if (!r.success) {
       byVer[k].failed++
@@ -72,25 +76,39 @@ export async function failureClusters({ minInvocations = 3, minFailRate = 0.3 } 
  *   - reuseRate = 被真实调用过的 stable 版本数 / stable 版本总数（用实际调用证明复用，而非 stable 占比）；
  *   - libraryCompactness = stable / 总版本数（库中已上线版本占比，衡量版本收敛）；
  *   - verifyPassRate = (stable+verified) / 总版本数（验证通过占比）；
- *   - invocationFailRate = 失败调用 / 总调用。
+ *   - invocationFailRate = 失败调用 / 总调用；默认 namespace='evolved'。
  */
-export async function convergenceMetrics() {
-  const count = async (where) => ((await dao.get(`SELECT COUNT(*) AS n FROM tool_versions${where ? ' WHERE ' + where : ''}`))?.n || 0)
-  const totalVersions = await count('')
-  const stable = await count("status='stable'")
-  const verified = await count("status='verified'")
-  const rejected = await count("status='rejected'")
-  const deprecated = await count("status='deprecated'")
+export async function convergenceMetrics({ namespace = 'evolved' } = {}) {
+  const hasNs = !!namespace
+  const nsParam = hasNs ? [namespace] : []
+  const nsWhere = hasNs ? ' AND t.namespace=?' : ''
+  const count = async (extra = '') => ((await dao.get(
+    `SELECT COUNT(*) AS n FROM tool_versions tv JOIN tools t ON t.id=tv.tool_id WHERE 1=1${nsWhere}${extra}`,
+    nsParam,
+  ))?.n || 0)
+  const totalVersions = await count()
+  const stable = await count(" AND tv.status='stable'")
+  const verified = await count(" AND tv.status='verified'")
+  const rejected = await count(" AND tv.status='rejected'")
+  const deprecated = await count(" AND tv.status='deprecated'")
   // 口径与 registry.listStable 同源（JOIN + status='stable'）：原来只数 active_version_id 非空，
   // 淘汰最后一个 stable 而指针残留时，会把已下线工具也算成「在线」（第 8 轮审计 low-1）
   const activeStable = (await dao.get(
-    `SELECT COUNT(*) AS n FROM tools t JOIN tool_versions tv ON tv.id=t.active_version_id WHERE tv.status='stable'`,
+    `SELECT COUNT(*) AS n FROM tools t JOIN tool_versions tv ON tv.id=t.active_version_id WHERE tv.status='stable'${nsWhere}`,
+    nsParam,
   ))?.n || 0
   const invokedStable = (await dao.get(
-    `SELECT COUNT(DISTINCT tv.id) AS n FROM tool_versions tv JOIN tool_invocations ti ON ti.version_id=tv.id WHERE tv.status='stable'`,
+    `SELECT COUNT(DISTINCT tv.id) AS n FROM tool_versions tv JOIN tools t ON t.id=tv.tool_id JOIN tool_invocations ti ON ti.version_id=tv.id WHERE tv.status='stable'${nsWhere}`,
+    nsParam,
   ))?.n || 0
-  const invocations = (await dao.get('SELECT COUNT(*) AS n FROM tool_invocations'))?.n || 0
-  const failedInv = (await dao.get('SELECT COUNT(*) AS n FROM tool_invocations WHERE success=0'))?.n || 0
+  const invocations = (await dao.get(
+    `SELECT COUNT(*) AS n FROM tool_invocations ti JOIN tool_versions tv ON tv.id=ti.version_id JOIN tools t ON t.id=tv.tool_id WHERE 1=1${nsWhere}`,
+    nsParam,
+  ))?.n || 0
+  const failedInv = (await dao.get(
+    `SELECT COUNT(*) AS n FROM tool_invocations ti JOIN tool_versions tv ON tv.id=ti.version_id JOIN tools t ON t.id=tv.tool_id WHERE ti.success=0${nsWhere}`,
+    nsParam,
+  ))?.n || 0
   return {
     totalVersions, stable, activeStable, verified, rejected, deprecated, invokedStable,
     verifyPassRate: totalVersions ? +((stable + verified) / totalVersions).toFixed(2) : 0,

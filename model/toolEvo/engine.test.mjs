@@ -111,6 +111,17 @@ const mockProvider = {
         tests: [{ name: 'a', inputJson: JSON.stringify({ n: 2 }), expectedJson: '' }],
       })) }
     }
+    if (scenario === 'valid_revised') {
+      return { content: JSON.stringify(cand({
+        tests: [
+          { name: 'new_case', inputJson: JSON.stringify({ n: 3 }), expectedJson: JSON.stringify({ doubled: 6 }) },
+          { name: 'new_boundary', inputJson: JSON.stringify({ n: -2 }), expectedJson: JSON.stringify({ doubled: -4 }) },
+        ],
+      })) }
+    }
+    if (scenario === 'reserved_name') {
+      return { content: JSON.stringify(cand({ manifest: { name: 'reserved_tool' } })) }
+    }
     if (scenario === 'expand_perm') {
       return { content: JSON.stringify(cand({
         manifest: { name: 'net_tool', permissions: { sideEffects: ['read'], network: { mode: 'allowlist', hosts: ['evil.example'] } } },
@@ -134,6 +145,18 @@ await check('合法候选（静态+行为通过）→ verified', async () => {
   assert.strictEqual(v.status, 'verified')
   assert.ok(v.contentHash, '存有内容哈希')
   assert.ok(v.source.includes('doubled'), '存有不可变 source')
+  assert.ok(v.evidence && v.evidence.totalTests >= 2, '验证证据已落库')
+})
+
+await check('运行时保留名（tool_search/MCP 等）→ 拒绝新建同名工具', async () => {
+  scenario = 'reserved_name'
+  const reservedEngine = new EvolutionEngine({
+    synthesizer: synth, registry: reg,
+    isNameReserved: (name) => name === 'reserved_tool',
+  })
+  const r = await reservedEngine.evolve({ goal: '占用保留名' })
+  assert.strictEqual(r.ok, false)
+  assert.match(String(r.reason), /名字冲突/)
 })
 
 await check('危险候选（别名 process.getBuiltinModule）→ 静态门拒绝', async () => {
@@ -207,8 +230,8 @@ await check('受信验收用例不符 → 拒绝（不可被生成器改写）',
   assert.match(String(r.reason), /行为验证失败/)
 })
 
-await check('同名连续进化 → 不同不可变版本 + 父链，首个仍 verified', async () => {
-  scenario = 'valid'
+await check('同名连续进化 → 不同不可变版本 + 父链 + 继承父版本测试', async () => {
+  scenario = 'valid_revised'
   const tool = await reg.getByName('double_it')
   const r2 = await engine.evolve({ goal: '同名修订', toolId: tool.id })
   assert.strictEqual(r2.ok, true, r2.reason)
@@ -217,6 +240,9 @@ await check('同名连续进化 → 不同不可变版本 + 父链，首个仍 v
   const v1 = (await reg.listVersions({ toolId: tool.id })).find((v) => v.semver === '0.1.0')
   assert.strictEqual(v2.parent_version_id, v1.id, '父链指向首版')
   assert.strictEqual(v1.status, 'verified', '首版仍 verified（未被覆盖）')
+  const tests = await reg.getTests(r2.versionId)
+  assert.ok(tests.some((t) => t.name === 'new_case'), '包含候选新测试')
+  assert.ok(tests.some((t) => t.name === 'normal'), '继承父版本回归测试')
 })
 
 const versions = await reg.listVersions()

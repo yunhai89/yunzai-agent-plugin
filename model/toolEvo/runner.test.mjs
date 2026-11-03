@@ -150,6 +150,17 @@ await test('runner：验证后篡改制品 → 拒绝执行', async () => {
   } finally { await r.stop(); cleanup(url) }
 })
 
+await test('runner：缺少 expectedHash → fail-closed；超大输出被拦截', async () => {
+  const { url, source } = await writeArtifact(`export async function run(){ return { s: 'x'.repeat(9000) } }`)
+  const r = new RunnerClient({ logger: () => {}, timeoutMs: 4000 })
+  try {
+    const noHash = await r.invoke('v1', { source, artifactPath: url, params: {} })
+    ok(!noHash.ok && noHash.errorClass === 'artifact_tampered', '缺少源码哈希拒绝执行')
+    const tooBig = await r.invoke('v1', { source, artifactPath: url, expectedHash: sha256(source), params: {} })
+    ok(!tooBig.ok && tooBig.errorClass === 'output_too_large', `超大输出被拦截（${tooBig.errorClass || tooBig.error}）`)
+  } finally { await r.stop(); cleanup(url) }
+})
+
 // ============================================================
 // 沙箱档（agent.sandbox.mode=e2b）：工具代码在 E2B microVM 内执行
 // ============================================================
@@ -192,7 +203,7 @@ await test('沙箱档：invoke 走 microVM（env 传制品路径与参数文件�
   const r = new RunnerClient({ logger: () => {}, timeoutMs: 3000, sandbox: sbx, artifactsDir: dir })
   try {
     eq(r.backend, 'sandbox', '启用沙箱档')
-    const out = await r.invoke('v1', { artifactPath: pathToFileURL(file).href, artifactRel: 'demo/1.0.0/index.js', params: { x: 21 } })
+    const out = await r.invoke('v1', { artifactPath: pathToFileURL(file).href, artifactRel: 'demo/1.0.0/index.js', expectedHash: sha256(fs.readFileSync(file, 'utf8')), params: { x: 21 } })
     ok(out.ok, '调用成功')
     eq(out.output.doubled, 42, '结果正确')
     eq(t.calls.runs, ['node runner.mjs'], '在沙箱内执行 runner.mjs')
@@ -215,9 +226,11 @@ await test('沙箱档：每次调用独立沙箱（用后即毁，无跨调用�
   const sbx = mkRunnerSandbox(t)
   const r = new RunnerClient({ logger: () => {}, timeoutMs: 3000, sandbox: sbx, artifactsDir: dir })
   try {
-    await r.invoke('v1', { artifactPath: pathToFileURL(f1).href, artifactRel: 'a/1.0.0/index.js', params: {} })
-    await r.invoke('v1', { artifactPath: pathToFileURL(f1).href, artifactRel: 'a/1.0.0/index.js', params: {} })
-    await r.invoke('v2', { artifactPath: pathToFileURL(f2).href, artifactRel: 'b/1.0.0/index.js', params: {} })
+    const h1 = sha256(fs.readFileSync(f1, 'utf8'))
+    const h2 = sha256(fs.readFileSync(f2, 'utf8'))
+    await r.invoke('v1', { artifactPath: pathToFileURL(f1).href, artifactRel: 'a/1.0.0/index.js', expectedHash: h1, params: {} })
+    await r.invoke('v1', { artifactPath: pathToFileURL(f1).href, artifactRel: 'a/1.0.0/index.js', expectedHash: h1, params: {} })
+    await r.invoke('v2', { artifactPath: pathToFileURL(f2).href, artifactRel: 'b/1.0.0/index.js', expectedHash: h2, params: {} })
     eq(t.calls.create, 3, '三次调用各开一次沙箱（无共享会话残留）')
     eq(t.calls.kills.length, 3, '每次调用后销毁沙箱')
     eq(sbx.manager.stats().leases, 0, '调用后无遗留租约')
@@ -233,7 +246,7 @@ await test('沙箱档：上传失败 → fail-closed（不落回本地 fork，�
   const sbx = mkRunnerSandbox(t)
   const r = new RunnerClient({ logger: () => {}, timeoutMs: 3000, sandbox: sbx, artifactsDir: dir })
   try {
-    const out = await r.invoke('v1', { artifactPath: pathToFileURL(file).href, artifactRel: 'x/1.0.0/index.js', params: {} })
+    const out = await r.invoke('v1', { artifactPath: pathToFileURL(file).href, artifactRel: 'x/1.0.0/index.js', expectedHash: sha256(fs.readFileSync(file, 'utf8')), params: {} })
     ok(!out.ok, '调用失败')
     ok(/沙箱不可用/.test(out.error || ''), `错误说明是沙箱不可用（${String(out.error).slice(0, 60)}）`)
     ok(r._worker === null, '没有回退到本地 fork worker')
@@ -250,7 +263,7 @@ await test('沙箱档：超时 → 报超时并丢弃会话', async () => {
   const sbx = mkRunnerSandbox(t)
   const r = new RunnerClient({ logger: () => {}, timeoutMs: 600, sandbox: sbx, artifactsDir: dir })
   try {
-    const out = await r.invoke('v1', { artifactPath: pathToFileURL(file).href, artifactRel: 'y/1.0.0/index.js', params: {} })
+    const out = await r.invoke('v1', { artifactPath: pathToFileURL(file).href, artifactRel: 'y/1.0.0/index.js', expectedHash: sha256(fs.readFileSync(file, 'utf8')), params: {} })
     ok(!out.ok, '超时返回失败')
     ok(/超时/.test(out.error || ''), '错误信息含超时（文案与本地档一致）')
   } finally { await r.stop(); await sbx.manager.shutdown(); cleanup(pathToFileURL(file).href) }

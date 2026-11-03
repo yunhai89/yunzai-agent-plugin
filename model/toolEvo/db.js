@@ -36,6 +36,7 @@ const SCHEMA = {
     content_hash TEXT,
     verified_content_hash TEXT,
     verified_verifier TEXT,
+    evidence_json TEXT,
     manifest_json TEXT NOT NULL,
     parent_version_id TEXT,
     generator_model TEXT,
@@ -155,6 +156,7 @@ async function migrate(db) {
   await ensureColumn(db, 'tool_versions', 'content_hash', 'TEXT')
   await ensureColumn(db, 'tool_versions', 'verified_content_hash', 'TEXT')
   await ensureColumn(db, 'tool_versions', 'verified_verifier', 'TEXT')
+  await ensureColumn(db, 'tool_versions', 'evidence_json', 'TEXT')
 }
 
 /** 初始化：建全部表 + PRAGMA（WAL 并发读、外键约束）+ 增量迁移。幂等。 */

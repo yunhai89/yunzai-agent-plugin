@@ -194,6 +194,7 @@
         document.addEventListener('keydown', onKey)
         if (!loggedIn.value) return
         try { await window.store.loadScopes() } catch { /* 未登录或运行时未就绪，各页 load 时再处理 */ }
+        try { await window.store.loadTevo?.() } catch { /* 工具进化未启用/未登录，忽略 */ }
       })
       onUnmounted(() => {
         document.removeEventListener('keydown', onKey)
@@ -271,7 +272,7 @@
             </div>
           </template>
         </nav>
-        <div class="rail-foot"><span class="st-dot"></span><span>面板运行中</span><span class="rail-ver mono">v1.48.0</span></div>
+        <div class="rail-foot"><span class="st-dot"></span><span>面板运行中</span><span class="rail-ver mono">v1.49.0</span></div>
       </aside>
 
       <div class="stage">

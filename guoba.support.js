@@ -12,9 +12,9 @@
  *   Select: componentProps: { options: [{label, value}] }
  *
  * 面板只做「UI 表示层转换」，不做业务归一（归一由 utils/Config.js normalize/D3 负责）：
- *   - 多行文本 ↔ 数组：masters / alwaysOn / intercept / reasoningFields / allowOut / denyOut / 各 groups
+ *   - 多行文本 ↔ 数组：masters / alwaysOn / intercept / allowOut / denyOut / 各 groups
  *   - JSON 文本域 ↔ 对象/数组：fallbackModels / memoryLimits / policy.categoryMin / persona.styleExamples / humanize.groupsOverride
- *   - 深度思考：{ enable, budget_tokens } ↔ provider 原生 { type, budget_tokens } | null
+ *   - 深度思考：面板开关 ↔ provider 原生 { type, budget_tokens } | null（预算固定 16000）
  *   - MCP：serversJson（标准 mcpServers JSON）↔ agent.mcp.servers map（只合并不删除）
  * 这些虚拟表示只存在于 getConfigData 的副本里；setConfigData 会在写回前把点路径还原成真实类型。
  */
@@ -61,7 +61,6 @@ const MULTILINE_FIELDS = new Set([
   'agent.masters',
   'agent.toolDiscovery.alwaysOn',
   'agent.shell.intercept',
-  'agent.reasoningFields',
   'agent.sandbox.network.allowOut',
   'agent.sandbox.network.denyOut',
   'agent.humanize.groups',
@@ -134,11 +133,6 @@ const OPT = {
     { label: 'off 关闭', value: 'off' },
     { label: 'always 每次最终回复都反思', value: 'always' },
     { label: 'jev 由 Jev 判断（需开启 Jev）', value: 'jev' },
-  ],
-  cacheControl: [
-    { label: 'off 关闭（默认；兼容网关安全）', value: 'off' },
-    { label: 'auto 官方端点自动开启', value: 'auto' },
-    { label: 'explicit 强制开启', value: 'explicit' },
   ],
   degrade: [
     { label: 'skip 丢弃', value: 'skip' },
@@ -258,7 +252,6 @@ export function supportGuoba() {
         { field: 'agent.providerId', label: '基础厂商 ID', bottomHelpMessage: '「厂商配置」里厂商条目的 id（含接口地址与 Key）；空=未选厂商', component: 'Input', componentProps: { placeholder: '如 pxxxx' } },
         { field: 'agent.modelId', label: '基础模型 ID', bottomHelpMessage: '「模型列表」里模型条目的 id（须挂在上述厂商下）；空=未选模型', component: 'Input', componentProps: { placeholder: '如 mxxxx' } },
         { field: 'agent.utilityModel', label: '播报小模型(可选)', bottomHelpMessage: '进度播报等旁路任务用的小模型；留空=沿用主模型。可填任意已注册厂商的模型（运行时按注册表解析端点，不再局限主厂商）', component: 'Input', componentProps: { placeholder: '留空=主模型' } },
-        { field: 'agent.reasoningFields', label: '推理字段归一(每行一个)', bottomHelpMessage: '如 reasoning_content；留空=用厂商 preset 自带设置（空数组视为未配置，不向 provider 传空数组）', component: 'InputTextArea', componentProps: { rows: 2, placeholder: 'reasoning_content' } },
         {
           field: 'agent.fallbackModels',
           label: '回退模型列表(JSON)',
@@ -275,8 +268,6 @@ export function supportGuoba() {
         // —— 上下文与流式 ——
         { label: '上下文与流式', component: 'SOFT_GROUP_BEGIN' },
         { field: 'agent.maxToolResultChars', label: '工具结果字符上限', bottomHelpMessage: '默认 8000；内容获取类工具可经 meta.resultCap 单独放宽到 12000', component: 'InputNumber', componentProps: { min: 100 } },
-        { field: 'agent.keepReasoning', label: '回灌推理(reasoning)到历史', bottomHelpMessage: '默认关：省 context', component: 'Switch' },
-        { field: 'agent.stream', label: '逐字流式输出', bottomHelpMessage: '依赖适配器，不稳；默认关', component: 'Switch' },
         { field: 'agent.progress', label: '工具调用进度消息', bottomHelpMessage: '消除干等；默认开', component: 'Switch' },
         { field: 'agent.progressRecall', label: '进度消息撤回(秒)', bottomHelpMessage: 'N 秒后自动撤回进度消息；0=不撤回；适配器不支持则忽略', component: 'InputNumber', componentProps: { min: 0, max: 120 } },
         { field: 'agent.reply.mode', label: '回复渲染方式', component: 'Select', componentProps: { options: [{ label: '图片（markdown→精美浅色图，默认）', value: 'image' }, { label: '纯文本', value: 'text' }] } },
@@ -285,22 +276,9 @@ export function supportGuoba() {
         { field: 'agent.reply.quote', label: '群聊回复引用触发消息', bottomHelpMessage: '默认开；私聊不引用；可与艾特同开，人多时便于定位回复对象', component: 'Switch' },
         { field: 'agent.reply.renderScale', label: '回复图清晰度倍率', bottomHelpMessage: 'deviceScaleFactor：3=超清（默认）/ 2=高清 / 1=普通；越大越清晰但越耗内存', component: 'InputNumber', componentProps: { min: 1, max: 4 } },
         { field: 'agent.render.card', label: '卡片图渲染', bottomHelpMessage: '帮助/列表等卡片图开关（默认开）；弱服务器可关，直接回文本避免渲染卡死。回复图由上面的「回复渲染方式」控制', component: 'Switch' },
-        { field: 'agent.cacheControl', label: 'Anthropic 显式缓存断点', bottomHelpMessage: 'off=关闭（默认，兼容网关安全）/ auto=官方端点自动开 / explicit=强制；OpenAI 兼容端自动前缀缓存无需开', component: 'Select', componentProps: { options: OPT.cacheControl } },
-        { field: 'agent.promptCacheKey', label: 'OpenAI prompt_cache_key', bottomHelpMessage: '稳定会话路由（仅 OpenAI 官方端点/支持该能力的模型下发；兼容网关绝不发）；默认关', component: 'Switch' },
         { field: 'agent.reflect', label: '自我反思/自纠', bottomHelpMessage: '默认 auto：仅多轮或用工具时反思；always=每次最终回复都反思；jev=由 Jev 判断（需开启 Jev）', component: 'Select', componentProps: { options: OPT.reflect } },
 
-        // —— 循环预算 · 工具 ——
-        { label: '循环预算 · 工具', component: 'SOFT_GROUP_BEGIN' },
-        { field: 'agent.loop.maxSameAction', label: '同动作连续上限', bottomHelpMessage: '同一工具+相同参数连续允许次数（默认 2；超出→duplicate_action 终止，防 ping 死循环）', component: 'InputNumber', componentProps: { min: 1 } },
-        { field: 'agent.loop.maxConsecutiveFailures', label: '连续失败上限', bottomHelpMessage: '连续工具失败次数上限（默认 3；超出→consecutive_failures 终止）', component: 'InputNumber', componentProps: { min: 1 } },
-        { field: 'agent.loop.noProgressWindow', label: '无进展窗口(步)', bottomHelpMessage: '连续 N 步无新事实→no_progress 终止（默认 4）', component: 'InputNumber', componentProps: { min: 1 } },
-        { field: 'agent.loop.timeBudgetMs', label: '工作时间预算(毫秒)', bottomHelpMessage: '单次对话工作时间预算（默认 3600000=60 分钟，超出终止在途调用并进入收尾）', component: 'InputNumber', componentProps: { min: 60000, step: 60000 } },
-        { field: 'agent.loop.tokenBudget', label: '有效工作 token 预算', bottomHelpMessage: '单次对话累计有效工作 token 上限（默认 480000；未命中输入+缓存写+输出，缓存命中读按 0.1x 折算）', component: 'InputNumber', componentProps: { min: 0, step: 10000 } },
-        { field: 'agent.loop.finalizeGraceMs', label: '收尾宽限(毫秒)', bottomHelpMessage: '预算/时间耗尽后，收尾总结调用的独立时间窗（默认 45000）', component: 'InputNumber', componentProps: { min: 0, step: 1000 } },
-        { field: 'agent.toolConcurrency.maxParallel', label: '只读工具并发上限', bottomHelpMessage: '单批工具调用的全局滚动并发池（默认 3；独占/资源类工具另行串行）', component: 'InputNumber', componentProps: { min: 1, max: 16 } },
-        { field: 'agent.toolSchemaValidate', label: '工具参数 schema 预校验', bottomHelpMessage: '缺参/类型错误/多余参数在副作用前结构化回报；默认开（关=回滚杠杆）', component: 'Switch' },
-        { field: 'agent.finalizeMaxTokens', label: '收尾输出 token 上限', bottomHelpMessage: '异常停止后最后一次交付的输出上限（默认 2048；太小会截断总结/子代理报告）', component: 'InputNumber', componentProps: { min: 1 } },
-        { field: 'agent.rootTokenBudget', label: '根任务 token 预算', bottomHelpMessage: '主/编排/子代理/反思合计上限（0=不限，默认 0）；嵌套工作开始前预留', component: 'InputNumber', componentProps: { min: 0, step: 1000 } },
+        // 循环护栏 / 时间与 token 预算 / 收尾 / 工具并发与校验 / 缓存策略均已内置，不再提供面板配置。
 
         // —— 记忆与召回 ——
         { label: '记忆与召回', component: 'SOFT_GROUP_BEGIN' },
@@ -350,15 +328,9 @@ export function supportGuoba() {
         // —— 深度思考 ——
         { label: '深度思考（Thinking）', component: 'SOFT_GROUP_BEGIN' },
         { field: 'agent.thinking.enable', label: '开启深度思考', bottomHelpMessage: 'Anthropic 等支持的扩展思考：模型先思考再作答（更慢、更耗 token，但复杂问题质量更高）；留空=不手动开启', component: 'Switch' },
-        { field: 'agent.thinking.budget_tokens', label: '思考预算(tokens)', bottomHelpMessage: '手动思考预算（默认 16000）；上限 128000', component: 'InputNumber', componentProps: { min: 1024, max: 128000, step: 1024 } },
         { field: 'agent.thinkingAuto.enable', label: '思考自动决策', bottomHelpMessage: '按提问复杂度自动决定是否思考与深度（闲聊不思考、复杂问题深度思考）；开启后覆盖上面的手动 thinking（模型级覆盖仍优先，不会删除手动配置）。能力表未表态的新型号默认乐观启用；厂商拒绝思考字段会自动剥离记忆（转不支持，无需重启）', component: 'Switch' },
         { field: 'agent.thinkingAuto.classifier', label: '判档方式', bottomHelpMessage: 'auto=规则不确定时用小模型判（省调用）/ always=总是小模型 / off=纯规则 / jev=由 Jev 判档（需开启 Jev）', component: 'Select', componentProps: { options: [{ label: 'auto（小模型+规则）', value: 'auto' }, { label: 'always（总是小模型）', value: 'always' }, { label: 'off（纯规则）', value: 'off' }, { label: 'jev（由 Jev 判档，需开启 Jev）', value: 'jev' }] } },
-        { field: 'agent.thinkingAuto.model', label: '判档小模型(可选)', bottomHelpMessage: '留空=utilityModel→主模型；建议用廉价小模型降本', component: 'Input', componentProps: { placeholder: '留空=utilityModel' } },
-        { field: 'agent.thinkingAuto.timeoutMs', label: '判档超时(ms)', bottomHelpMessage: '小模型判档超时/失败自动回退规则（默认 2500）', component: 'InputNumber', componentProps: { min: 500, max: 15000, step: 500 } },
         { field: 'agent.thinkingAuto.maxBudget', label: '自动预算上限(tokens)', bottomHelpMessage: '自动模式单轮思考预算硬顶（默认 32768），防烧太多；上限 128000', component: 'InputNumber', componentProps: { min: 1024, max: 128000, step: 1024 } },
-        { field: 'agent.thinkingAuto.budgets.low', label: '低深度预算', component: 'InputNumber', componentProps: { min: 1024, max: 64000, step: 1024 } },
-        { field: 'agent.thinkingAuto.budgets.medium', label: '中深度预算', component: 'InputNumber', componentProps: { min: 1024, max: 64000, step: 1024 } },
-        { field: 'agent.thinkingAuto.budgets.high', label: '高深度预算', component: 'InputNumber', componentProps: { min: 1024, max: 128000, step: 1024 } },
 
         // —— Jev（TypeSafe 判断模型，opt-in，作为「厂商 + 模型」注册）——
         {
@@ -806,9 +778,9 @@ export function supportGuoba() {
         setPath(data, 'agent.humanize.groupsOverride', go && typeof go === 'object' && !Array.isArray(go) && Object.keys(go).length ? JSON.stringify(go, null, 2) : '')
         const mc = data?.agent?.media?.caps
         setPath(data, 'agent.media.caps', mc && typeof mc === 'object' && !Array.isArray(mc) && Object.keys(mc).length ? JSON.stringify(mc, null, 2) : '')
-        // thinking：provider 原生 {type,budget_tokens}|null → 面板友好 {enable,budget_tokens}
+        // thinking：provider 原生 {type,budget_tokens}|null → 面板只暴露开关（预算固定 16000）
         const tk = data?.agent?.thinking
-        data.agent.thinking = { enable: !!tk && tk?.type !== 'disabled', budget_tokens: tk?.budget_tokens || 16000 }
+        data.agent.thinking = { enable: !!tk && tk?.type !== 'disabled' }
         // mcp.servers（对象 map）→ 标准 mcpServers JSON 文本（serversJson 虚拟字段，textarea 展示/编辑）
         try {
           const servers = unwrapServers(data?.agent?.mcp?.servers || {})
@@ -821,14 +793,11 @@ export function supportGuoba() {
       setConfigData(data, { Result }) {
         const cfg = Config.get()
         const notes = []
-        // 深度思考：面板 {enable,budget_tokens} → provider 原生 {type:'enabled',budget_tokens}|null
+        // 深度思考：面板只提交开关 → provider 原生 {type:'enabled',budget_tokens}；预算固定 16000
         if ('agent.thinking.enable' in (data || {})) {
-          const cur = cfg.agent?.thinking || {}
           const enable = data['agent.thinking.enable']
-          const budget = data['agent.thinking.budget_tokens'] ?? cur.budget_tokens ?? 16000
-          cfg.agent.thinking = enable ? { type: 'enabled', budget_tokens: Number(budget) || 16000 } : null
+          cfg.agent.thinking = enable ? { type: 'enabled', budget_tokens: 16000 } : null
           delete data['agent.thinking.enable']
-          delete data['agent.thinking.budget_tokens']
         }
         // JSON 文本域 → 真实对象/数组（解析失败保留原配置并提示，不阻塞其余字段保存）
         for (const [p, spec] of Object.entries(JSON_FIELDS)) {

@@ -4,16 +4,16 @@
 
 ## ⚙️ 配置总览
 
-配置文件：`plugins/agents-plugin/config/config.yaml`（**566 个配置叶子**，全部带注释；Web 配置中心可全量编辑）。
+配置文件：`plugins/agents-plugin/config/config.yaml`（全量配置，全部带注释；Web 配置中心可编辑常用项）。
 下面按主题列出 `agent.*` 下的配置块，字段细节见 「详细配置参考」 与 Web 配置中心。
 
 | 主题 | 配置块（点路径） | 说明 |
 | --- | --- | --- |
 | **基础与回复** | `trigger` `triggerCommand` `commandPassThrough` `privateChat` `isolation.enable` `progress` `progressRecall` `reply.mode/atSender/quote/narrate/renderScale` `render.*` | 触发方式、私聊开关、数据隔离、进度与回复渲染 |
-| **模型** | `providerId` `modelId` `llmProviders[]` `llmModels[]` `fallbackModels[]` `utilityModel` `proxy` `reasoningFields` `temperature` `maxTokens` | 引用制厂商/模型、回退、旁路小模型、代理 |
-| **思考** | `thinking` `thinkingAuto.*` `jev.*` | 手动思考 / 自动判档（规则·小模型·Jev） |
-| **上下文与缓存** | `cacheControl` `promptCacheKey` `keepReasoning` `stream` `reflect*` `finalizeMaxTokens` `rootTokenBudget` | 上下文窗口与压缩水位已自动解析，无配置项；保留缓存策略、收尾与预算 |
-| **循环与工具** | `maxTurns` `loop.*` `maxToolResultChars` `toolConcurrency.maxParallel` `toolSchemaValidate` `toolDiscovery.*` `taskStore.*` | 轮次预算与智能终止、工具发现/并发/账本 |
+| **模型** | `providerId` `modelId` `llmProviders[]` `llmModels[]` `fallbackModels[]` `utilityModel` `proxy` `temperature` `maxTokens` | 引用制厂商/模型、回退、旁路小模型、代理 |
+| **思考** | `thinking` `thinkingAuto.enable/classifier/maxBudget` `jev.*` | 手动思考 / 自动判档（深度预算、判档模型与超时已内置） |
+| **上下文与缓存** | `reflect` | 上下文窗口、压缩、缓存断点、推理回灌、流式与收尾预算均已内置，无配置项 |
+| **循环与工具** | `maxTurns` `maxToolResultChars` `toolDiscovery.*` `taskStore.*` | 轮次预算、工具结果上限、工具发现与账本 |
 | **记忆** | `memoryLimits` `memory.*` `recall.*` `profile.*` `kb.*` | 声明式记忆、长期召回、用户画像、知识库 |
 | **自动化** | `schedule.*` `selfReview.*` `evolution.*` `toolEvo.*` | 定时任务、自评审进化、工具进化 |
 | **安全与权限** | `masters` `chatPermission` `masterSkipConfirm` `confirmTimeout` `guardAction` `guardSensitivity` `untrustedGuard` `redactSecrets` `policy.categoryMin` | 主人、审批、注入防御、脱敏、RBAC |
@@ -56,15 +56,12 @@
 | `protocol` / `preset` / `baseURL` / `apiKey` / `model` | 镜像 | 上面引用的**解析结果**，加载时自动回填；勿手改，改厂商 Key / 换模型会自动跟随 |
 | `utilityModel` | 空 | 播报等旁路小模型（留空=沿用主模型）；可填任意已注册厂商的模型（运行时按注册表解析端点，不再局限主厂商） |
 | `fallbackModels` | `[]` | 回退模型**唯一真源**（主模型失败时按顺序尝试）：`[{ model, baseURL, apiKey, protocol }]`，每条独立端点/协议，**可跨厂商**（如主 DeepSeek、回退 GPT）。旧版扁平字段 `fallbackModel`/`fallbackBaseURL`/`fallbackApiKey`/`fallbackProtocol` 已废弃：启动时自动把有效条目迁移进数组并删除扁平键；Web/锅巴面板都只编辑数组 |
-| `reasoningFields` | `[]` | 推理字段归一化（如 `["reasoning_content"]`），preset 通常已带；**空数组=未配置**（不会向 provider 下发空数组） |
 | `maxTurns` | `200` | 单次对话工具调用轮次预算（面板上限已放宽到 1000；旧版面板上限 100 会把默认值静默截断） |
 | `temperature` | `0.2` | 采样温度 |
 | `maxTokens` | 空 | 单次回复最大 token（留空=厂商默认；Anthropic 默认 4096） |
 | 上下文窗口 / 压缩 | 自动 | 不再提供配置项。运行时按模型官方 `/models` 元数据 → 本地模型目录 → 学习值 → 128K 兜底解析；按可用输入预算 **80% 触发、45% 目标**压缩，始终开启无损归档（`context_recall` 可恢复）。厂商报上下文超限时会自动学习真实上限并压缩重试一次。详见 [记忆体系与上下文缓存](memory-and-context.md) |
 | `maxToolResultChars` | `8000` | 单条工具结果字符上限，超长截断防上下文膨胀 |
-| `promptCacheKey` | `false` | OpenAI 官方 `prompt_cache_key` 稳定会话路由（多轮命中前缀缓存的命中率更高）。仅当当前 provider 声明支持该能力（OpenAI 官方 preset）时才下发，兼容网关/其它厂商一律不发 |
-| `keepReasoning` | `false` | 是否把推理(`reasoning_content`)回灌历史；默认 `false` 省 context。thinking 模式下带工具调用的轮次按协议必需始终回传（不受此开关影响），否则上游会报 "reasoning_content must be passed back" |
-| `stream` | `false` | 逐字流式输出（依赖适配器、不稳，默认关） |
+| 推理/循环/收尾（内置） | 固定 | 不再提供配置项：循环护栏（同动作 4 / 连续失败 6 / 无进展 8 步）、根任务时间 2 小时、有效 token 2,000,000、收尾宽限 2 分钟、收尾输出 8192、工具并发 4、参数校验开启、反思回环 1 次、推理不回灌、逐字流式关闭；缓存策略按官方端点自动启用（Anthropic 显式断点 / OpenAI `prompt_cache_key`），兼容网关不下发。 |
 | `progress` | `true` | 工具调用时推送节流进度消息（消除"干等"，默认开） |
 | `progressRecall` | `3` | 进度消息多少秒后自动撤回（适配器不支持则忽略） |
 | `reply.mode` | `image` | 回复渲染：`image`（markdown→浅色图片，默认）/ `text`（纯文本）。**QQ 官方机器人下自动走 Markdown 直发，本项被忽略** |
@@ -85,8 +82,8 @@
 | `qqBot.sandbox` | `false` | 连开放平台沙箱环境 |
 | `qqBot.intents` | `0` | 事件订阅位图（0=默认只订群@+C2C=33554432；按钮交互=100663296，频道=1073741825。未开通的位会被 4013 拒绝，插件自动降级） |
 | `qqBot.apiBase` / `qqBot.tokenUrl` | 空 | 覆盖 OpenAPI 基址/token 端点（默认 `api.bot.qq.com`，失败自动回退 `api.sgroup.qq.com` / `bots.qq.com`） |
-| `thinking` | 空 | 思考模式（手动），provider 原生形状：`{ type: "enabled", budget_tokens: 16000 }`（`type` 可为 `enabled`/`disabled`，留空=不开启；`budget_tokens` 上限统一到 **128000**，各协议按同一 clamp）。锅巴面板用「开启深度思考 + 思考预算」两个控件读写同一字段 |
-| `thinkingAuto` | 关 | 思考自动决策：`{ enable, classifier, model, timeoutMs, maxBudget, budgets:{low,medium,high}, style }`。判档方式 `classifier`：`auto`=规则不确定时用小模型判（省调用）/`always`=总是小模型/`off`=纯规则/`jev`=由 Jev 判档（需开启 Jev）；小模型带超时、缓存，失败自动回退规则，不阻塞对话。档位→厂商原生字段（MiMo/Kimi/GLM/豆包→`thinking`、DeepSeek→`thinking`+`reasoning_effort`、Qwen→`enable_thinking`+`thinking_budget`、MiniMax→`adaptive`、Anthropic→`budget_tokens`、o/GPT-5→`reasoning_effort`、Gemini→`thinking_level`）。模型级 `thinking` 显式覆盖仍优先。**能力自适应**：能力表没明确表态的（新）型号默认乐观启用思考——厂商若拒绝思考字段，请求层自动剥离重试一次并记忆（之后自动判为不支持，`[chat]` 日志随之转 off，无需重启）；明确判为不支持的模型（如 gpt-4o）启动时有 `[thinking]` 警告，可设 `agent.media.caps.thinking=true` 强制 |
+| `thinking` | 空 | 手动深度思考开关（provider 原生形状，内部固定 `{ type: "enabled", budget_tokens: 16000 }`）；留空=不开启。预算不再提供配置，Web/锅巴只保留开关。 |
+| `thinkingAuto` | 关 | 思考自动决策：`{ enable, classifier, maxBudget }`。判档方式 `classifier`：`auto`=规则不确定时用小模型判（省调用）/`always`=总是小模型/`off`=纯规则/`jev`=由 Jev 判档（需开启 Jev）。判档模型固定为 `utilityModel → 主模型`、超时 2500ms、低/中/高深度预算固定 4096/8192/32768，失败自动回退规则，不阻塞对话。档位→厂商原生字段（MiMo/Kimi/GLM/豆包→`thinking`、DeepSeek→`thinking`+`reasoning_effort`、Qwen→`enable_thinking`+`thinking_budget`、MiniMax→`adaptive`、Anthropic→`budget_tokens`、o/GPT-5→`reasoning_effort`、Gemini→`thinking_level`）。模型级 `thinking` 显式覆盖仍优先。**能力自适应**：能力表没明确表态的（新）型号默认乐观启用思考——厂商若拒绝思考字段，请求层自动剥离重试一次并记忆（之后自动判为不支持，`[chat]` 日志随之转 off，无需重启）；明确判为不支持的模型（如 gpt-4o）启动时有 `[thinking]` 警告，可设 `agent.media.caps.thinking=true` 强制 |
 | `memoryLimits` | 空 | 声明式记忆字符上限，如 `{ memory: 2200, user: 1375 }` |
 | `systemPrompt` | 空 | 默认身份 system prompt（留空用富默认身份）。**优先级**：人设覆盖 > 进化产出的 agent 提示词 > 本项 > 内置默认（v1.26.30 修：此前注册表里预置的内置模板会被当成「进化产出」，导致本项写了也不生效） |
 | `chatPermission` | `master` | `#ai` 命令权限：`master`/`admin`/`owner`/`all` |
@@ -318,7 +315,7 @@ Bot：（时序图图片）用户/Agent/工具 三方消息序列
 | `workerModel` | 空 | 子代理模型（空=主模型；可跨厂商，填便宜模型降本） |
 | `defaultTools` | `[web_search, memory_search]` | 子代理默认可用工具（模型未指定时；仅 query 类安全工具） |
 
-> 子代理的默认值（v1.30.0 起）：**轮数 200、时间 60 分钟、单轮输出 16384、结果回传 48000 字符**；任务结束后的结果保留 60 分钟（期间随时 `check_subagent` 取回）。根任务整体预算（`agent.loop.timeBudgetMs` 默认 **60 分钟**，已与 `multiagent.workerTimeBudgetMs` 对齐；`agent.loop.tokenBudget` 默认 480000）在「推理参数」调整——想让根任务等满一个满预算子代理，根预算不要低于子代理预算。
+> 子代理的默认值（v1.30.0 起）：**轮数 200、时间 60 分钟、单轮输出 16384、结果回传 48000 字符**；任务结束后的结果保留 60 分钟（期间随时 `check_subagent` 取回）。根任务整体预算已内置为 **2 小时 / 2,000,000 有效 token**（缓存命中读按 0.1x 折算），足以容纳一个满预算子代理；无需手动调整。
 >
 > **取消语义**（v1.30.1 修）：只有真正的取消（`#取消任务`/主动停止、`#agent重载`/退出）才会连带取消在跑子代理；**根任务时间预算到点只是本轮进收尾，不牵连子代理**——子代理按自身预算继续跑完，结果经后台回推（此前会被误杀成「已中止：未知原因」）。非正常结束的子代理一律带可读原因（超时=时间预算耗尽、中止=父任务取消/运行时关闭）。
 

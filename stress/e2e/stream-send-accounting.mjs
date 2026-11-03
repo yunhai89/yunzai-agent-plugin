@@ -18,12 +18,13 @@ import { pathToFileURL } from 'node:url'
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), `e2e-stream-${process.pid}-`))
 process.env.E2E_TMP = TMP
 process.env.E2E_REAL_AGENT = '1'
+process.env.AGENTS_STREAM_TEST = '1' // 流式已内置关闭；离线用例经环境变量开启
 await import(pathToFileURL(path.join(import.meta.dirname, 'hooks.mjs')).href)
 
 const cfgMod = await import('./stubs/Config.js')
 cfgMod.__setConfig({
   agent: {
-    apiKey: 'sk-stream-test', model: 'test-model', stream: true, progress: false,
+    apiKey: 'sk-stream-test', model: 'test-model', progress: false,
     reply: { mode: 'text' },
     devLog: { dir: path.join(TMP, 'devlog') },
   },

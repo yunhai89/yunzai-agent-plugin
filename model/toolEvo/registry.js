@@ -191,8 +191,13 @@ export class ToolEvoRegistry {
       source: row.source_text || '',
       tests,
       contentHash: row.content_hash || null,
+      sourceHash: row.source_hash || null,
       verifiedContentHash: row.verified_content_hash || null,
       verifiedVerifier: row.verified_verifier || null,
+      parentVersionId: row.parent_version_id || null,
+      generatorModel: row.generator_model || null,
+      createdAt: row.created_at || null,
+      evidence: (() => { try { return JSON.parse(row.evidence_json || 'null') } catch { return null } })(),
     }
   }
 
@@ -207,11 +212,13 @@ export class ToolEvoRegistry {
     })
   }
 
-  async listVersions({ toolId, status } = {}) {
+  async listVersions({ toolId, status, namespace } = {}) {
     const where = [], params = []
     if (toolId) { where.push('tv.tool_id=?'); params.push(toolId) }
     if (status) { where.push('tv.status=?'); params.push(status) }
-    const sql = `SELECT tv.id,tv.tool_id,tv.semver,tv.status,tv.source_hash,tv.content_hash,tv.parent_version_id,tv.generator_model,tv.created_at,t.name,tv.manifest_json,
+    if (namespace) { where.push('t.namespace=?'); params.push(namespace) }
+    const sql = `SELECT tv.id,tv.tool_id,tv.semver,tv.status,tv.source_hash,tv.content_hash,tv.verified_content_hash,tv.verified_verifier,
+        tv.parent_version_id,tv.generator_model,tv.created_at,t.name,t.namespace,tv.manifest_json,
         (SELECT COUNT(*) FROM tool_tests tt WHERE tt.version_id=tv.id) AS tests_count
       FROM tool_versions tv LEFT JOIN tools t ON t.id=tv.tool_id
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY tv.created_at DESC`
@@ -234,15 +241,27 @@ export class ToolEvoRegistry {
     })
   }
 
+  /** 内置/受信版本（human provenance 或 builtin namespace）不可被工具进化状态机改动 */
+  isTrustedVersion(version, tool = null) {
+    return tool?.namespace === 'builtin' || version?.manifest?.provenance?.kind === 'human'
+  }
+
   /** 改状态（状态机校验）；verified 绑定内容哈希；stable 校验哈希与制品完整性 */
-  async setStatus(versionId, to, { actor, reason, verifier } = {}) {
+  async setStatus(versionId, to, { actor, reason, verifier, evidence = null } = {}) {
+    return this._withVersionLock(() => this._setStatusLocked(versionId, to, { actor, reason, verifier, evidence }))
+  }
+
+  async _setStatusLocked(versionId, to, { actor, reason, verifier, evidence } = {}) {
     const v = await this.getVersion(versionId)
     if (!v) throw new Error('版本不存在')
+    const tool = await this.getById(v.tool_id)
+    if (this.isTrustedVersion(v, tool)) throw new Error('内置/受信工具版本不可通过工具进化状态机变更')
     if (!isValidState(to)) throw new Error('非法状态: ' + to)
     if (v.status === to) return v
     if (!canTransition(v.status, to)) throw new Error(`非法转移 ${v.status} → ${to}`)
     if (to === 'stable') {
       if (!v.contentHash) throw new Error('版本缺少内容哈希，拒绝上线（旧数据需重新验证）')
+      if (!v.sourceHash) throw new Error('版本缺少源码哈希，拒绝上线（旧数据需重新验证）')
       if (!v.verifiedContentHash || v.verifiedContentHash !== v.contentHash) {
         throw new Error('验证证据与当前制品不一致（内容已变更或未验证），拒绝上线')
       }
@@ -250,8 +269,8 @@ export class ToolEvoRegistry {
     }
     await dao.run(`UPDATE tool_versions SET status=? WHERE id=?`, [to, versionId])
     if (to === 'verified') {
-      await dao.run(`UPDATE tool_versions SET verified_content_hash=?, verified_verifier=? WHERE id=?`,
-        [v.contentHash, verifier || 'unknown', versionId])
+      await dao.run(`UPDATE tool_versions SET verified_content_hash=?, verified_verifier=?, evidence_json=? WHERE id=?`,
+        [v.contentHash, verifier || 'unknown', evidence ? JSON.stringify(evidence) : null, versionId])
     }
     if (to === 'stable') {
       // active 切换失败必须回滚状态，避免“版本已 stable 但未真正上线”的不一致
@@ -296,14 +315,19 @@ export class ToolEvoRegistry {
    * 仅 stable 版本可设为 active，且必须内容哈希一致 + 制品完整；记审计。
    */
   async setActiveVersion(toolId, versionId, { actor, reason } = {}) {
-    const v = await this.getVersion(versionId)
-    if (!v) throw new Error('版本不存在')
-    if (v.tool_id !== toolId) throw new Error('版本不属于该工具')
-    if (v.status !== 'stable') throw new Error('仅 stable 版本可设为 active（回滚目标须是已上线版本）')
-    await this._verifyArtifacts(v)
-    await dao.run(`UPDATE tools SET active_version_id=? WHERE id=?`, [versionId, toolId])
-    if (actor) await this._recordApproval(versionId, actor, 'rollback', reason)
-    return { toolId, activeVersionId: versionId }
+    return this._withVersionLock(async () => {
+      const v = await this.getVersion(versionId)
+      if (!v) throw new Error('版本不存在')
+      const tool = await this.getById(toolId)
+      if (!tool) throw new Error('工具不存在')
+      if (v.tool_id !== toolId) throw new Error('版本不属于该工具')
+      if (this.isTrustedVersion(v, tool)) throw new Error('内置/受信工具版本不可通过工具进化切换 active')
+      if (v.status !== 'stable') throw new Error('仅 stable 版本可设为 active（回滚目标须是已上线版本）')
+      await this._verifyArtifacts(v)
+      await dao.run(`UPDATE tools SET active_version_id=? WHERE id=?`, [versionId, toolId])
+      if (actor) await this._recordApproval(versionId, actor, 'rollback', reason)
+      return { toolId, activeVersionId: versionId }
+    })
   }
 
   async _recordApproval(versionId, actor, decision, reason) {
@@ -315,15 +339,21 @@ export class ToolEvoRegistry {
   /** 每工具的 active stable 版本（供注入 ToolRegistry），带 source/contentHash 供隔离执行 */
   async listStable() {
     const rows = await dao.all(
-      `SELECT tv.id AS version_id, tv.tool_id, tv.semver, tv.manifest_json, tv.source_text, tv.source_hash, tv.content_hash, t.name
+      `SELECT tv.id AS version_id, tv.tool_id, tv.semver, tv.manifest_json, tv.source_text, tv.source_hash, tv.content_hash, t.name, t.namespace
        FROM tools t JOIN tool_versions tv ON tv.id = t.active_version_id
        WHERE tv.status='stable'`,
     )
-    return rows.map((r) => ({
-      versionId: r.version_id, toolId: r.tool_id, name: r.name, semver: r.semver,
-      manifest: JSON.parse(r.manifest_json), source: r.source_text || '',
-      sourceHash: r.source_hash || null, contentHash: r.content_hash || null,
-    }))
+    const out = []
+    for (const r of rows) {
+      try {
+        out.push({
+          versionId: r.version_id, toolId: r.tool_id, name: r.name, semver: r.semver, namespace: r.namespace,
+          manifest: JSON.parse(r.manifest_json), source: r.source_text || '',
+          sourceHash: r.source_hash || null, contentHash: r.content_hash || null,
+        })
+      } catch { /* 单行 manifest 损坏不应拖垮全部 stable 注入 */ }
+    }
+    return out
   }
 
   /**
@@ -333,6 +363,9 @@ export class ToolEvoRegistry {
    * 避免“校验后重新读取”的竞态（审计 P1-7）。
    */
   async toToolContract(stable, runner) {
+    if (stable.namespace === 'builtin' || stable.manifest?.provenance?.kind === 'human') {
+      throw new Error(`内置/受信工具「${stable.manifest?.name || stable.name}」不走工具进化执行契约`)
+    }
     const dir = path.join(this.artifactsDir, stable.manifest.name, stable.semver)
     const artifactPath = pathToFileURL(path.join(dir, 'index.js')).href
     const artifactRel = path.join(stable.manifest.name, stable.semver, 'index.js')

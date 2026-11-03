@@ -96,6 +96,27 @@ await test('内置工具不可写入自动生成制品', async () => {
   ok(!!e && /内置/.test(e.message), '内置 namespace 拒绝 generated 制品')
 })
 
+await test('内置/受信版本：不可通过状态机淘汰/回滚；namespace 过滤生效', async () => {
+  const toolId = 'tool_builtin_lifecycle'
+  await reg.createTool({ id: toolId, name: 'builtin_life', namespace: 'builtin' })
+  const manifest = makeManifest({
+    name: 'builtin_life', version: '1.0.0', status: 'stable', description: '内置生命周期工具', inputSchema: { type: 'object' },
+    permissions: { sideEffects: ['none'] }, provenance: { kind: 'human' },
+  })
+  const v = await reg.createVersion({ toolId, semver: '1.0.0', manifest, source: '', tests: [] })
+  await reg.setActiveVersion(toolId, v.id).catch(() => {}) // 先走受信 guard（预期抛错），确保不会改 active
+  let e1 = null
+  try { await reg.setStatus(v.id, 'deprecated') } catch (e) { e1 = e }
+  ok(!!e1 && /内置/.test(e1.message), '内置版本不可淘汰')
+  let e2 = null
+  try { await reg.setActiveVersion(toolId, v.id) } catch (e) { e2 = e }
+  ok(!!e2 && /内置/.test(e2.message), '内置版本不可回滚/切 active')
+  const evolved = await reg.listVersions({ namespace: 'evolved' })
+  const builtin = await reg.listVersions({ namespace: 'builtin' })
+  ok(!evolved.some((x) => x.name === 'builtin_life'), 'namespace=evolved 排除内置')
+  ok(builtin.some((x) => x.name === 'builtin_life'), 'namespace=builtin 可查询')
+})
+
 await closeDb()
 fs.rmSync(tmpDir, { recursive: true, force: true })
 

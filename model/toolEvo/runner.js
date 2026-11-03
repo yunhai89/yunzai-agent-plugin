@@ -96,12 +96,16 @@ export class RunnerClient {
       if (!p || p.gen !== gen) return
       this._pending.delete(msg.id)
       clearTimeout(p.timer)
-      if (msg.ok) p.resolve({ ok: true, output: msg.output })
-      else p.resolve({ ok: false, error: msg.error || '执行失败', errorClass: msg.errorClass })
+      if (msg.ok) {
+        let size = Infinity
+        try { size = JSON.stringify(msg.output ?? null).length } catch { /* 循环对象等按超限处理 */ }
+        if (size > MAX_OUTPUT) p.resolve({ ok: false, error: `输出超过 ${MAX_OUTPUT} 字符上限`, errorClass: 'output_too_large' })
+        else p.resolve({ ok: true, output: msg.output })
+      } else p.resolve({ ok: false, error: msg.error || '执行失败', errorClass: msg.errorClass })
     }
     w.on('message', onMessage)
     w.on('exit', (code, signal) => {
-      this.logger('warn', `[toolEvo:runner] worker 退出 code=${code} signal=${signal}`)
+      if (!w._recycled) this.logger('warn', `[toolEvo:runner] worker 退出 code=${code} signal=${signal}`)
       if (this._worker === w) { this._worker = null }
       this._failAll(`worker 退出（code=${code}）`, gen)
       if (w._recycled) return // 用后即弃：不重启（防跨调用状态残留）
@@ -166,7 +170,7 @@ export class RunnerClient {
 
   /** 校验宿主制品文件哈希（制品篡改/半写入 → 拒绝执行） */
   _verifyArtifact(artifactPath, expectedHash) {
-    if (!expectedHash || !artifactPath) return true
+    if (!expectedHash || !artifactPath) return false
     try {
       const abs = String(artifactPath).startsWith('file:') ? fileURLToPath(artifactPath) : String(artifactPath)
       const data = fs.readFileSync(abs)
@@ -259,8 +263,13 @@ export class RunnerClient {
       if (r.timedOut) { await this._dropSandbox(); return { ok: false, error: `执行超时(>${ms}ms，疑似死循环/网络等待)`, errorClass: 'timeout' } }
       if (r.aborted) { await this._dropSandbox(); return { ok: false, error: '执行被取消', errorClass: 'cancelled' } }
       if (r.sandboxError) { await this._dropSandbox(); return { ok: false, error: `沙箱执行失败(${r.sandboxError.kind})：${String(r.stderr || '').slice(0, 300)}`, errorClass: 'sandbox_error' } }
+      const rawOut = String(r.stdout || '').trim()
+      if (rawOut.length > MAX_OUTPUT) {
+        await this._dropSandbox()
+        return { ok: false, error: `输出超过 ${MAX_OUTPUT} 字符上限`, errorClass: 'output_too_large' }
+      }
       try {
-        const out = JSON.parse(String(r.stdout || '').trim().slice(0, MAX_OUTPUT))
+        const out = JSON.parse(rawOut)
         return out.ok ? { ok: true, output: out.output } : { ok: false, error: out.error || '执行失败', errorClass: out.errorClass }
       } catch {
         return { ok: false, error: '工具输出非 JSON：' + String(r.stdout || '').slice(0, 200), errorClass: 'bad_output' }

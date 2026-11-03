@@ -76,7 +76,7 @@ pnpm add cuvs-node
 2. **窗口吃满 + 压得深**：`H` 由可用输入预算固定为 0.8，`K` 越小命中率越高（`H` 大让同一段前缀被反复复用；`K` 小让「前缀重建」的代价更小）。默认 `0.8/0.45`；把内部覆盖的 `K` 调到 `0.15W` 还能进一步减少换代频率；
 3. **别让前缀变形**：system 里的工具目录必须与「本轮激活了哪些工具」无关（v1.26.3 起固定为配置静态集，此前每激活一批工具就整段重付）；
 4. **收尾/评判调用要与主请求同形**：`tool_choice:'none'` 会让服务端丢掉 tools 段、换成另一套渲染，这类调用整段 miss（v1.26.4 起不再下发，改由指令禁工具）；
-5. **`d` 越小越好**：`keepReasoning: false`（少回灌推理）、`maxToolResultChars` 适度收紧、情境注入量（日志里的 `ctx` 字数）别过大。
+5. **`d` 越小越好**：内置不回灌推理（少占上下文）、`maxToolResultChars` 适度收紧、情境注入量（日志里的 `ctx` 字数）别过大。
 
 6. **窗口口径与校准（v1.27）**：上下文预算按模型真实窗口解析；压缩用 CJK 感知估算，并用上一次接口返回的 `prompt_tokens` 校准估算偏差。`contextWindow`、`contextMsg*`、`contextHigh/LowRatio`、`compaction.*` 已从配置中移除，旧配置值忽略。
 
@@ -135,7 +135,7 @@ node scripts/cache-hit-report.mjs --dir /path/to/plugins/agents-plugin/data/logs
 
 输出的四类 miss 含义：`break:tool_schema` 等 `break:*` = 前缀被打断（工具目录/记忆快照变化，v1.26.3 起目录已固定）；
 `COMPACTED/after cache_compact` = 压缩后整段重建（自动窗口越大越少）；`cold` = 会话首个请求，必然 miss；
-`turn:纯新增内容` = 每轮真正新增的 token，**无法靠缓存消除**，只能靠减小 `d`（`keepReasoning:false`、收紧
+`turn:纯新增内容` = 每轮真正新增的 token，**无法靠缓存消除**，只能靠减小 `d`（内置不回灌推理、收紧
 `maxToolResultChars`、控制情境注入量）。
 
 ### 清空命中率统计（面板 · v1.28.0 起）

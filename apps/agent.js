@@ -78,6 +78,7 @@ import {
 } from '../model/persona/index.js'
 import { VisionService, describeImages, resolveVisionBaseURL, resolveVisionRoute } from '../model/vision/index.js'
 import { getStickerManager } from '../model/sticker/manager.js'
+
 import { isStickerOnly, stripMarkers } from '../model/sticker/parser.js'
 import {
   detectAdapter as detectQQAdapter, contextKind as qqContextKind, describeContext as describeQQContext,
@@ -124,9 +125,33 @@ import { toFileSegment } from '../utils/SendFile.js'
 // agent.js 在 apps/ 子目录，dirname=agents-plugin/apps；'..'=agents-plugin（插件根），'../..' 会多上一级到 plugins
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
+/**
+ * 已从用户配置中移除的推理/循环参数：这里内置偏宽松的最优值。
+ * 目标：复杂任务优先跑完，不再让用户调「护栏 / 预算 / 收尾 / 兼容性」细节。
+ */
+const BUILTIN_AGENT_LIMITS = Object.freeze({
+  loop: Object.freeze({
+    maxSameAction: 4,
+    maxConsecutiveFailures: 6,
+    noProgressWindow: 8,
+    timeBudgetMs: 7200000, // 2 小时：复杂任务/长工具链优先跑完
+    tokenBudget: 2000000, // 有效工作 token（缓存命中读按 0.1x 折算）
+    finalizeGraceMs: 120000, // 收尾独立宽限 2 分钟，避免总结被截断
+  }),
+  toolMaxParallel: 4,
+  finalizeMaxTokens: 8192,
+  reflectMaxIterations: 1,
+  rootTokenBudget: 0, // 0=不限；子代理/编排仍受各自预算约束
+})
+const BUILTIN_THINKING = Object.freeze({
+  manualBudget: 16000,
+  classifierTimeoutMs: 2500,
+  budgets: Object.freeze({ low: 4096, medium: 8192, high: 32768 }),
+})
+
 // ─── 进度反馈：工具调用时推送节流进度消息，消除"干等几十秒"的僵化感 ───
 // 真正的逐字流式依赖 QQ 适配器（icqq/napcat 差异大、编辑消息不稳），故默认只做可靠的进度反馈；
-// agent.stream=true 时才让 provider 流式（onDelta 可用，供未来适配器接入）。
+// 逐字流式固定关闭（适配器差异大、稳定性优先）；进度反馈仍默认开启。
 const PROGRESS_LABELS = {
   web_search: '🔍 联网搜索',
   ddg: '🔍 联网搜索',
@@ -561,7 +586,7 @@ async function _buildRuntime(scope) {
   // 用户跑完 scripts/install-crawl4ai.sh 后发 #agent重载 即可立即启用真浏览器抓取
   try { resetCrawl4aiProbe() } catch { /* noop */ }
   // 显式打印本轮生效的步数上限：便于确认配置是否已随运行时重建生效（出现过"改了配置仍是旧值"的困惑）
-  Log.mark('[limits]', `maxTurns=${cfg.maxTurns ?? 200} · schedule.taskMaxTurns=${cfg.schedule?.taskMaxTurns ?? 200} · multiagent.workerMaxTurns=${cfg.multiagent?.workerMaxTurns ?? 200} · workerTimeBudget=${Math.round((cfg.multiagent?.workerTimeBudgetMs ?? 3600000) / 60000)}min · workerMaxTokens=${cfg.multiagent?.workerMaxTokens ?? 16384} · resultCap=${cfg.multiagent?.resultCap ?? 48000} · loop.timeBudget=${cfg.loop ? `${Math.round((cfg.loop.timeBudgetMs ?? 1800000) / 60000)}min` : 'off'}`)
+  Log.mark('[limits]', `maxTurns=${cfg.maxTurns ?? 200} · schedule.taskMaxTurns=${cfg.schedule?.taskMaxTurns ?? 200} · multiagent.workerMaxTurns=${cfg.multiagent?.workerMaxTurns ?? 200} · workerTimeBudget=${Math.round((cfg.multiagent?.workerTimeBudgetMs ?? 3600000) / 60000)}min · workerMaxTokens=${cfg.multiagent?.workerMaxTokens ?? 16384} · resultCap=${cfg.multiagent?.resultCap ?? 48000} · rootTimeBudget=${Math.round(BUILTIN_AGENT_LIMITS.loop.timeBudgetMs / 60000)}min · rootTokenBudget=${BUILTIN_AGENT_LIMITS.loop.tokenBudget}`)
   // F14：最先登记——关闭时取消并等待在途 Agent run 退出，再关依赖资源/账本（关库晚于最后写账本者）
   scope.register(async () => { try { const n = await abortAllActiveRuns(); if (n) Log.info(`[runtime] 关闭：已取消并等待 ${n} 个在途任务退出`) } catch { /* noop */ } }, { name: 'active-runs', order: -1 })
   const startupInfo = {} // 运行时构建期采集的摘要信息（供末尾统一面板输出）
@@ -582,7 +607,6 @@ async function _buildRuntime(scope) {
     apiKey: cfg.apiKey,
     model: cfg.model,
     log: providerLog,
-    ...(Array.isArray(cfg.reasoningFields) && cfg.reasoningFields.length ? { reasoningFields: cfg.reasoningFields } : {}),
     ...(proxyFetch ? { fetch: proxyFetch } : {}),
   })
   // 官方模型能力（数据驱动）：从厂商 /models 拉取模态元数据（OpenRouter 等）prime 一次，供 detectCapabilities 同步叠加；
@@ -597,8 +621,8 @@ async function _buildRuntime(scope) {
     })
   } catch { /* 忽略：回退本地模型目录 */ }
 
-  // 按能力路由缓存参数：cacheControl 'auto' 仅官方 Anthropic 端点生效（自定义 baseURL/preset
-  // 的兼容网关未知字段可能 400，默认 off）；prompt_cache_key 仅官方 OpenAI preset（绝不发 DeepSeek/兼容网关）
+  // 缓存策略内置：cacheControl 仅官方 Anthropic 端点自动开启（兼容网关未知字段可能 400）；
+  // prompt_cache_key 仅官方 OpenAI preset 下发（绝不发 DeepSeek/兼容网关）
   provider.cacheCaps = {
     // 官方端点判定 = 未自定义 baseURL 且 preset 为空或官方同名（deepseek/minimax 等第三方 anthropic/openai 兼容预设不算）
     cacheControlAuto: protocol === 'anthropic' && !cfg.baseURL && (!cfg.preset || cfg.preset === 'anthropic'),
@@ -1026,9 +1050,9 @@ async function _buildRuntime(scope) {
     },
   }
 
-  // 思考自动决策的小模型判档通道：复用主 provider、换廉价 model id（thinkingAuto.model → utilityModel → 主模型）。
+  // 思考自动决策的小模型判档通道：复用主 provider，固定使用 utilityModel（留空则主模型）。
   // 只在开启 agent.thinkingAuto 且 classifier≠off 时用；调用带超时，失败自动回退规则（见 model/llm/thinking.js）。
-  const thinkingTarget = modelRouter.resolve(cfg.thinkingAuto?.model || cfg.utilityModel || cfg.model)
+  const thinkingTarget = modelRouter.resolve(cfg.utilityModel || cfg.model)
   const thinkingLlm = {
     run: async (prompt) => {
       try {
@@ -1126,6 +1150,10 @@ async function _buildRuntime(scope) {
             ? () => { throw new Error('E2B 沙箱不可用（已显式选择 e2b），拒绝降级到本地验证候选') }
             : null),
         verifyTimeoutMs: cfg.sandbox?.toolEvoVerifyTimeoutMs || 3000,
+        // 运行时名称避让：内置/Meta/MCP/多代理工具都不可被进化工具覆盖
+        isNameReserved: (name) => {
+          try { return name === 'tool_search' || !!tools.get(name) } catch { return false }
+        },
       })
       // 注入已 stable 的进化工具（经 runner 隔离执行；重启/热重载后自动恢复，供 agent tool_search 调用）
       let stableCount = 0
@@ -1134,6 +1162,7 @@ async function _buildRuntime(scope) {
           // 内置工具(provenance=human)由插件代码注册,不走制品注入(其 source 为空,execute 在插件代码);
           // 只注入进化产出(generated/refined,制品含 export run)
           if (s.manifest?.provenance?.kind === 'human') continue
+          if (!s.sourceHash) { Log.warn('[toolEvo] 注入 stable 跳过：缺少源码哈希，需重新验证', s.name, s.semver); continue }
           try {
             // 启动恢复前校验制品完整性：哈希不匹配/缺失即拒绝激活（保留 fail-closed），不注入可调用契约
             await toolEvoRegistry.verifyArtifacts(s)
@@ -1215,6 +1244,17 @@ async function _buildRuntime(scope) {
     Log.warn(`[thinking] 已开启思考自动决策，但模型 ${cfg.model} 被判为不支持思考（不会下发思考参数）；如确认支持，可设 agent.media.caps.thinking=true 强制（厂商不接受时会在请求层自动剥离并记忆）`)
   }
 
+  // 手动深度思考：只保留开关语义，预算固定为最优值（旧配置里的 budget_tokens 不再读取）。
+  const manualThinking = (() => {
+    const t = cfg.thinking
+    if (!t) return null
+    if (t === false || t === 'off' || t === 'disabled') return null
+    if (t === true || t === 'on' || t === 'enabled') return { type: 'enabled', budget_tokens: BUILTIN_THINKING.manualBudget }
+    if (typeof t !== 'object') return null
+    if (t.type === 'disabled' || t.enabled === false) return null
+    return { ...t, type: t.type || 'enabled', budget_tokens: BUILTIN_THINKING.manualBudget }
+  })()
+
   const agentConfig = {
     provider,
     model: cfg.model,
@@ -1238,15 +1278,23 @@ async function _buildRuntime(scope) {
     // 留空时由 Agent 用富默认身份（model/prompt TEMPLATES.agent.system）；人设经 run opts.systemPrompt 覆盖
     systemPrompt: cfg.systemPrompt || undefined,
     maxTurns: cfg.maxTurns ?? 200, // 与 yaml 默认 200 对齐（此前 apps/Agent 两层各有 50/90 两套兜底）
-    loop: cfg.loop || undefined, // LoopGovernor 循环智能终止（审计 §2.1）；cfg.loop 假值则 Agent 不启用 governor
+    loop: { ...BUILTIN_AGENT_LIMITS.loop }, // 循环护栏/时间/token 预算内置（复杂任务偏宽松）
     temperature: regTemperature != null ? regTemperature : cfg.temperature,
     maxTokens: regMaxTokens != null ? regMaxTokens : (cfg.maxTokens || null), // 控制输出长度（消除 Anthropic 硬编码 4096 / OpenAI 不发）
-    thinking: regThinking || cfg.thinking || null,
+    thinking: regThinking || manualThinking,
     // 思考自动决策（opt-in）：按提问复杂度自动决定是否思考与深度；模型级 thinking 显式覆盖时不启用。
     // 判档方式=jev（jev.decisions.thinking）独立生效：即便未开 thinkingAuto.enable，也启用自动判档路径，
     // 由 Jev 判档、失败/低置信回退「规则+小模型」hybrid（预算取 thinkingAuto 或内置默认）。
     thinkingAuto: thinkingAutoWanted
-      ? { ...(cfg.thinkingAuto || {}), enable: true }
+      ? {
+          enable: true,
+          classifier: cfg.thinkingAuto?.classifier || 'auto',
+          maxBudget: cfg.thinkingAuto?.maxBudget ?? 32768,
+          model: '', // 留空 → utilityModel → 主模型
+          timeoutMs: BUILTIN_THINKING.classifierTimeoutMs,
+          budgets: { ...BUILTIN_THINKING.budgets },
+          style: '', // 按厂商 preset 自动选择传输风格
+        }
       : null,
     thinkingClassifierLlm: thinkingLlm, // 小模型判档通道（classifier=off 时不使用）
     jev, // Jev 判断模型决策层（null=未启用；见 model/agent/jev/）
@@ -1260,11 +1308,11 @@ async function _buildRuntime(scope) {
     compactArchive, // 无损压缩归档（始终开启；失败时降级为无归档压缩）
     maxToolResultChars: cfg.maxToolResultChars ?? 8000, // 与 yaml 默认 8000 对齐
     // 工具受控并发（P0-2/F10）：全局滚动池上限；未声明并发语义的工具默认独占；跨 Agent 共享同一调度器
-    toolConcurrency: { maxParallel: Math.max(1, Number(cfg.toolConcurrency?.maxParallel) || 3) },
-    toolScheduler: new ToolScheduler({ maxParallel: Math.max(1, Number(cfg.toolConcurrency?.maxParallel) || 3) }),
-    toolSchemaValidate: cfg.toolSchemaValidate !== false, // 工具参数 schema 预校验（默认开；关=回滚杠杆）
+    toolConcurrency: { maxParallel: BUILTIN_AGENT_LIMITS.toolMaxParallel },
+    toolScheduler: new ToolScheduler({ maxParallel: BUILTIN_AGENT_LIMITS.toolMaxParallel }),
+    toolSchemaValidate: true, // 参数 schema 预校验固定开启（安全默认）
     taskStore, // 可恢复任务账本（P0-3；null=关闭）
-    keepReasoning: cfg.keepReasoning === true,
+    keepReasoning: false, // 不回灌推理，省上下文；工具轮协议必需字段仍会保留
     // 工具按需发现：LLM 只常驻少数核心工具，其余经 tool_search 检索后动态注入（默认开；关则回退全量常驻）
     toolDiscovery: {
       enable: cfg.toolDiscovery?.enable !== false,
@@ -1276,11 +1324,11 @@ async function _buildRuntime(scope) {
     },
     shellIntercept: Array.isArray(cfg.shell?.intercept) ? cfg.shell.intercept : [],
     reflect: cfg.reflect ?? 'auto',
-    cacheControl: cfg.cacheControl === true ? 'explicit' : (cfg.cacheControl === 'auto' || cfg.cacheControl === 'explicit' ? String(cfg.cacheControl) : 'off'), // Anthropic 断点三态：auto=官方端点默认开 / explicit=强制 / off（默认，兼容网关安全）
-    promptCacheKey: cfg.promptCacheKey === true, // OpenAI 官方 prompt_cache_key 稳定会话路由（仅官方 preset 下发）
-    reflectMaxIterations: cfg.reflectMaxIterations ?? 1,
-    finalizeMaxTokens: cfg.finalizeMaxTokens ?? 2048, // 收尾输出上限（异常停止后交付；防子代理报告被截断）
-    rootTokenBudget: Number(cfg.rootTokenBudget) > 0 ? Number(cfg.rootTokenBudget) : null, // F13：根任务 token 预算（含嵌套预留）
+    cacheControl: 'auto', // 仅官方 Anthropic 端点自动开；兼容网关不下发未知字段
+    promptCacheKey: true, // 仅 OpenAI 官方端点自动下发；兼容网关不发
+    reflectMaxIterations: BUILTIN_AGENT_LIMITS.reflectMaxIterations,
+    finalizeMaxTokens: BUILTIN_AGENT_LIMITS.finalizeMaxTokens, // 收尾输出上限内置 8192，防复杂任务总结被截断
+    rootTokenBudget: BUILTIN_AGENT_LIMITS.rootTokenBudget || null, // 0=不限；子代理/编排各自预算仍生效
     stickers: getStickerManager({ logger: Log.tag('sticker') }), // 表情包清单注入（_assembleSystem 用 catalog()）
     devLog: (event, data, traceId, scope) => devLog(event, data, traceId, scope), // 详细 trace（框架无关，pino 文件）；库零依赖，由 apps 注入
     logger: Log.tag('agent'),
@@ -1481,7 +1529,7 @@ async function _buildRuntime(scope) {
           // F13：嵌套工作开始前先预留根任务预算；不足则不启动（避免执行阶段超预算）
           const reserve = Math.max(0, Number(cfg.multiagent?.reserveTokens) || 8000)
           if (agent && typeof agent.reserveBudget === 'function' && !agent.reserveBudget(reserve)) {
-            return { error: 'budget_exhausted', reason: `根任务 token 预算不足（需预留 ${reserve}），未启动编排。请缩小任务或提高 agent.rootTokenBudget。` }
+            return { error: 'budget_exhausted', reason: `根任务 token 预算不足（需预留 ${reserve}），未启动编排。请缩小任务或拆分步骤。` }
           }
           // P0-1：把父任务取消信号与关联 ID 传入编排链（否则父任务取消后编排器仍继续跑）
           let r
@@ -2458,9 +2506,9 @@ export class Chat extends plugin {
     try {
       if (detectQQAdapter(this.e).official && cfg.qqOfficial?.progress !== true) wantProgress = false
     } catch { /* noop */ }
-    // 逐字流式默认关（适配器差异大）；进度反馈默认开。
-    // stream=true + 文本回复模式时，onDelta 增量按节流逐字发送；流式全文与最终正文一致则跳过重复整段回复。
-    const wantStream = cfg.stream === true
+    // 逐字流式固定关闭（适配器差异大，稳定性优先）；进度反馈仍由 cfg.progress 控制。
+    // 仅离线 e2e 用环境变量开启（不是用户配置）。
+    const wantStream = process.env.AGENTS_STREAM_TEST === '1'
 
     // —— 受控串行发送队列（P0-5）：思考中/进度/旁白/最终回复全部经它发送 ——
     // 取代 `try { e.reply(...) } catch {}`（同步 catch 捕获不了适配器 Promise 的 rejection，
@@ -2881,13 +2929,28 @@ export class Chat extends plugin {
 
   // ============ Tool Evolution：#进化工具 生成候选工具（主人）============
   async toolEvoEvolve() {
-    const goal = this.e.msg.replace(/^#进化工具\s+/, '').trim()
-    if (!goal) { await this.e.reply('用法：#进化工具 <能力描述>，如\n#进化工具 提取文本中所有邮箱地址'); return true }
+    let goal = this.e.msg.replace(/^#进化工具\s+/, '').trim()
+    if (!goal) { await this.e.reply('用法：#进化工具 <能力描述>，或 #进化工具 修复 <工具名> <修复描述>'); return true }
     let rt; try { rt = await getRuntime() } catch (e) { await this.e.reply(String(e?.message || e)); return true }
     if (!rt?.toolEvo?.engine) { await this.e.reply('工具进化未启用（config: agent.toolEvo.enable，或 sqlite3 未装）'); return true }
+    let toolId = null
+    let context = ''
+    const fix = goal.match(/^修复\s+(\S+)\s+([\s\S]+)$/)
+    if (fix) {
+      const target = await rt.toolEvo.registry.getByName(fix[1])
+      if (!target) { await this.e.reply(`工具「${fix[1]}」不存在（用 #工具进化列表 查看进化工具）`); return true }
+      if (target.namespace !== 'evolved') { await this.e.reply(`「${fix[1]}」是内置/受信工具，不能由工具进化改写，请在插件源码维护`); return true }
+      toolId = target.id
+      goal = fix[2].trim()
+      try {
+        const { failureClusters } = await import('../model/toolEvo/evaluator.js')
+        const c = (await failureClusters({ namespace: 'evolved' })).find((x) => x.toolId === toolId)
+        if (c) context = `该工具近期调用 ${c.total} 次，失败 ${c.failed} 次（${(c.failRate * 100).toFixed(0)}%），主要错误：${c.topErrors.join(', ')}。请保持工具名和既有能力，修复这些问题。`
+      } catch { /* 聚类失败不影响生成 */ }
+    }
     await this.e.reply(`🧬 正在为「${goal}」生成候选工具…（LLM 生成 + typescript AST 验证，约数秒）`)
     try {
-      const r = await rt.toolEvo.engine.evolve({ goal })
+      const r = await rt.toolEvo.engine.evolve({ goal, toolId, context })
       if (r.ok) {
         const ev = r.evidence || {}
         await this.e.reply([
@@ -2907,7 +2970,7 @@ export class Chat extends plugin {
   async toolEvoList() {
     let rt; try { rt = await getRuntime() } catch (e) { await this.e.reply(String(e?.message || e)); return true }
     if (!rt?.toolEvo?.registry) { await this.e.reply('工具进化未启用（config: agent.toolEvo.enable）'); return true }
-    const versions = await rt.toolEvo.registry.listVersions()
+    const versions = await rt.toolEvo.registry.listVersions({ namespace: 'evolved' })
     if (!versions.length) { await this.e.reply('暂无进化工具版本。用 #进化工具 <能力描述> 生成候选。'); return true }
     const icon = (s) => s === 'stable' ? '🟢' : s === 'verified' ? '🟡' : s === 'draft' ? '⚪' : '⚫'
     const lines = versions.slice(0, 20).map((v) => {
@@ -2927,6 +2990,7 @@ export class Chat extends plugin {
     const v = await reg.getVersion(versionId)
     if (!v) { await this.e.reply(`版本 ${versionId} 不存在`); return true }
     if (v.status !== 'verified') { await this.e.reply(`仅 verified 候选可采纳（当前状态：${v.status}）`); return true }
+    if (rt.toolEvo.registry.isTrustedVersion(v, await rt.toolEvo.registry.getById(v.tool_id))) { await this.e.reply('内置/受信工具版本不可采纳为进化工具'); return true }
     try {
       await reg.setStatus(versionId, 'stable', { actor: 'master:' + this.e.user_id, reason: '手动采纳' })
       const stable = (await reg.listStable()).find((s) => s.versionId === versionId)
@@ -2943,6 +3007,7 @@ export class Chat extends plugin {
     const reg = rt.toolEvo.registry
     const v = await reg.getVersion(versionId)
     if (!v) { await this.e.reply(`版本 ${versionId} 不存在`); return true }
+    if (rt.toolEvo.registry.isTrustedVersion(v, await rt.toolEvo.registry.getById(v.tool_id))) { await this.e.reply('内置/受信工具版本不可淘汰（请在插件源码/配置维护）'); return true }
     try {
       // 淘汰只影响目标版本（审计 §4.1）：目标=active → 自动回滚到另一 stable 或下线；目标≠active → 仅 DB deprecated，不影响注入
       const tool = await reg.getById(v.tool_id)
@@ -2978,6 +3043,7 @@ export class Chat extends plugin {
     try {
       const tool = await reg.getByName(name)
       if (!tool) { await this.e.reply(`工具「${name}」不存在`); return true }
+      if (tool.namespace !== 'evolved') { await this.e.reply(`「${name}」是内置/受信工具，不可由工具进化回滚`); return true }
       const target = (await reg.listVersions({ toolId: tool.id, status: 'stable' })).find((vv) => vv.semver === semver)
       if (!target) { await this.e.reply(`「${name}」无 stable 版本 ${semver}（回滚目标须是已上线版本）`); return true }
       await reg.setActiveVersion(tool.id, target.id, { actor: 'master:' + this.e.user_id, reason: `手动回滚到 ${semver}` })
@@ -2993,7 +3059,7 @@ export class Chat extends plugin {
     let rt; try { rt = await getRuntime() } catch (e) { await this.e.reply(String(e?.message || e)); return true }
     if (!rt?.toolEvo?.registry) { await this.e.reply('工具进化未启用（config: agent.toolEvo.enable）'); return true }
     const { failureClusters, convergenceMetrics } = await import('../model/toolEvo/evaluator.js')
-    const [clusters, metrics] = await Promise.all([failureClusters(), convergenceMetrics()])
+    const [clusters, metrics] = await Promise.all([failureClusters({ namespace: 'evolved' }), convergenceMetrics({ namespace: 'evolved' })])
     const head = `📊 工具库：${metrics.activeStable} active / ${metrics.stable} stable / ${metrics.totalVersions} 总版本 · 调用 ${metrics.invocations} 次（失败率 ${(metrics.invocationFailRate * 100).toFixed(0)}%）· 复用率 ${(metrics.reuseRate * 100).toFixed(0)}%`
     if (!clusters.length) {
       // 样本不足不得写成“全部健康”：需足够真实调用才能判定
@@ -3003,8 +3069,8 @@ export class Chat extends plugin {
         : `${head}\n\n⚠️ 调用样本不足，暂无法判定健康（需 ≥3 次真实调用且存在 active 版本）`)
       return true
     }
-    const lines = clusters.map((c) => `⚠️ ${c.toolName}：失败率 ${(c.failRate * 100).toFixed(0)}%（${c.failed}/${c.total}）· ${c.topErrors.join(', ')}`)
-    await this.e.reply(`${head}\n\n${lines.join('\n')}\n\n用 #进化工具 <修复描述> 生成修复候选`)
+    const lines = clusters.map((c) => `⚠️ ${c.toolName}（${c.versionId}）：失败率 ${(c.failRate * 100).toFixed(0)}%（${c.failed}/${c.total}）· ${c.topErrors.join(', ')}`)
+    await this.e.reply(`${head}\n\n${lines.join('\n')}\n\n用 #进化工具 修复 <工具名> <修复描述> 生成修复候选（会继承父版本测试）`)
     return true
   }
 
