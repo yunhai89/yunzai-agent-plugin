@@ -31,6 +31,7 @@
       ],
     },
     { group: '系统', items: [{ id: 'config', name: '配置中心', icon: 'config' }, { id: 'qqbot', name: '机器人账号', icon: 'bot' }, { id: 'toolpacks', name: '外置工具', icon: 'tool' }, { id: 'tts', name: '语音合成', icon: 'music' }, { id: 'humanize', name: '伪人模式', icon: 'group' }, { id: 'groupworld', name: '群聊小世界', icon: 'globe' }, { id: 'selfstate', name: '自我状态', icon: 'bot' }, { id: 'sticker', name: '表情包', icon: 'smile' }] },
+    { group: '整活', items: [{ id: 'kline', name: '数据 K 线', icon: 'chart' }] },
   ]
   const TITLES = {
     dashboard: ['概览', '插件运行状态与核心指标'],
@@ -55,6 +56,7 @@
     selfstate: ['自我状态', '自我认知与情绪 · 心境/情绪/期待/心事'],
     sticker: ['表情包', '配置 + 库概览 · 发送策略 / 自动发现'],
     tts: ['语音合成', 'TTS 服务配置 + 参考音频库 · 情绪化支持（pro/max）'],
+    kline: ['数据 K 线', 'Token / 请求 / 工具与运行状态 · 纯属整活'],
   }
   /* 移动端底部 Dock: 四个常用 + 更多 */
   const DOCK = [

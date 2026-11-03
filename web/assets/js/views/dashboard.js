@@ -16,7 +16,7 @@
     if (v >= 1e3) return (v / 1e3).toFixed(1) + 'k'
     return String(Math.round(v))
   }
-  const lineChart = (list, { W = 640, H = 220, L = 46, R = 14, T = 16, B = 30 } = {}) => {
+  const lineChart = (list, { W = 640, H = 220, L = 62, R = 14, T = 16, B = 30 } = {}) => {
     const hasData = list.length > 0
     const max = niceMax(Math.max(1, ...list.map((d) => d.v || 0)))
     const plotW = W - L - R
@@ -40,7 +40,7 @@
       zeroY: H - B,
     }
   }
-  const barChart = (list, { W = 640, H = 220, L = 46, R = 14, T = 16, B = 30 } = {}) => {
+  const barChart = (list, { W = 640, H = 220, L = 62, R = 14, T = 16, B = 30 } = {}) => {
     const hasData = list.length > 0
     const max = niceMax(Math.max(1, ...list.map((d) => d.v || 0)))
     const plotW = W - L - R
@@ -494,7 +494,7 @@
           <header class="panel-head">
             <div>
               <h2 class="panel-title">Token 消耗</h2>
-              <p class="panel-meta">输入 + 输出 · {{ winLabel }}</p>
+              <p class="panel-meta">输入 + 输出 · {{ winLabel }} · <a href="#/kline">数据 K 线 →</a></p>
             </div>
             <div class="seg seg-sm">
               <button v-for="w in ['1h','24h','7d','new','all']" :key="w" :class="{ on: win === w }" @click="setWin(w)">
