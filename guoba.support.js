@@ -447,7 +447,7 @@ export function supportGuoba() {
           field: 'agent.mcp.serversJson',
           label: 'MCP 服务端（粘贴新增 · 自动合并）',
           helpMessage: '粘贴标准 mcpServers JSON（如 { "mcpServers": { "名字": { "command":"npx", "args":[...] } } }），保存时自动合并：新服务加入、同名更新、其它已有服务一律保留。可反复粘贴累积多个。删除某个服务用聊天指令 #停止mcp <名字>。',
-          bottomHelpMessage: '示例（粘一个就加一个，互不覆盖）：\n{\n  "mcpServers": {\n    "moegirl": { "command": "npx", "args": ["-y", "moegirl-wiki-mcp"] }\n  }\n}\n\nstdio：command/args/env；http：type/url/headers。框里默认显示你现有的全部服务；保存**只增/改、不删**——删除某个服务请用聊天指令 #停止mcp <名字>。Docker 精简镜像无 npx 见 README「agent.mcp」排查。',
+          bottomHelpMessage: '示例（粘一个就加一个，互不覆盖）：\n{\n  "mcpServers": {\n    "moegirl": { "command": "npx", "args": ["-y", "moegirl-wiki-mcp"] }\n  }\n}\n\nstdio：command/args/env；http：type/url/headers；未配置 category 的工具默认 system（仅主人），只读工具请显式配 query。框里默认显示你现有的全部服务；保存**只增/改、不删**——删除某个服务请用聊天指令 #停止mcp <名字>。Docker 精简镜像无 npx 见 README「agent.mcp」排查。',
           component: 'InputTextArea',
           componentProps: { placeholder: '{\n  "mcpServers": {\n    "xxx": { "command": "npx", "args": ["-y", "xxx"] }\n  }\n}', autosize: { minRows: 8, maxRows: 24 } },
         },

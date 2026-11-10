@@ -86,6 +86,7 @@ export const miyousheSearchTool = {
   name: 'miyoushe_search',
   description: '搜索米游社（米哈游社区）帖子。用于查找原神/星穹铁道/崩坏3/绝区零等米哈游游戏的攻略、公告、玩家帖子。返回帖子标题/作者/互动/摘要/帖子ID。',
   category: 'query',
+  meta: { summary: '米游社帖子搜索', capabilities: ['net', 'net.search'] },
   parameters: {
     type: 'object',
     properties: {
@@ -107,7 +108,7 @@ export const miyoushePostTool = {
   name: 'miyoushe_post',
   description: '按帖子ID获取米游社帖子详情（正文/图片/互动数据），并【自动把帖子里所有图片合并转发到聊天】（图集打包成一条合并转发发出，避免逐张刷屏；图片不进正文，你只需转述攻略文字，不要在回复里贴图片 URL）。先用 miyoushe_search 拿到 postId，再用本工具读全文。',
   category: 'query',
-  meta: { resultCap: 12000 },
+  meta: { resultCap: 12000, capabilities: ['net', 'net.fetch'] },
   parameters: {
     type: 'object',
     properties: {
@@ -151,6 +152,7 @@ export const miyousheRepliesTool = {
   name: 'miyoushe_replies',
   description: '按帖子ID获取米游社帖子热门评论。',
   category: 'query',
+  meta: { summary: '米游社帖子热评', capabilities: ['net', 'net.fetch'] },
   parameters: {
     type: 'object',
     properties: {

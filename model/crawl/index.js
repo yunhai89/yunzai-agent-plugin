@@ -67,6 +67,15 @@ function headersFor(url, ua) {
 
 const isLocal = (u) => /^https?:\/\/(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(String(u))
 
+/** web_crawl 的 js_code / wait_for js: 会在真实浏览器里执行任意脚本（可 fetch 内网、读取页面凭据）。
+ *  作为 query 类工具，绝不能对普通成员开放这层代码执行能力；只允许主人使用。 */
+export function requiresBrowserJs(args = {}) {
+  const js = args?.js_code
+  const hasJsCode = Array.isArray(js) ? js.some((x) => String(x ?? '').trim()) : Boolean(String(js ?? '').trim())
+  const hasJsWait = /^js:/.test(String(args?.wait_for ?? '').trim())
+  return hasJsCode || hasJsWait
+}
+
 /** 统一代理解析（与搜索一致）：agent.proxy → 环境变量代理 → 直连 */
 function netProxy() {
   const cfg = Config.get?.()?.agent || {}
@@ -848,9 +857,9 @@ export async function crawlUrl(url, opts = {}) {
  *  安全：默认拒绝本机/内网/元数据地址。 */
 export const webCrawlTool = {
   name: 'web_crawl',
-  description: '抓取网页内容（默认 crawl4ai 真浏览器渲染，SPA/JS 动态页可抓；stealth 反检测默认开，被拦截自动升级 undetected 重试）。基础用法返回正文 {title, text}。同态渲染页（内容由 JS 生成）：js_code 滚动/点击触发加载 + wait_for 等元素出现；需要表格/列表等结构化数据时用 extract（CSS schema → JSON 数组）；需要页面全部链接时 links:true。降级纯 HTTP 时高级参数自动跳过并在结果标注 degraded。',
+  description: '抓取网页内容（默认 crawl4ai 真浏览器渲染，SPA/JS 动态页可抓；stealth 反检测默认开，被拦截自动升级 undetected 重试）。基础用法返回正文 {title, text}。同态渲染页（内容由 JS 生成）：js_code 滚动/点击触发加载 + wait_for 等元素出现；需要表格/列表等结构化数据时用 extract（CSS schema → JSON 数组）；需要页面全部链接时 links:true。降级纯 HTTP 时高级参数自动跳过并在结果标注 degraded。注意：js_code 与 wait_for 的 js: 条件会执行任意页面脚本，仅主人可用。',
   category: 'query',
-  meta: { summary: '抓取网页正文/结构化数据', resultCap: 12000 },
+  meta: { summary: '抓取网页正文/结构化数据', resultCap: 12000, capabilities: ['net', 'net.fetch', 'net.browse'] },
   parameters: {
     type: 'object',
     properties: {
@@ -872,6 +881,15 @@ export const webCrawlTool = {
     const u = String(url || '').trim()
     if (!/^https?:\/\//i.test(u)) return { error: 'url 需以 http:// 或 https:// 开头' }
     if (wait_for && !/^(css:|js:)/.test(String(wait_for).trim())) return { error: 'wait_for 需以 css: 或 js: 开头' }
+    // 任意页面脚本 = 代码执行面：普通成员只能做无 JS 的被动抓取，不能借浏览器 fetch 内网/读凭据。
+    if (requiresBrowserJs(args) && ctx?.isMaster !== true) {
+      Log.warn(`[crawl] 拒绝非主人的 web_crawl JS 执行（user=${ctx?.userId || '?'}）`)
+      return {
+        error: 'rejected_by_policy',
+        reason: 'web_crawl 的 js_code / wait_for(js:) 会执行任意页面脚本，仅主人可用',
+        _hint: '普通抓取请省略 js_code 与 js: 条件；需要动态交互时让主人执行。',
+      }
+    }
     // 执行面：crawl4ai 是本地引擎（宿主 venv），默认不受 sandbox.mode 影响——
     // 仅当 kb.crawl.execution=sandbox（且 mode=e2b）时才改在会话沙箱内跑（宿主 python 子进程不启动）；
     // 该档下沙箱未就绪/mode≠e2b/模板缺 crawl4ai → fail-closed：不跑宿主 crawl4ai，

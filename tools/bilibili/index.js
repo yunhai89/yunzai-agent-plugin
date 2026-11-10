@@ -71,7 +71,7 @@ const searchTool = defineTool({
   name: 'search',
   description: '哔哩哔哩视频搜索。返回 bvid/标题/UP/播放量/时长等，可交给 bilibili__video / bilibili__analyze。只检索，不下载。',
   category: 'query',
-  meta: { summary: 'B站视频搜索', resultCap: 4000 },
+  meta: { summary: 'B站视频搜索', resultCap: 4000, capabilities: ['net', 'net.search'] },
   parameters: param.object({
     keyword: param.str('搜索关键词'),
     order: param.enum('排序：综合 totalrank / 最多点击 click / 最新发布 pubdate / 最多弹幕 dm / 最多收藏 stow', ['totalrank', 'click', 'pubdate', 'dm', 'stow']),
@@ -93,7 +93,7 @@ const videoTool = defineTool({
   name: 'video',
   description: '获取哔哩哔哩视频详情：标题/UP/时长/简介/封面/统计/分P。输入 BV 号 / av 号 / URL / 短链。要看内容分析用 bilibili__analyze。',
   category: 'query',
-  meta: { summary: 'B站视频详情', resultCap: 4000 },
+  meta: { summary: 'B站视频详情', resultCap: 4000, capabilities: ['net', 'net.fetch'] },
   parameters: param.object({ video: VIDEO_PARAM }, ['video']),
   async execute(p, ctx) {
     try {
@@ -113,7 +113,7 @@ const analyzeTool = defineTool({
   name: 'analyze',
   description: '哔哩哔哩视频内容分析：默认下载视频交多模态视觉模型「看视频」（画面+台词/讲解 → 带时间线的内容报告），并结合元数据返回；看视频不可用时自动回退字幕/转录（会在 notes 说明原因）。用户说“分析/总结/讲讲这个B站视频”时用它。',
   category: 'query',
-  meta: { summary: 'B站视频内容分析（看视频）', resultCap: 8000 },
+  meta: { summary: 'B站视频内容分析（看视频）', resultCap: 8000, capabilities: ['net', 'net.fetch', 'net.download'] },
   parameters: param.object({
     video: VIDEO_PARAM,
     question: param.str('用户想了解的重点（可选，引导观看/分析）'),
@@ -213,7 +213,7 @@ const downloadTool = defineTool({
   name: 'download',
   description: '分享或下载哔哩哔哩视频。默认只发 B站分享卡片（小程序卡片，点击跳转），不下载文件；send_video=true（或配置 sendMedia）时额外下载并发送文件——分辨率取 videoQuality 配置（1080p+/4k/8k 需大会员，取不到自动回退到可用最高档），dash 分轨用 ffmpeg 合并、缺 ffmpeg 时回退 durl MP4。kind=audio 下音频(m4a)。',
   category: 'query',
-  meta: { summary: 'B站分享卡片/下载', resultCap: 3000 },
+  meta: { summary: 'B站分享卡片/下载', resultCap: 3000, capabilities: ['net', 'net.download'] },
   parameters: param.object({
     video: VIDEO_PARAM,
     kind: param.enum('下载类型：video 视频 / audio 音频(m4a)', ['video', 'audio']),
@@ -282,7 +282,7 @@ const subtitleTool = defineTool({
   name: 'subtitle',
   description: '获取哔哩哔哩视频字幕文本（CC / AI 字幕）。需登录 Cookie（SESSDATA）。返回可用语言与正文。',
   category: 'query',
-  meta: { summary: 'B站字幕', resultCap: 8000 },
+  meta: { summary: 'B站字幕', resultCap: 8000, capabilities: ['net', 'net.fetch'] },
   parameters: param.object({
     video: VIDEO_PARAM,
     maxChars: param.int('最大字符数（默认 6000）', { min: 500 }),
@@ -303,7 +303,7 @@ const commentsTool = defineTool({
   name: 'comments',
   description: '获取哔哩哔哩视频热门评论（按热度）。',
   category: 'query',
-  meta: { summary: 'B站热门评论', resultCap: 6000 },
+  meta: { summary: 'B站热门评论', resultCap: 6000, capabilities: ['net', 'net.fetch'] },
   parameters: param.object({
     video: VIDEO_PARAM,
     limit: param.int('条数（默认 10，最多 20）', { min: 1 }),
@@ -324,7 +324,7 @@ const danmakuTool = defineTool({
   name: 'danmaku',
   description: '获取哔哩哔哩视频弹幕取样（时间/模式/文本）。',
   category: 'query',
-  meta: { summary: 'B站弹幕', resultCap: 6000 },
+  meta: { summary: 'B站弹幕', resultCap: 6000, capabilities: ['net', 'net.fetch'] },
   parameters: param.object({
     video: VIDEO_PARAM,
     limit: param.int('取样条数（默认 100，最多 300）', { min: 1 }),
@@ -345,7 +345,7 @@ const rankingTool = defineTool({
   name: 'ranking',
   description: '哔哩哔哩排行榜。rid 分区：0 全站 / 1 动画 / 3 音乐 / 4 游戏 / 5 娱乐 / 36 科技 / 119 鬼畜 / 129 舞蹈 / 155 时尚 / 160 生活 / 168 影视 / 181 影视 / 188 数码 / 211 美食 / 217 动物圈 / 223 汽车 / 234 运动 / 249 生活。',
   category: 'query',
-  meta: { summary: 'B站排行榜', resultCap: 5000 },
+  meta: { summary: 'B站排行榜', resultCap: 5000, capabilities: ['net', 'net.search'] },
   parameters: param.object({
     rid: param.int('分区 id（默认 0 全站）', { min: 0 }),
     type: param.enum('类型：all 全部 / origin 原创', ['all', 'origin']),
@@ -365,7 +365,7 @@ const popularTool = defineTool({
   name: 'popular',
   description: '哔哩哔哩综合热门视频（热门页）。',
   category: 'query',
-  meta: { summary: 'B站热门视频', resultCap: 5000 },
+  meta: { summary: 'B站热门视频', resultCap: 5000, capabilities: ['net', 'net.search'] },
   parameters: param.object({
     limit: param.int('返回条数（默认 20，最多 50）', { min: 1 }),
     page: param.int('页码（默认 1）', { min: 1 }),
@@ -384,7 +384,7 @@ const userTool = defineTool({
   name: 'user',
   description: '获取哔哩哔哩 UP 主信息与投稿视频（需登录 Cookie）。mid 可用数字或空间链接。',
   category: 'query',
-  meta: { summary: 'B站UP主信息/投稿', resultCap: 5000 },
+  meta: { summary: 'B站UP主信息/投稿', resultCap: 5000, capabilities: ['net', 'net.fetch'] },
   parameters: param.object({
     mid: param.str('UP主 mid（数字）或 space.bilibili.com/数字 链接'),
     limit: param.int('投稿条数（默认 10，最多 30）', { min: 1 }),

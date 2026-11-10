@@ -25,6 +25,15 @@
 
 ---
 
+### 🧰 工具注册与第三方能力边界
+
+- **同名工具不再静默覆盖**：`ToolRegistry.register` 遇到已注册名称会保留原工具并告警，避免外置工具或第三方 MCP 服务端顶掉内置工具后，连带丢失 `meta.shell` / `meta.alwaysConfirm` 等安全语义；工具进化上线/回滚等受控路径显式使用 `replace()`。
+- **第三方能力默认 fail-closed**：`defineTool` 未声明 `category` 时默认 `system`（仅主人）；MCP 工具未配置 `category` 时同样默认 `system`。只读工具必须在工具代码/服务端配置里显式声明 `query`（或更低门槛的自定义类别），不会再默认对全员开放。
+- **`web_crawl` 的页面 JS 仅主人可用**：`js_code` 与 `wait_for: js:...` 会在宿主浏览器执行任意页面脚本（可 `fetch` 内网或读取页面凭据），因此非主人调用会被确定性拒绝；普通成员仍可使用无 JS 的被动抓取、CSS 等待、结构化抽取与链接清单。
+- **远程 URL 统一过 SSRF 门禁**：`web_crawl` / `web_download` / `send_file`（远程 URL）/ `stagehand__goto` 默认拒绝环回、私有、链路本地与云元数据地址；抓取/导航路径还会逐跳复验重定向。内网抓取需显式开启 `agent.kb.crawl.allowPrivateHosts`（`send_file` 不提供该放宽项）。
+
+---
+
 ### 🧱 不可信内容边界与记忆来源校验
 
 模型看到的内容里，只有**用户亲述**才是指令，其余都是数据。插件在提示层做了三件事（v1.26.18 起）：

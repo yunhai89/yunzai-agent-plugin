@@ -15,7 +15,7 @@ import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import { runCrawl4ai, isCrawl4aiAvailable, resetCrawl4aiProbe, CRAWL4AI_TIMEOUTS } from './crawl4ai.js'
-import { crawlUrl as crawlUrlRaw, resolveCrawlPolicy, resolveCrawlExecution, checkTargetAllowed, isBlockSignal } from './index.js'
+import { crawlUrl as crawlUrlRaw, resolveCrawlPolicy, resolveCrawlExecution, checkTargetAllowed, isBlockSignal, requiresBrowserJs } from './index.js'
 
 // 测试隔离：本文件覆盖「降级/升级阶梯」本身，站点记忆与会话持久化会跨用例（并跨进程写真实 data 目录）
 // 改变同站后续行为 → 统一关掉；两项能力各自的专项测试见 model/crawl/session.test.mjs。
@@ -305,7 +305,7 @@ process.stdin.on('data', (d) => {
   ok(r.links && r.links.internal && r.links.internal[0].href === '/x', 'links 映射')
 })
 
-await test('webCrawlTool 参数校验 + 降级标注透传到工具返回', async () => {
+await test('web_crawl 参数校验 + 降级标注透传到工具返回', async () => {
   const { webCrawlTool } = await import('./index.js')
   const bad = await webCrawlTool.execute({ url: 'https://a.com', wait_for: 'networkidle' })
   ok(bad.error && bad.error.includes('css:'), 'wait_for 非法 → 工具层拒绝')
@@ -313,6 +313,18 @@ await test('webCrawlTool 参数校验 + 降级标注透传到工具返回', asyn
   const deg = await webCrawlTool.execute({ url: 'https://a.invalid-tld-test-x', extract: { baseSelector: '.q', fields: [{ name: 'a', selector: '.a', type: 'text' }] }, engine: 'fetch' })
   ok(deg.error || deg.degraded, '错误路径可达（不崩溃）')
   ok(!deg.ok || deg.degraded === true, '若成功必带 degraded 标注')
+})
+
+await test('web_crawl JS 执行仅主人可用（防任意页面脚本/SSRF）', async () => {
+  const { webCrawlTool } = await import('./index.js')
+  ok(requiresBrowserJs({ js_code: 'window.scrollTo(0,1)' }), 'js_code 字符串触发')
+  ok(requiresBrowserJs({ js_code: ['', ' document.body.scrollHeight '] }), 'js_code 数组触发')
+  ok(requiresBrowserJs({ wait_for: 'js:() => true' }), 'wait_for js: 触发')
+  ok(!requiresBrowserJs({ js_code: [], wait_for: 'css:#app' }), '空数组/css 等待不触发')
+  const a = await webCrawlTool.execute({ url: 'https://example.invalid', js_code: 'fetch("http://169.254.169.254/")' }, { isMaster: false })
+  eq2(a.error, 'rejected_by_policy', '非主人 js_code 被拒（不发起抓取）')
+  const b = await webCrawlTool.execute({ url: 'https://example.invalid', wait_for: 'js:() => true' }, { isMaster: false })
+  eq2(b.error, 'rejected_by_policy', '非主人 js: 等待条件被拒')
 })
 
 await test('B8 解释器缺失：两入口无未处理 error 事件，独立宿主退出码 0 + 结构化 spawn_failed', async () => {

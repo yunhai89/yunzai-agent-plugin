@@ -21,6 +21,7 @@ import {
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
+import { createPolicy } from '../agent/policy.js'
 
 let passed = 0
 let failed = 0
@@ -214,6 +215,11 @@ await test('collect：群文件 e.file 无 url → getFileUrl 补全', async () 
 
 // ---------- 11. 被动工具：list_group_files ----------
 await test('被动工具 list_group_files', async () => {
+  eq(listGroupFilesTool.category, 'query', '只读工具为 query（群成员可列出群文件）')
+  eq(getGroupFileTool.category, 'query', '群文件读取同为 query')
+  const policy = createPolicy()
+  eq(policy.decide({ role: 'member', isGroup: true }, listGroupFilesTool).decision, 'allow', '普通成员列群文件不再被 group_manage 拒绝（官方 bot 群管场景回归）')
+  eq(policy.decide({ role: 'member', isGroup: true }, getGroupFileTool).decision, 'allow', '普通成员读群文件不再被 group_manage 拒绝')
   const ctx = { e: { group: { fs: { ls: async () => ({ files: [{ file_name: 'a.txt', file_id: 'f1', size: 10 }] }) } } } }
   const r = await listGroupFilesTool.execute({}, ctx)
   eq(r.count, 1, '1 个文件')

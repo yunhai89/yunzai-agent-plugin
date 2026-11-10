@@ -8,8 +8,8 @@
  * 因此工具可在 buildRuntime 一次性注册，跨会话复用，无需每条消息重建。
  *
  * 三个工具：
- *  - list_group_files（group_manage）列出群文件
- *  - get_group_file  （group_manage）按名称/fid 下载群文件 → 文本类返回内容、二进制返回元信息
+ *  - list_group_files（query）列出群文件（只读；群成员本就可见，官方机器人需自身有群管权限才能调通协议端）
+ *  - get_group_file  （query）按名称/fid 下载群文件 → 文本类返回内容、二进制返回元信息
  *  - read_attachment （query）      读取本次会话已主动收集的附件
  */
 
@@ -113,8 +113,8 @@ function normFsItem(it) {
 
 export const listGroupFilesTool = {
   name: 'list_group_files',
-  description: '列出当前 QQ 群的群文件。用户问"群里那个文件"/"群文件有哪些"时调用。返回文件名/大小/fid。',
-  category: 'group_manage',
+  description: '列出当前 QQ 群的群文件。用户问"群里那个文件"/"群文件有哪些"时调用。返回文件名/大小/fid。只读，全员可用；协议端需要机器人自身具备群文件读取权限（官方机器人通常需设为群管理员）。',
+  category: 'query',
   parameters: {
     type: 'object',
     properties: {
@@ -135,8 +135,8 @@ export const listGroupFilesTool = {
 
 export const getGroupFileTool = {
   name: 'get_group_file',
-  description: '下载并读取群文件内容。按 name（文件名，模糊匹配）或 fid（群文件 id）定位。文本类（txt/md/csv/json/代码/文档等）返回内容——大文件自动分页，结果带 nextOffset，续读时再调用本工具并传 offset；图片/二进制返回元信息（当前工具结果不支持内联图片）。',
-  category: 'group_manage',
+  description: '下载并读取群文件内容。按 name（文件名，模糊匹配）或 fid（群文件 id）定位。文本类（txt/md/csv/json/代码/文档等）返回内容——大文件自动分页，结果带 nextOffset，续读时再调用本工具并传 offset；图片/二进制返回元信息（当前工具结果不支持内联图片）。只读；协议端需要机器人自身具备群文件读取权限。',
+  category: 'query',
   meta: { resultCap: TEXT_RESULT_CAP },
   parameters: {
     type: 'object',

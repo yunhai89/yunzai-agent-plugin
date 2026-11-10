@@ -11,8 +11,9 @@ export function makeSearchTools(manager, defaults = {}) {
   return [
     {
       name: 'web_search',
-      description: '联网搜索（多源自动路由：Tavily/Exa/Perplexity/Brave → SearXNG → 本地 DDG 兜底）。输入查询词，返回排序后的相关结果 + 可选 AI 答案；用于获取实时信息或超出知识范围的内容。核验关键事实时用 queries 一次并行发 2~4 个不同角度（官方一手/不同措辞/找反证），结果按 URL 去重合并；部分查询失败会显式提示覆盖缺口，不要据此断言"只有一种说法"。',
+      description: '联网搜索（多源自动路由：Tavily/Exa/Perplexity/Brave → SearXNG → 本地 DDG 兜底）。输入查询词，返回排序后的相关结果 + 可选 AI 答案；用于获取实时信息或超出知识范围的内容。核验关键事实时用 queries 一次并行发 2~4 个不同角度（官方一手/不同措辞/找反证），结果按 URL 去重合并；部分查询失败会显式提示覆盖缺口，不要据此断言"只有一种说法"。若所有搜索源都不可用，会返回结构化错误并附 _alternatives（可改用 web_crawl/web_extract 直连网页或浏览器自动化），不要只反复重试本工具。',
       category: 'query',
+      meta: { summary: '联网搜索（多源自动回退）', capabilities: ['net', 'net.search'] },
       parameters: {
         type: 'object',
         properties: {
@@ -38,15 +39,31 @@ export function makeSearchTools(manager, defaults = {}) {
         if (single) queries.unshift(single)
         const list = [...new Set(queries)].slice(0, 4)
         if (!list.length) return '(未提供查询词：请用 query 或 queries)'
-        if (list.length === 1) return formatResults(await manager.search(list[0], opts))
-        return formatResults(await manager.searchMany(list, opts))
+        try {
+          if (list.length === 1) return formatResults(await manager.search(list[0], opts))
+          const merged = await manager.searchMany(list, opts)
+          const failures = Array.isArray(merged.failures) ? merged.failures : []
+          // 全部查询都失败时给出结构化错误（而不是让模型把 failures 文本当“没搜到”），
+          // 便于 Agent 侧识别为网络/上游故障并注入 _alternatives。
+          if (!merged.results?.length && !merged.answers?.length && failures.length >= list.length) {
+            return {
+              error: 'search_unavailable',
+              reason: failures.map((f) => `「${f.query}」${f.error}`).join('；'),
+              queries: list,
+              failures,
+            }
+          }
+          return formatResults(merged)
+        } catch (e) {
+          return { error: 'search_unavailable', reason: e?.message || String(e), queries: list }
+        }
       },
     },
     {
       name: 'web_extract',
-      description: '从指定 URL 提取干净的正文内容。输入 URL 列表，返回清洗后的正文。核对关键来源/交叉验证时用它读一手页面正文（搜索摘要可能断章取义）；多个来源分别提取后对比。',
+      description: '从指定 URL 提取干净的正文内容。输入 URL 列表，返回清洗后的正文。核对关键来源/交叉验证时用它读一手页面正文（搜索摘要可能断章取义）；多个来源分别提取后对比。搜索接口不可用时可直接用它读已知 URL；失败会返回结构化错误与替代建议。',
       category: 'query',
-      meta: { resultCap: 12000 },
+      meta: { summary: '从 URL 提取网页正文', resultCap: 12000, capabilities: ['net', 'net.fetch'] },
       parameters: {
         type: 'object',
         properties: {
@@ -59,7 +76,7 @@ export function makeSearchTools(manager, defaults = {}) {
           const res = await manager.extract(params.urls)
           return formatExtract(res)
         } catch (e) {
-          return `(提取失败：${e?.message || e})`
+          return { error: 'extract_unavailable', reason: e?.message || String(e), urls: params.urls }
         }
       },
     },

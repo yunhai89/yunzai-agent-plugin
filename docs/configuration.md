@@ -112,7 +112,7 @@ policy:
 | --- | --- | --- |
 | `enable` | `true` | **多模态总开关**：`false` 时同时关闭附件收集/视觉子模型装配（`ctx.vision` 置空）、表情自动发现与工具看图；主对话按纯文本处理 |
 | `active` | `true` | 主动收集（消息/引用/合并转发/群文件中的图片文件） |
-| `passive` | `true` | 被动工具（`list_group_files`/`get_group_file`/`read_attachment`）；`false`=不注册这组工具（`read_attachment` 是全员可用的 `query` 类，介意权限面时关掉） |
+| `passive` | `true` | 被动工具（`list_group_files`/`get_group_file`/`read_attachment`）；`false`=不注册这组工具（三者均为只读 `query` 类，介意权限面时关掉） |
 | `maxImages` | `4` | 单次随消息发送最大图片数 |
 | `maxFileBytes` | `8388608` | 单文件字节上限 |
 | `degrade` | `note` | 非视觉模型降级：`skip`/`note`/`text` |
@@ -329,7 +329,9 @@ mcp:
       command: "npx"
       args: ["-y", "@modelcontextprotocol/server-filesystem", "./"]
       prefix: "fs"
-      category: "query"           # 字符串：该服务端所有工具同类；或按工具映射 { read_file: "query", write_file: "system", default: "query" }
+      category: { read_file: "query", write_file: "system", default: "system" }
+                                  # 可选：字符串=该服务端所有工具同类；或按工具映射。
+                                  # 未配置时默认 "system"（仅主人）——第三方 MCP 可能含写文件/执行命令能力，必须显式降级
     remote:                       # HTTP 远程示例
       transport: "http"
       url: "https://example.com/mcp"

@@ -162,6 +162,16 @@ cfgMod.__setConfig({ agent: { ...baseCfg().agent, chatPermission: 'admin' } })
   ok(allowed(replies), 'admin 时群管理员 #ai → 放行')
 }
 {
+  const { bot, replies } = makeBot({ user_id: 'u17b', member: { role: 'admin' } })
+  await bot.onTrigger()
+  ok(allowed(replies), 'admin 时 member.role=admin（官方适配器字段）→ 放行')
+}
+{
+  const { bot, replies } = makeBot({ user_id: 'u17c', sender: {}, author: { member_role: 'owner' } })
+  await bot.onTrigger()
+  ok(allowed(replies), 'admin 时 author.member_role=owner（官方原始事件）→ 放行')
+}
+{
   const { bot, replies } = makeBot({ user_id: 'u18' })
   await bot.onTrigger()
   ok(denied(replies), 'admin 时普通成员 #ai → 拒绝')

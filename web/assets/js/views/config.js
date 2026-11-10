@@ -767,6 +767,7 @@
           srv._type = srv.type === 'http' ? 'http' : 'stdio'
           if (srv._type === 'stdio') {
             const cfg = { command: srv.command ?? 'npx', args: Array.isArray(srv.args) ? srv.args : [], env: srv.env || {} }
+            if (srv.category != null) cfg.category = srv.category
             srv._json = JSON.stringify(cfg, null, 2)
           } else {
             srv._url = srv.url || ''
@@ -788,6 +789,8 @@
               srv.command = cfg.command || 'npx'
               srv.args = Array.isArray(cfg.args) ? cfg.args : []
               srv.env = cfg.env && typeof cfg.env === 'object' ? cfg.env : undefined
+              if (cfg.category != null) srv.category = cfg.category
+              else delete srv.category
             } catch (e) { toast('MCP stdio JSON 解析失败：' + (e?.message || e) + '（保留旧值）', 'error') }
             delete srv.type
           } else {
@@ -825,10 +828,11 @@
         if (!cfg || typeof cfg !== 'object') cfg = {}
         if (cfg.type === 'http' || cfg.url) {
           const headersText = cfg.headers && typeof cfg.headers === 'object' ? Object.entries(cfg.headers).map(([k, v]) => `${k}: ${v}`).join('\n') : ''
-          return { type: 'http', url: cfg.url || '', _type: 'http', _url: cfg.url || '', _headersText: headersText }
+          return { type: 'http', url: cfg.url || '', ...(cfg.category != null ? { category: cfg.category } : {}), _type: 'http', _url: cfg.url || '', _headersText: headersText }
         }
         const c = { command: cfg.command || 'npx', args: Array.isArray(cfg.args) ? cfg.args : [], env: cfg.env || {} }
-        return { command: c.command, args: c.args, env: c.env, _type: 'stdio', _json: JSON.stringify(c, null, 2) }
+        if (cfg.category != null) c.category = cfg.category
+        return { command: c.command, args: c.args, env: c.env, ...(c.category != null ? { category: c.category } : {}), _type: 'stdio', _json: JSON.stringify(c, null, 2) }
       }
       const confirmNewMcp = () => {
         if (!form.mcp) form.mcp = {}
@@ -2396,6 +2400,7 @@
                 <button class="btn b-pri b-sm" @click="openNewMcp"><v-icon name="plus"/>新建 MCP</button>
               </div>
               <div v-if="!(form.mcp?.servers && Object.keys(form.mcp.servers).length)" class="mut2" style="font-size:12px;padding:8px">暂无 MCP 服务，点「新建 MCP」添加</div>
+              <div class="mut2" style="font-size:12px;padding:4px 2px 8px"><v-icon name="shield"/>未配置 <b>category</b> 的 MCP 工具默认 <b>system</b>（仅主人）；只读工具请在 stdio JSON 里显式写 <code>"category": "query"</code>，或按工具映射（如 <code>{ "read_file": "query", "write_file": "system", "default": "system" }</code>）。</div>
               <div v-for="(srv, name) in (form.mcp?.servers || {})" :key="name" class="mem-row" style="flex-direction:column;align-items:stretch;gap:8px">
                 <div class="row g6 wrap" style="align-items:center">
                   <v-icon name="tool" style="color:var(--pri)"/>

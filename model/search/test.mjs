@@ -248,6 +248,47 @@ await test('makeSearchTools：注册 web_search + web_extract', async () => {
   ok(result.includes('X'), 'search 返回格式化结果')
 })
 
+await test('makeSearchTools：搜索源全失败 → 结构化 error（供 Agent 注入替代建议）', async () => {
+  const mgr = {
+    async search() { throw new Error('所有搜索源均失败 → ddg: fetch failed') },
+    async searchMany() { throw new Error('所有搜索源均失败 → ddg: fetch failed') },
+  }
+  const [search] = makeSearchTools(mgr)
+  const single = await search.execute({ query: 'x' })
+  eq(single.error, 'search_unavailable', '单查询失败 → search_unavailable')
+  ok(String(single.reason).includes('所有搜索源均失败'), '保留真实原因')
+  eq(search.meta.capabilities, ['net', 'net.search'], '声明联网搜索能力')
+})
+
+await test('makeSearchTools：多查询全部失败 → 结构化 error；部分成功仍返回正文', async () => {
+  const allFail = {
+    async searchMany() {
+      return { provider: 'multi', results: [], answers: [], failures: [{ query: 'a', error: 'fetch failed' }, { query: 'b', error: 'timeout' }] }
+    },
+  }
+  const [search] = makeSearchTools(allFail)
+  const failed = await search.execute({ queries: ['a', 'b'] })
+  eq(failed.error, 'search_unavailable', '全部失败 → error')
+  eq(failed.failures.length, 2, '失败明细保留')
+
+  const partial = {
+    async searchMany() {
+      return { provider: 'multi', results: [{ title: 'A', url: 'https://a.com', content: '正文' }], answers: [], failures: [{ query: 'b', error: 'timeout' }] }
+    },
+  }
+  const [search2] = makeSearchTools(partial)
+  const text = await search2.execute({ queries: ['a', 'b'] })
+  ok(typeof text === 'string' && text.includes('https://a.com') && text.includes('部分查询未成功'), '部分成功返回正文并提示覆盖缺口')
+})
+
+await test('makeSearchTools：web_extract 失败 → 结构化 error', async () => {
+  const mgr = { async extract() { throw new Error('所有提取源均失败 → fetch failed') } }
+  const [, extract] = makeSearchTools(mgr)
+  const r = await extract.execute({ urls: ['https://x.com'] })
+  eq(r.error, 'extract_unavailable', '提取失败结构化返回')
+  ok(String(r.reason).includes('所有提取源均失败'), '保留真实原因')
+})
+
 // ---------- 11. DDG 解析健壮性（改版兼容）----------
 await test('parseDDG：兼容 href 在 class 之前（DDG lite 改版形态）', async () => {
   const { parseDDG } = await import('../agent/tools/web.js')

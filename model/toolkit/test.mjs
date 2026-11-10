@@ -24,7 +24,9 @@ async function test(name, fn) { console.log(`\n[${name}]`); try { await fn() } c
 await test('defineTool：校验 name/execute', async () => {
   const t = defineTool({ name: 't1', execute: async () => 'x' })
   eq(t.name, 't1', 'name')
-  eq(t.category, 'query', '默认 category=query')
+  eq(t.category, 'system', '未声明 category 默认 system（fail-closed，仅主人）')
+  const q = defineTool({ name: 'q1', category: 'query', execute: async () => 'x' })
+  eq(q.category, 'query', '显式 category 保留')
   eq(t.parameters.type, 'object', '默认 parameters')
   let threw = false
   try { defineTool({}) } catch { threw = true }

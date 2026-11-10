@@ -6,6 +6,7 @@
 
 | 版本 | 内容 |
 | --- | --- |
+| **v1.50.0** | 工具攻击面收敛：`ToolRegistry.register` 拒绝同名覆盖并保留内置工具及其审批/沙箱 meta（工具进化上线/回滚改用显式 `replace()`）；`defineTool` 与 MCP 工具未声明 `category` 时默认 `system`（仅主人），第三方能力不再默认全员可调用；`web_crawl` 的 `js_code` / `wait_for: js:` 仅主人可用；`send_file` 远程 URL 增加 SSRF 门禁。官方机器人权限修复：统一从 `member.role`/`sender.role`/`author.member_role`/`sender.permissions` 识别群角色；`list_group_files`/`get_group_file` 改为只读 `query`，官方机器人设为群管后可正常为普通成员列/读群文件。新增工具失败能力替代：失败结果携带 `_failure`/`_alternatives`/`_next`，搜索源不可用时按 `net.search`/`net.fetch`/`net.browse` 等能力推荐 `web_crawl`/`web_extract`/浏览器等备选，`tool_search` 也支持按“联网/网页/浏览器”能力检索。 |
 | **v1.49.1** | 工具发现配置清理：确认 tools schema 已全量常驻（缓存优先），删除 `agent.toolDiscovery.*`（enable/method/alwaysOn/topK/minScore/stableList）以及 Jev 工具选择相关用户配置；Web/锅巴/默认 YAML/mock/项目介绍同步移除。`tool_search` 仅保留为目录速查，提示词改为「全量常驻、可直接调用」。 |
 | **v1.49.0** | 推理/循环配置进一步内置：移除「推理参数」中的思考细项、低/中/高深度预算、循环护栏、时间/token 预算、收尾、工具并发/校验、回灌推理、流式、reasoning 字段映射、缓存断点等配置；根任务内置为 2 小时 / 2,000,000 有效 token、收尾输出 8192、循环护栏 4/6/8 等偏宽松值。工具进化增强：内置/受信工具禁止淘汰/回滚/状态机改写；进化工具名避让内置/Meta/MCP；同名改进继承父版本回归测试；验证证据/源码/测试可在 Web 详情审阅；健康/收敛指标只统计 evolved 工具；新增 `#进化工具 修复 <工具名> <描述>`；runner 缺哈希 fail-closed、本地超大输出拦截；seed 单工具失败隔离与空壳恢复。 |
 | **v1.48.0** | 上下文配置 P0：移除 `contextWindow`/消息条数水位/压缩比例/`compaction.*` 用户配置，改为每轮按「厂商 `/models` 元数据 → 本地模型目录 → 运行时报错学习 → 128K 兜底」自动解析输入预算；按真实上下文用量 80% 触发、45% 目标动态压缩，并用 `prompt_tokens` 校准估算；思考自动判档会选用对应模式的窗口/输出预算；厂商报超限时自动学习真实上限、压缩并同模型重试一次。Web/锅巴/默认 YAML 同步移除相关配置项 |

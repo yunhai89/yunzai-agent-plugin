@@ -14,6 +14,7 @@
 import { cosine } from '../recall.js'
 import { BM25 } from '../../llm/local-sim.js'
 import { isToolErrorContent } from '../tool-result.js'
+import { toolCapabilities, capabilitySearchTerms } from '../tool-fallback.js'
 
 function brief(v, n = 160) {
   let s
@@ -39,6 +40,7 @@ export class ToolRegistry {
     this._embedFn = null // 可选 embedding 函数（apps 注入；留空 = 纯关键词 jaccard）
     this._invSink = null // 可选调用埋点（toolEvo 注入 recordInvocation；留空 = 不持久化）
     this._registeredRaw = new WeakSet() // 已注册的原始工具对象（同名覆盖告警时排除幂等重复注册）
+    this._rawByWrapper = new WeakMap() // AOP 包装对象 → 原始工具，供 registerScoped 判断是否真的注册成功
     this._warnedNoCategory = new Set() // 缺 category 告警去重（同名只提示一次/实例）
   }
 
@@ -64,27 +66,50 @@ export class ToolRegistry {
   /**
    * 注册工具（变参）：register(t1, t2, ...) / register(array) / register(...array) 均可。
    * 自动用 AOP 包装 execute，集中日志。
+   *
+   * 同名安全：默认**拒绝覆盖**已有工具并保留原工具。外置工具/MCP/第三方包曾可静默顶掉
+   * 内置工具，连带摘除其 meta.shell / meta.alwaysConfirm 等安全语义。确需替换（如工具进化
+   * 版本切换）请显式调用 replace()，不要依赖注册顺序。
    */
   register(...tools) {
     for (const tool of tools.flat(Infinity).filter(Boolean)) {
       if (!tool || !tool.name) throw new Error('工具必须包含 name')
       if (typeof tool.execute !== 'function') throw new Error(`工具 ${tool.name} 必须包含 execute 函数`)
-      // 同名覆盖曾完全静默：MCP 服务端的同名工具可以把内置工具顶掉（其 meta.shell/alwaysConfirm
-      // 等策略元数据一并丢失，shell 拦截与强制审批随之失效）。此处至少不再静默——同引用重复注册
-      // （热重载/幂等注册）不告警。
       const prev = this.tools.get(tool.name)
-      if (prev && !this._registeredRaw.has(tool)) {
-        this.logger('warn', `[tools] 同名工具重复注册，「${tool.name}」被后者覆盖（前者 meta=${brief(prev.meta)}）`)
+      if (prev) {
+        // 同一原始对象重复注册（热重载/幂等注册）是 no-op；不同对象一律拒绝覆盖。
+        if (this._registeredRaw.has(tool)) continue
+        this.logger('warn', `[tools] 拒绝同名覆盖：「${tool.name}」已注册，保留原工具（新工具 category=${tool.category || '未知'}，原工具 category=${prev.category || '未知'}）；确需替换请用 replace()`)
+        continue
       }
       this._registeredRaw.add(tool)
       tool.meta = tool.meta || {} // 保证 meta 引用稳定（bindVersion 才能更新到 #wrap 闭包里的同一对象）
       // 漏声明 category 的手写工具会被 policy 按「未知类别」fail-closed（仅主人可用）——静默降权，
-      // 实机事故：memory 工具漏声明 → 群管理员写长期记忆被拒。MCP 工具由 bridge 兜底 'query'，不在此列。
+      // 实机事故：memory 工具漏声明 → 群管理员写长期记忆被拒。MCP 工具由 bridge 兜底 'system'，不在此列。
       if (!tool.category && !tool.meta.mcp && !this._warnedNoCategory.has(tool.name)) {
         this._warnedNoCategory.add(tool.name)
         this.logger('warn', `[tools] 「${tool.name}」未声明 category → RBAC 将按未知类别处理（仅主人可用）；请补 category（见 开发指南 §2.8）`)
       }
-      this.tools.set(tool.name, this.#wrap(tool))
+      const wrapped = this.#wrap(tool)
+      this.tools.set(tool.name, wrapped)
+      this._rawByWrapper.set(wrapped, tool)
+    }
+    this._indexDirty = true
+    return this
+  }
+
+  /**
+   * 显式替换同名工具（工具进化上线/回滚等受控路径专用）。
+   * 与 register 的默认拒绝覆盖相反，这里会卸载旧工具再注册新工具；调用方必须已完成审批。
+   */
+  replace(...tools) {
+    for (const tool of tools.flat(Infinity).filter(Boolean)) {
+      if (!tool?.name) throw new Error('工具必须包含 name')
+      if (this.tools.has(tool.name)) {
+        this.tools.delete(tool.name)
+        this.logger('info', `[tools] 显式替换工具「${tool.name}」`)
+      }
+      this.register(tool)
     }
     this._indexDirty = true
     return this
@@ -97,8 +122,15 @@ export class ToolRegistry {
    */
   registerScoped(scope, ...tools) {
     const added = tools.flat(Infinity).filter(Boolean)
+    // 先记录注册前已存在的同名工具：被 register 拒绝覆盖的工具不属于本次 scope，
+    // 否则 dispose 会把原有内置工具误删（同名防护后尤其危险）。
+    const before = added.map((t) => (t?.name ? this.tools.get(t.name) : undefined))
     this.register(...added)
-    const captured = added.map((t) => ({ name: t.name, ref: this.tools.get(t.name) }))
+    const captured = added.map((t, i) => {
+      if (!t?.name || before[i]) return null
+      const ref = this.tools.get(t.name)
+      return ref && this._rawByWrapper.get(ref) === t ? { name: t.name, ref } : null
+    }).filter(Boolean)
     const dispose = () => {
       for (const { name, ref } of captured) {
         if (this.tools.get(name) === ref) { this.tools.delete(name); this._indexDirty = true }
@@ -217,12 +249,16 @@ export class ToolRegistry {
       if (!tool || tool.name === 'tool_search') continue
       const required = tool.parameters?.required || []
       const summary = String(tool.meta?.summary || tool.description || '').replace(/\s+/g, ' ').trim()
-      const text = [tool.name, tool.category, tool.description, tool.meta?.summary, ...deriveKeywords(tool), ...required].filter(Boolean).join(' ')
+      const capabilities = toolCapabilities(tool)
+      const capabilityText = capabilitySearchTerms(tool).join(' ')
+      const text = [tool.name, tool.category, tool.description, tool.meta?.summary, ...deriveKeywords(tool), capabilityText, ...required].filter(Boolean).join(' ')
       idx.push({
         name: tool.name,
-        category: tool.category || 'query',
+        category: tool.category || 'system',
         summary,
         required,
+        capabilities,
+        capabilityText,
         tokens: toolTokenize(text),
         embedding: null, // lazy：首次 search 且 embedFn 可用时才填
       })
@@ -257,7 +293,7 @@ export class ToolRegistry {
       }
       const scores = bm.scoresNormalized([...qTokens])
       return docs
-        .map((doc, i) => ({ name: doc.name, score: scores[i] || 0, category: doc.category, summary: doc.summary, required: doc.required }))
+        .map((doc, i) => ({ name: doc.name, score: scores[i] || 0, category: doc.category, summary: doc.summary, required: doc.required, capabilities: doc.capabilities }))
         .filter((s) => s.score >= minScore)
         .sort((a, b) => b.score - a.score)
         .slice(0, topK)
@@ -267,10 +303,10 @@ export class ToolRegistry {
     for (const doc of this._index) {
       if (category && doc.category !== category) continue
       if (!doc.embedding) {
-        try { doc.embedding = await this._embedFn([doc.name, doc.summary].join(' ')) } catch { doc.embedding = null }
+        try { doc.embedding = await this._embedFn([doc.name, doc.summary, doc.capabilityText].filter(Boolean).join(' ')) } catch { doc.embedding = null }
       }
       const sim = (qEmbed && doc.embedding) ? cosine(qEmbed, doc.embedding) : 0
-      if (sim >= minScore) scored.push({ name: doc.name, score: sim, category: doc.category, summary: doc.summary, required: doc.required })
+      if (sim >= minScore) scored.push({ name: doc.name, score: sim, category: doc.category, summary: doc.summary, required: doc.required, capabilities: doc.capabilities })
     }
     return scored.sort((a, b) => b.score - a.score).slice(0, topK)
   }

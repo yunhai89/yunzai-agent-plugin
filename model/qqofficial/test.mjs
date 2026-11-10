@@ -15,6 +15,7 @@
 import {
   detectAdapter, contextKind, contextLabel, stripSelfPrefix, rawUserId, rawGroupId, splitGuildId,
   safeScopePart, deriveScope, markdownSegment, hasMarkdownSegment, hasButtonSegment,
+  groupRoleOf, isGroupAdminEvent,
   normalizeKeyboard, keyboardSegments, buildMarkdownMessage, markdownToPlain, splitMarkdown,
   describeContext, MARKDOWN_MAX_CHARS, KEYBOARD_MAX_ROWS, KEYBOARD_MAX_PER_ROW,
 } from './index.js'
@@ -77,6 +78,19 @@ console.log('\n[2] 上下文与 ID 去前缀')
   eq(splitGuildId(guild), { guildId: '98765', channelId: '43210' }, '频道 ID 拆 guild/channel')
   eq(splitGuildId(grp), null, '非频道不拆')
   eq(stripSelfPrefix('qg_x', grp), 'x', 'qg_ 前缀剥离')
+}
+
+console.log('\n[2b] 群角色归一（官方适配器不再永远 member）')
+{
+  eq(groupRoleOf({ member: { role: 'admin' } }), 'admin', 'member.role=admin')
+  eq(groupRoleOf({ sender: { role: 'owner' } }), 'owner', 'sender.role=owner')
+  eq(groupRoleOf({ author: { member_role: 'admin' } }), 'admin', 'author.member_role=admin')
+  eq(groupRoleOf({ member: { is_admin: true } }), 'admin', 'member.is_admin')
+  eq(groupRoleOf({ sender: { permissions: ['admin'] } }), 'admin', 'sender.permissions=[admin]')
+  eq(groupRoleOf({ sender: { permissions: ['speak'] } }), 'member', '无角色权限 → member')
+  eq(groupRoleOf({}), 'member', '空事件 → member')
+  ok(isGroupAdminEvent({ sender: { role: 'owner' } }), 'owner 视为群管')
+  ok(!isGroupAdminEvent({ member: { role: 'member' } }), 'member 不是群管')
 }
 
 console.log('\n[3] scope 目录安全化（旧目录兼容 + 官方 ID 净化）')

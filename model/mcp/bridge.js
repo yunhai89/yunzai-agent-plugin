@@ -6,20 +6,24 @@
 
 /**
  * 解析单个 MCP 工具的 RBAC 类别。
+ * 未配置时默认 'system'（仅主人）：MCP 服务端可包含写文件/执行命令等任意能力，
+ * 不能让第三方工具默认以 query 身份对全员开放。显式配置 category 才降低门槛。
  * @param {object} tool MCP 工具（含 name）
  * @param categorySpec string | function(tool)=>string | { [toolName]: string, default?: string }
  * @returns {string} 类别名（如 'query'/'system'/'mcp_write'）
  */
+export const MCP_DEFAULT_CATEGORY = 'system'
+
 export function resolveCategory(tool, categorySpec) {
-  if (categorySpec == null) return 'query'
+  if (categorySpec == null) return MCP_DEFAULT_CATEGORY
   if (typeof categorySpec === 'string') return categorySpec
   if (typeof categorySpec === 'function') {
-    return categorySpec(tool) || 'query'
+    return categorySpec(tool) || MCP_DEFAULT_CATEGORY
   }
   if (typeof categorySpec === 'object') {
-    return categorySpec[tool.name] || categorySpec.default || 'query'
+    return categorySpec[tool.name] || categorySpec.default || MCP_DEFAULT_CATEGORY
   }
-  return 'query'
+  return MCP_DEFAULT_CATEGORY
 }
 
 /**
@@ -47,7 +51,7 @@ export function mcpResultToString({ content, isError } = {}) {
  * @param {object} opts { prefix?, category?(string|function|map), filter? }
  * @returns {Promise<number>} 注册的工具数
  */
-export async function loadMcpTools(client, registry, { prefix, category = 'query', filter, logger } = {}) {
+export async function loadMcpTools(client, registry, { prefix, category = MCP_DEFAULT_CATEGORY, filter, logger } = {}) {
   if (!client || !registry) throw new Error('loadMcpTools 需要 client 与 registry')
   const { tools = [] } = await client.listTools()
   let registered = 0

@@ -82,7 +82,7 @@ import { getStickerManager } from '../model/sticker/manager.js'
 import { isStickerOnly, stripMarkers } from '../model/sticker/parser.js'
 import {
   detectAdapter as detectQQAdapter, contextKind as qqContextKind, describeContext as describeQQContext,
-  rawUserId as qqRawUserId, rawGroupId as qqRawGroupId, safeScopePart,
+  rawUserId as qqRawUserId, rawGroupId as qqRawGroupId, safeScopePart, groupRoleOf,
   buildMarkdownMessage, splitMarkdown, markdownToPlain, hasMarkdownSegment,
 } from '../model/qqofficial/index.js'
 import { makeSendKeyboardTool, flushPendingCards } from '../model/qqofficial/tool.js'
@@ -1492,7 +1492,7 @@ async function _buildRuntime(scope) {
       // Orchestrator 编排模式：注册一个同步 `orchestrate` 工具（flagship 分解 → 通用 worker 委派 → 综合）
       // worker 工具集复用 spawn 的同一能力判定（见 worker-context.js），而不是只按 category=query 粗筛
       const queryNames = tools.list()
-        .filter((t) => t.name !== 'tool_search' && (t.category || 'query') === 'query')
+        .filter((t) => t.name !== 'tool_search' && (t.category || 'system') === 'query')
         .map((t) => t.name)
       const { registry: workerReg, granted: workerGranted, dropped: workerDropped } = buildWorkerTools(tools, queryNames, queryNames)
       const worker = new SubagentSpec({
@@ -1760,9 +1760,9 @@ function ctxOf(e) {
   const qqAdapter = detectQQAdapter(e)
   const userId = String(e.user_id ?? '')
   const isMaster = isCtxMaster(e, qqAdapter, cfgNow)
-  let role = 'member'
-  if (e.member?.is_owner) role = 'owner'
-  else if (e.member?.is_admin) role = 'admin'
+  // 群角色：OneBot 在 sender.role/member.role，官方适配器可能在 author.member_role/
+  // sender.permissions；统一归一，避免官方机器人场景永远被当成 member。
+  const role = groupRoleOf(e)
   const groupId = e.group_id ? String(e.group_id) : null
   const isGroup = !!e.isGroup
   // —— 数据隔离 scope 身份 ——
@@ -1790,8 +1790,9 @@ function ctxOf(e) {
     userId,
     groupId,
     isGroup,
-    // 群管理员识别：e.member（部分适配器）+ e.sender.role（OneBot11/NapCat 标准字段，群消息的 sender 带 role）
-    isGroupAdmin: !!(e.member?.is_admin || e.member?.is_owner || e.sender?.role === 'admin' || e.sender?.role === 'owner'),
+    // 群管理员识别：统一走 groupRoleOf（OneBot 的 member/sender.role、官方适配器的
+    // author.member_role/sender.permissions 等）。bot 自身管理员身份不能代替发言人身份。
+    isGroupAdmin: role === 'admin' || role === 'owner',
     isolation,
     scopeUserId,
     scopeId,
@@ -2192,9 +2193,9 @@ export class Chat extends plugin {
     }
     if (perm === 'all') return true
     if (this.e?.isMaster) return true
-    const role = this.e?.sender?.role
-    const isOwner = !!(this.e?.member?.is_owner || role === 'owner')
-    const isAdmin = !!(this.e?.member?.is_admin || role === 'admin')
+    const role = groupRoleOf(this.e)
+    const isOwner = role === 'owner'
+    const isAdmin = role === 'admin'
     if (perm === 'owner') return isOwner
     if (perm === 'admin') return isOwner || isAdmin
     return false // master：仅主人（isMaster 已在上面放行）
@@ -2990,7 +2991,7 @@ export class Chat extends plugin {
     try {
       await reg.setStatus(versionId, 'stable', { actor: 'master:' + this.e.user_id, reason: '手动采纳' })
       const stable = (await reg.listStable()).find((s) => s.versionId === versionId)
-      if (stable) rt.tools.register(await reg.toToolContract(stable, rt.toolEvo.runner))
+      if (stable) rt.tools.replace(await reg.toToolContract(stable, rt.toolEvo.runner))
       await this.e.reply(`✅ ${v.manifest.name}@${v.semver} 已晋升 stable 并注入\nagent 可经 tool_search 调用（工具名：${v.manifest.name}）`)
     } catch (e) { await this.e.reply('❌ 采纳失败：' + (e?.message || e)) }
     return true
@@ -3015,7 +3016,7 @@ export class Chat extends plugin {
           const target = others[0]
           await reg.setActiveVersion(v.tool_id, target.id, { actor: 'master:' + this.e.user_id, reason: `淘汰 ${v.semver} 后回滚` })
           const stable = (await reg.listStable()).find((s) => s.versionId === target.id)
-          if (stable) rt.tools.register(await reg.toToolContract(stable, rt.toolEvo.runner))
+          if (stable) rt.tools.replace(await reg.toToolContract(stable, rt.toolEvo.runner))
           await this.e.reply(`🗑️ ${v.manifest.name}@${v.semver} 已淘汰（原 active）。已自动回滚到 ${target.semver} 并重新注入。`)
         } else {
           rt.tools.unregister(v.manifest.name)
@@ -3045,7 +3046,7 @@ export class Chat extends plugin {
       await reg.setActiveVersion(tool.id, target.id, { actor: 'master:' + this.e.user_id, reason: `手动回滚到 ${semver}` })
       rt.tools.unregister(name)
       const stable = (await reg.listStable()).find((s) => s.versionId === target.id)
-      if (stable) rt.tools.register(await reg.toToolContract(stable, rt.toolEvo.runner))
+      if (stable) rt.tools.replace(await reg.toToolContract(stable, rt.toolEvo.runner))
       await this.e.reply(`↩️ ${name} 已回滚到 ${semver} 并重新注入（active 版本切换）`)
     } catch (e) { await this.e.reply('❌ 回滚失败：' + (e?.message || e)) }
     return true

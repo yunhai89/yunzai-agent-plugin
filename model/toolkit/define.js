@@ -6,7 +6,7 @@
  *
  * 用 defineTool / defineToolPack 包装可得到：
  *  - 字段校验（缺 name/execute 抛错，而非运行时才暴雷）
- *  - category 默认值（'query'）
+ *  - category 默认值（'system'：未声明权限的外置工具 fail-closed，仅主人可用）
  *  - 命名空间前缀（pack.name 自动给子工具加前缀，避免冲突）
  *
  * 	ctx 访问辅助：getBot/getGroup/getFriend/getMember —— 优雅降级，缺失返回 null。
@@ -15,6 +15,9 @@
  */
 
 const VALID = ['query', 'personal', 'message', 'group_manage', 'system']
+
+/** 未显式声明 category 时的安全默认：第三方工具不能默认获得全员可调用权限 */
+export const DEFAULT_TOOL_CATEGORY = 'system'
 
 /** 单个工具定义 */
 export function defineTool(spec) {
@@ -27,7 +30,7 @@ export function defineTool(spec) {
   return {
     name: spec.name,
     description: spec.description || `工具 ${spec.name}`,
-    category: spec.category || 'query',
+    category: spec.category || DEFAULT_TOOL_CATEGORY,
     parameters: spec.parameters,
     meta: spec.meta || undefined,
     execute: spec.execute,

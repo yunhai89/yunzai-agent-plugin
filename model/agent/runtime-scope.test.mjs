@@ -101,11 +101,11 @@ await test('ToolRegistry.registerScoped：scope.close 注销工具；不误删�
   await scope.close()
   eq(reg.has('scoped_tool'), false, 'scope 关闭后注销')
 
-  // 旧 disposer 不误删同名新版本
+  // 旧 disposer 不误删同名新版本（同名覆盖现在必须显式 replace）
   const scope2 = new RuntimeScope()
   const reg2 = new ToolRegistry()
   reg2.registerScoped(scope2, mk('same', 'old'))
-  reg2.register(mk('same', 'new')) // 同名新版本覆盖
+  reg2.replace(mk('same', 'new')) // 受控替换：模拟工具进化/热更新上线新版本
   await scope2.close()
   eq(reg2.has('same'), true, '旧 disposer 不移除同名新版本')
   await reg2.get('same').execute({}, {})

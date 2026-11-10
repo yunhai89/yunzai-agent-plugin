@@ -200,7 +200,7 @@ router.get('/skills', asyncHandler(async (req, res) => {
 router.get('/tools', asyncHandler(async (req, res) => {
   const r = await getRt(res); if (!r) return
   const list = typeof r.tools?.list === 'function' ? r.tools.list() : []
-  return ok(res, list.map((t) => ({ id: t.name, name: t.name, description: t.description || '', category: t.category || 'query' })))
+  return ok(res, list.map((t) => ({ id: t.name, name: t.name, description: t.description || '', category: t.category || 'system' })))
 }))
 
 // GET /api/tool-packs —— 外置工具包元信息 + 配置 schema + 当前用户值（供配置中心动态渲染，不依赖 runtime）
@@ -391,7 +391,7 @@ router.post('/tevo/tools/:versionId/approve', asyncHandler(async (req, res) => {
   if (v.status !== 'verified') return fail(res, CODE.BAD, `仅 verified 候选可采纳（当前 ${v.status}）`)
   await reg.setStatus(req.params.versionId, 'stable', { actor: 'web:' + (req.master || 'unknown'), reason: 'web 面板采纳' })
   const stable = (await reg.listStable()).find((s) => s.versionId === req.params.versionId)
-  if (stable) r.tools.register(await reg.toToolContract(stable, r.toolEvo.runner))
+  if (stable) r.tools.replace(await reg.toToolContract(stable, r.toolEvo.runner))
   return ok(res, { versionId: req.params.versionId, status: 'stable' }, '已晋升 stable 并注入')
 }))
 
@@ -414,7 +414,7 @@ router.post('/tevo/tools/:versionId/decommission', asyncHandler(async (req, res)
       const target = others[0]
       await reg.setActiveVersion(v.tool_id, target.id, { actor: 'web:' + (req.master || 'unknown'), reason: `淘汰 ${v.semver} 后回滚` })
       const stable = (await reg.listStable()).find((s) => s.versionId === target.id)
-      if (stable) r.tools.register(await reg.toToolContract(stable, r.toolEvo.runner))
+      if (stable) r.tools.replace(await reg.toToolContract(stable, r.toolEvo.runner))
       msg = `已淘汰（原 active），已回滚到 ${target.semver}`
     } else {
       r.tools.unregister(v.manifest.name)
@@ -436,7 +436,7 @@ router.post('/tevo/tools/:versionId/rollback', asyncHandler(async (req, res) => 
   await reg.setActiveVersion(v.tool_id, req.params.versionId, { actor: 'web:' + (req.master || 'unknown'), reason: 'web 面板回滚' })
   r.tools.unregister(v.manifest.name)
   const stable = (await reg.listStable()).find((s) => s.versionId === req.params.versionId)
-  if (stable) r.tools.register(await reg.toToolContract(stable, r.toolEvo.runner))
+  if (stable) r.tools.replace(await reg.toToolContract(stable, r.toolEvo.runner))
   return ok(res, { versionId: req.params.versionId, active: true }, `${v.manifest.name}@${v.semver} 已设为当前上线版本`)
 }))
 

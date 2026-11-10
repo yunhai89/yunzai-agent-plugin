@@ -164,6 +164,7 @@ await test('bridge：loadMcpTools + mcpResultToString', async () => {
   const n = await loadMcpTools(client, registry, { prefix: 'mcp' })
   eq(n, 1, '注册 1 个工具')
   ok(registry.has('mcp__echo'), '带前缀注册')
+  eq(registry.get('mcp__echo').category, 'system', '未配置 category → system（仅主人）')
   const out = await registry.get('mcp__echo').execute({ text: 'ping' })
   eq(out, 'ping', '执行 MCP 工具 → 回显')
 
@@ -407,7 +408,9 @@ await test('bridge.resolveCategory：三形态', async () => {
   eq(resolveCategory(t, (x) => (x.name.startsWith('read') ? 'query' : 'system')), 'query', 'function')
   eq(resolveCategory({ name: 'write' }, { read_file: 'query', default: 'system' }), 'system', 'map→default')
   eq(resolveCategory(t, { read_file: 'query', default: 'system' }), 'query', 'map→命名')
-  eq(resolveCategory(t, null), 'query', 'null→query')
+  eq(resolveCategory(t, null), 'system', 'null→system（第三方 MCP 默认仅主人）')
+  eq(resolveCategory({ name: 'other' }, { read_file: 'query' }), 'system', 'map 未命中且无 default→system')
+  eq(resolveCategory(t, () => ''), 'system', 'function 返回空→system')
 })
 
 // ---------- 14. MCP 工具 × RBAC：按类别走权限 ----------

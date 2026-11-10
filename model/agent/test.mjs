@@ -245,6 +245,43 @@ await test('工具失败同步：工具抛错 → 结果带 _hint', async () => 
   ok(toolMsg.content.includes('_hint'), '失败结果带 _hint，引导模型据实回复')
 })
 
+// ---------- 3c. 搜索接口失败 → 失败结果给出可执行的联网替代 ----------
+await test('工具失败替代：web_search 网络失败 → _alternatives 指向 web_crawl，模型可直接切换', async () => {
+  let crawled = null
+  const provider = mockProvider([
+    { toolCalls: [{ id: 'c1', name: 'web_search', arguments: { query: '米哈游 公告' } }], finishReason: 'tool_calls' },
+    { toolCalls: [{ id: 'c2', name: 'web_crawl', arguments: { url: 'https://example.com/news' } }], finishReason: 'tool_calls' },
+    { content: '已从官网抓到公告', finishReason: 'stop' },
+  ])
+  const tools = new ToolRegistry().register(
+    {
+      name: 'web_search',
+      description: '联网搜索',
+      category: 'query',
+      meta: { summary: '联网搜索', capabilities: ['net', 'net.search'] },
+      parameters: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] },
+      async execute() { throw new Error('所有搜索源均失败 → ddg: fetch failed') },
+    },
+    {
+      name: 'web_crawl',
+      description: '抓取网页正文',
+      category: 'query',
+      meta: { summary: '抓取网页正文', capabilities: ['net', 'net.fetch', 'net.browse'] },
+      parameters: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
+      async execute(p) { crawled = p.url; return { ok: true, url: p.url, text: '公告正文' } },
+    },
+  )
+  const agent = new Agent({ provider, tools, maxTurns: 6, reflect: 'off' })
+  const res = await agent.run('查米哈游最新公告')
+
+  const failed = JSON.parse(res.messages.find((m) => m.role === 'tool' && m.tool_call_id === 'c1').content)
+  eq(failed._failure?.kind, 'network', '失败归类为 network')
+  ok(failed._alternatives?.some((a) => a.name === 'web_crawl'), '_alternatives 含 web_crawl')
+  ok(/web_crawl/.test(failed._next || ''), '_next 指向备选工具')
+  eq(crawled, 'https://example.com/news', '模型按备选切换到 web_crawl 并执行成功')
+  eq(res.content, '已从官网抓到公告', '最终回复正常')
+})
+
 // ---------- 4. 预算耗尽 ----------
 await test('maxTurns 耗尽 → stopReason:max_turns', async () => {
   const provider = mockProvider([
@@ -604,7 +641,7 @@ await test('ToolRegistry：缺 category 打警告（MCP/已声明不提示）', 
   const reg = new ToolRegistry({ logger: (level, ...args) => logs.push([level, ...args].join(' ')) })
   reg.register({ name: 'no_cat_tool', description: 'd', parameters: { type: 'object' }, async execute() { return 'ok' } })
   reg.register({ name: 'no_cat_tool', description: 'd', parameters: { type: 'object' }, async execute() { return 'ok' } })
-  eq(logs.filter((l) => l.includes('no_cat_tool') && l.includes('category')).length, 1, '缺 category 告警一次（去重）')
+  eq(logs.filter((l) => l.includes('no_cat_tool') && l.includes('未声明 category')).length, 1, '缺 category 告警一次（去重）')
   const logs2 = []
   const reg2 = new ToolRegistry({ logger: (level, ...args) => logs2.push([level, ...args].join(' ')) })
   reg2.register({ name: 'has_cat', category: 'query', description: 'd', parameters: { type: 'object' }, async execute() { return 'ok' } })

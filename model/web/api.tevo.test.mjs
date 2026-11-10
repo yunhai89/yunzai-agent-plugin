@@ -44,7 +44,7 @@ await registry.setStatus(ap2.id, 'verified')
 const seeded = await seedBuiltinTools(registry, [{ name: 'builtin_demo', description: '内置演示工具', parameters: { type: 'object' }, sideEffects: ['none'] }])
 const builtinVersionId = seeded.bindings[0].versionId
 
-const fakeTools = { register() {}, unregister() {} }
+const fakeTools = { register() {}, replace() {}, unregister() {} }
 let toolEvoEnabled = true
 const runtimeProvider = async () => ({ toolEvo: toolEvoEnabled ? { registry, runner: null } : null, tools: fakeTools })
 

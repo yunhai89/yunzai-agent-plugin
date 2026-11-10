@@ -24,6 +24,7 @@ import { ToolScheduler, resolveToolConcurrency } from './tool-scheduler.js'
 import { resolveExecutionMeta } from './tool-effects.js'
 import { validateToolArgs } from './tool-schema.js'
 import { isToolErrorContent } from './tool-result.js'
+import { enrichToolFailure } from './tool-fallback.js'
 import { tagUntrusted, unwrapUntrusted } from './guard.js'
 import { compactMessages } from './compact/index.js'
 import { TEMPLATES, SERVICE_DIRECTIVE, SEARCH_VERIFICATION, REFLECTION_DIRECTIVE, buildToolCatalogSection, buildToolDiscoverySection, buildSkillsPromptSection, buildStickerPromptSection, buildAgentSystemPrompt } from '../prompt/index.js'
@@ -201,7 +202,7 @@ function truncateJson(value, max) {
 
 /** 失败回灌提示：注入错误 tool 结果的 _hint 字段，引导模型据实回复、勿臆测编造。
  *  注：以 JSON 字段注入（而非追加文本），保证 tool 结果仍可被 JSON.parse。 */
-const TOOL_FAIL_HINT = '这是工具返回的真实失败原因——请据此如实回复用户（勿臆测/编造其它原因）；若给出可重试方向（缺参数/权限不足/网络不可达/需先查 id）则换方式重试或指导用户；若反复失败无法解决，引导用户发送 #上报错误 <问题描述> 上报（命令会自动打包本次会话日志给开发者）。'
+const TOOL_FAIL_HINT = '这是工具返回的真实失败原因——请据此如实回复用户（勿臆测/编造其它原因）；若给出可重试方向（缺参数/权限不足/网络不可达/需先查 id）则换方式重试或指导用户；若结果含 _alternatives，优先改用其中能力相近的备选工具，不要对同一工具同参数反复空转；若反复失败无法解决，引导用户发送 #上报错误 <问题描述> 上报（命令会自动打包本次会话日志给开发者）。'
 
 /** 异常停止原因集合（命中且尚无最终答案时必须进一次禁工具 finalizer；不以"有没有旁白"为条件） */
 export const GOVERNOR_STOP = new Set(['max_turns', 'duplicate_action', 'consecutive_failures', 'no_progress', 'time_budget', 'token_budget', 'provider_incomplete'])
@@ -1897,7 +1898,7 @@ export class Agent {
         if (!t || t.name === 'tool_search' || this.activeTools.has(t.name)) continue
         catalog.push({
           name: t.name,
-          category: t.category || 'query',
+          category: t.category || 'system',
           summary: String(t.meta?.summary || t.description || '').replace(/\s+/g, ' ').slice(0, 200),
           required: t.parameters?.required || [],
         })
@@ -2364,11 +2365,30 @@ export class Agent {
       content = stringifyArgs({ error: `工具调度异常：${e?.message || String(e)}` })
       this.logger('warn', 'tool dispatch error', tc.name, e?.message || e)
     }
-    // 失败回灌：工具返回/抛出错误时，把"据实回复"提示注入 tool 结果（JSON 字段，保持可 parse）——
-    // 让模型据实转告用户真实错误，而非忽略错误去臆测/编造失败原因（杜绝"schema bug"式瞎编）
+    // 失败回灌：工具返回/抛出错误时，把"据实回复"提示与**能力等价备选**注入 tool 结果（JSON 字段，保持可 parse）——
+    // 让模型据实转告用户真实错误，而非忽略错误去臆测/编造失败原因（杜绝"schema bug"式瞎编）；
+    // 同时把 _alternatives 里的真实可用工具交给模型，避免搜索接口一挂就死守单一工具/直接放弃。
     if (isToolError(content)) {
-      try { const o = JSON.parse(content); o._hint = TOOL_FAIL_HINT; content = JSON.stringify(o) }
-      catch { content = content + '\n' + TOOL_FAIL_HINT } // 非 JSON 结果才回退追加
+      const enriched = enrichToolFailure(content, {
+        tool: tool || { name: tc.name, description: '', parameters: {} },
+        registry: this.tools,
+        ctx,
+        policy: this.policy,
+        hint: TOOL_FAIL_HINT,
+      })
+      if (enriched) {
+        content = stringifyArgs(enriched)
+        // 按需发现模式（stableList:false）下备选工具未必在本轮 tools 数组里：顺手激活，下一轮即可直接调用。
+        // 稳定模式全量下发，无需改动 activeTools（也避免无意义的会话状态膨胀）。
+        if (!this.stableToolList && this.activeTools && Array.isArray(enriched._alternatives)) {
+          for (const alt of enriched._alternatives) {
+            if (alt?.name && this.tools?.has?.(alt.name)) this.activeTools.add(alt.name)
+          }
+        }
+      } else {
+        try { const o = JSON.parse(content); o._hint = TOOL_FAIL_HINT; content = JSON.stringify(o) }
+        catch { content = content + '\n' + TOOL_FAIL_HINT } // 非 JSON 结果才回退追加
+      }
     }
     const __toolOk = !isToolError(content)
     const __toolMs = Date.now() - __t

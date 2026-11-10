@@ -13,6 +13,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Config from '../../utils/Config.js'
 import { toFileSegment } from '../../utils/SendFile.js'
+import { assertUrlAllowed } from '../stagehand/guard.js'
 
 /** 允许发送的根目录（各工具产物都在这里：data/、data/temp/ 及其子目录） */
 const allowedRoots = () => [Config.path.temp, Config.path.data]
@@ -33,7 +34,7 @@ function isAllowedLocalPath(file) {
 
 export const sendFileTool = {
   name: 'send_file',
-  description: '发送本地文件到聊天（图片/文档/压缩包/音频/视频等任意文件）。仅限插件数据目录（data/、data/temp/）内的文件。何时用：用户让你发某个已存在但尚未发送的文件时。注意：create_excel 等工具在创建文件时会自动发送，不要用本工具重复发送同一文件。',
+  description: '发送本地文件到聊天（图片/文档/压缩包/音频/视频等任意文件）。仅限插件数据目录（data/、data/temp/）内的文件，或公网 http(s) 地址。何时用：用户让你发某个已存在但尚未发送的文件时。注意：create_excel 等工具在创建文件时会自动发送，不要用本工具重复发送同一文件。',
   category: 'system',
   meta: { summary: '发送文件到聊天' },
   parameters: {
@@ -47,7 +48,12 @@ export const sendFileTool = {
   async execute(params, ctx) {
     const p = String(params?.path || '').trim()
     if (!p) return { error: '请提供文件路径' }
-    // base64:// 与 http(s):// 由底层原样下发（不读宿主文件，无外泄风险）；其余按本地路径校验
+    // 远程 URL 由协议端代取：必须过 SSRF 门禁，否则可借 send_file 把云元数据/内网页面取回并发进群。
+    if (/^https?:\/\//i.test(p)) {
+      const gate = await assertUrlAllowed(p)
+      if (!gate.ok) return { error: `拒绝发送远程文件：${gate.reason}`, code: 'ssrf_blocked' }
+    }
+    // base64:// 直接下发；http(s):// 已过 SSRF 门禁；其余按本地路径校验
     if (!/^(base64|https?):\/\//i.test(p)) {
       let local = p
       if (/^file:\/\//i.test(p)) {

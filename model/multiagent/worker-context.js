@@ -28,7 +28,7 @@ export const WORKER_CTX_UNSUPPORTED = new Set([
   'pixiv__search', 'pixiv__illust', 'pixiv__ranking', 'pixiv__user', 'pixiv__tags', // ctx.e（外置工具包）
 ])
 
-/** 子代理只能使用只读类工具（默认 category='query'） */
+/** 子代理只能使用只读类工具（显式 category='query'；缺失按 system fail-closed） */
 export const ALLOWED_TOOL_CATEGORIES = new Set(['query'])
 
 /** 内部工具名：不得下发给子代理（防递归委派 / 自旋） */
@@ -52,7 +52,7 @@ export function buildWorkerTools(sourceRegistry, names, defaultNames) {
     if (WORKER_CTX_UNSUPPORTED.has(name)) { dropped.push(name); continue } // 依赖子代理没有的运行时句柄 → 剔除
     const tool = sourceRegistry.get(name)
     if (!tool) { dropped.push(name); continue }
-    if (!ALLOWED_TOOL_CATEGORIES.has(tool.category || 'query')) { dropped.push(name); continue }
+    if (!ALLOWED_TOOL_CATEGORIES.has(tool.category || 'system')) { dropped.push(name); continue }
     // 需主人逐次审批的工具不下发子代理：Worker 无审批通道（Agent 侧会 fail-closed 拒绝），
     // 下发只会让子代理白跑一轮并拿到 rejected_by_confirm
     if (tool.meta?.alwaysConfirm === true) { dropped.push(name); continue }

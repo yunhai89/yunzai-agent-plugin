@@ -38,6 +38,9 @@ v1.45.4 起已修：以前 `@机器人 + #指令` 会被本插件的 AI catch-al
 **Q6：官方机器人里主人指令没权限？**
 openid 不是 QQ 号，框架 master 判定不命中。发 `/uid`，把「完整 user_id」加到 `agent.masters`（或 Yunzai master 配置）。
 
+**Q6.1：官方机器人设为群管后，群管/群文件工具仍报「角色 member 低于 group_manage」？**
+① v1.50.0 起 `list_group_files` / `get_group_file` 已改为只读 `query`，普通成员也可列/读群文件（协议端仍要求机器人自身有群文件权限）；② 其它 `group_manage` 写操作校验的是**发言人**角色，不是机器人自身角色。适配器需在 `member.role`、`sender.role`、`author.member_role` 或 `sender.permissions` 里提供发言人角色；自实现官方适配器不返回角色时，请由主人执行或使用 `agent.masters` 授权。机器人设为群管只代表它有协议端权限，不会把普通成员提升为群管。
+
 **Q7：群白名单/提醒人设不生效？**
 官方群 ID 是 `<appId>:<openid>` 而非 QQ 群号，用 `/groupid` 取值；提醒按用户、定时任务链按会话。
 

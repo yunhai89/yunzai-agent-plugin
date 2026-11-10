@@ -118,7 +118,51 @@ export function rawGroupId(e) {
   return stripSelfPrefix(e?.group_id ?? '', e)
 }
 
-/** 频道 ID 拆解（非频道返回 null） */
+/**
+ * 从事件提取发言人的群角色（owner/admin/member）。
+ *
+ * QQ 官方机器人原生的 GROUP_*_MESSAGE_CREATE 事件**不带**发言人角色；但不同适配器
+ * / 自实现网关会在 member.role、sender.role、author.member_role、sender.permissions
+ * 等字段里给出。这里做统一归一，避免官方机器人场景永远被当成 member。
+ * 缺失或未知一律按 member（不凭 bot 自身管理员身份提权）。
+ */
+export function groupRoleOf(e) {
+  const norm = (v) => {
+    const s = str(v).trim().toLowerCase()
+    if (s === 'owner' || s === 'admin' || s === 'member') return s
+    return ''
+  }
+  const direct = [
+    e?.member?.role,
+    e?.member_role,
+    e?.sender?.role,
+    e?.sender?.member_role,
+    e?.author?.member_role,
+    e?._qqbot?.raw?.author?.member_role,
+  ]
+  for (const v of direct) {
+    const role = norm(v)
+    if (role) return role
+  }
+  if (e?.member?.is_owner || e?.sender?.is_owner) return 'owner'
+  if (e?.member?.is_admin || e?.sender?.is_admin) return 'admin'
+  // 部分 Yunzai-QQBot-Plugin / qq-official-bot 版本把权限放在 sender.permissions
+  const perms = Array.isArray(e?.sender?.permissions) ? e.sender.permissions.map((x) => str(x).toLowerCase()) : []
+  if (perms.includes('owner')) return 'owner'
+  if (perms.includes('admin')) return 'admin'
+  return 'member'
+}
+
+/** 发言人是否群管（owner/admin）。官方 bot 自身管理员身份不能代替发言人身份。 */
+export function isGroupAdminEvent(e) {
+  const role = groupRoleOf(e)
+  return role === 'admin' || role === 'owner'
+}
+
+/**
+ * 频道 ID 拆解（非频道返回 null）
+ * @returns {{guildId:string, channelId:string}|null}
+ */
 export function splitGuildId(e) {
   const raw = rawGroupId(e)
   if (!raw || detectAdapter(e).kind !== 'guild') return null

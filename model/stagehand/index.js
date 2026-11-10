@@ -106,7 +106,7 @@ export function makeStagehand(opt = {}) {
       name: 'goto',
       category,
       description: '用浏览器打开指定 URL（导航）。是 stagehand 多步任务的起点；页面会跨调用保持，供后续 stagehand__act/extract/observe 在同一页面上操作。成功返回 {ok:true, url, title, status?}（并附 data 别名；请读取 result.url/result.title 或 result.data）。仅允许公网 http/https，本地/内网/元数据地址会被拒绝。',
-      meta: { summary: '浏览器打开 URL' },
+      meta: { summary: '浏览器打开 URL', capabilities: ['net', 'net.fetch', 'net.browse'] },
       parameters: param.object({ url: param.str('要打开的网页 URL（含 http(s)://）') }, ['url']),
       async execute(p, ctx) {
         const id = identityOf(ctx)
@@ -147,7 +147,7 @@ export function makeStagehand(opt = {}) {
       name: 'observe',
       category,
       description: '观察当前页面，返回可交互元素列表（按钮/链接/输入框等）。用自然语言描述想找什么，如"登录相关的可点击元素"。只读，不改页面。成功返回 {ok:true, data, metadata?}（元素列表在 result.data）。需先用 stagehand__goto 打开页面。',
-      meta: { summary: '观察页面可交互元素', resultCap: 6000 },
+      meta: { summary: '观察页面可交互元素', resultCap: 6000, capabilities: ['net', 'net.fetch', 'net.browse'] },
       parameters: param.object({ instruction: param.str('想观察什么（自然语言，如"导航栏可点击项"）；留空=列出全部可交互元素') }, []),
       async execute(p, ctx) {
         const id = identityOf(ctx)
@@ -166,7 +166,7 @@ export function makeStagehand(opt = {}) {
       name: 'extract',
       category,
       description: '从当前页面抽取结构化数据（读取动态渲染、JS 执行后的内容）。用自然语言说"抽什么"+ 用 JSON Schema 描述结构。如抽商品标题/价格/表格行。成功返回 {ok:true, data, metadata?}（抽取结果在 result.data）。需先 stagehand__goto 打开页面。',
-      meta: { summary: '抽取页面结构化数据', resultCap: 8000 },
+      meta: { summary: '抽取页面结构化数据', resultCap: 8000, capabilities: ['net', 'net.fetch', 'net.browse'] },
       parameters: param.object({
         instruction: param.str('要抽取什么（自然语言，如"每个商品的名字和价格"）'),
         schema: param.str('JSON Schema 描述结构，如 {"type":"object","properties":{"title":{"type":"string"},"price":{"type":"string"}},"required":["title"]}'),
@@ -192,7 +192,7 @@ export function makeStagehand(opt = {}) {
       name: 'act',
       category,
       description: '在当前页面上执行动作（点击/输入/选择/提交等）。用自然语言描述，如"在搜索框输入 deepseek 并回车"或"点击登录按钮"。写动作，会改变页面状态（可用范围由 stagehand.permission 控制，不单独审批）。成功返回 {ok:true, data}（含 success/message/actions），仅当 SDK 返回 success===true 才算成功。需先 stagehand__goto 打开页面。',
-      meta: { summary: '执行页面动作(点击/输入/提交)', interactive: true },
+      meta: { summary: '执行页面动作(点击/输入/提交)', interactive: true, capabilities: ['net', 'net.browse'] },
       parameters: param.object({ instruction: param.str('要执行的动作（自然语言）') }, ['instruction']),
       async execute(p, ctx) {
         const id = identityOf(ctx)
