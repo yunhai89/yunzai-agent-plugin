@@ -11,7 +11,7 @@
 一个插件，从「能回话」到「能干活、能记住、能进化」的完整闭环。
 
 <img src="https://img.shields.io/badge/version-v1.49.1-blueviolet" alt="Version">
-<img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="License">
+<img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 <img src="https://img.shields.io/badge/platform-Yunzai-9cf" alt="Yunzai Plugin">
 <img src="https://img.shields.io/badge/AI-Agent-7c3aed" alt="AI Agent">
 <img src="https://img.shields.io/badge/QQ-Bot-12b7f5" alt="QQ Bot">
@@ -208,4 +208,4 @@ agent:
 - **QQ 群**：[960179589](https://qm.qq.com/q/960179589)
 - **作者 QQ**：3891977697
 
-[GPL-3.0](./LICENSE) · [鸣谢与参考项目](docs/credits.md)
+[MIT](./LICENSE) · [鸣谢与参考项目](docs/credits.md)
