@@ -3134,3 +3134,124 @@ html[data-theme="light"] pre.code::selection { background: rgba(199, 233, 78, .4
   .sp-x { width: 40px; height: 40px; flex-basis: 40px; }
   .sp-x svg { width: 16px; height: 16px; }
 }
+
+/* ==========================================================================
+   TIDE POLISH — responsive cards, no squeezed labels, tactile motion
+   --------------------------------------------------------------------------
+   收口首页/窄屏反复出现的三类体验问题：
+   1. 卡片栅格在 921–1400px 出现半行空洞，各页卡片高度参差；
+   2. seg / 卡片标题在窄屏被 flex 压成竖排或裁切；
+   3. 路由切换的整页 blur + out-in 阻塞新页挂载，点击显得慢。
+   规则集中放在文件尾部，避免再与上面多轮主题覆盖互相打架。
+   ========================================================================== */
+
+/* — 1. 路由切换：新旧视图交叉淡化，新页立刻挂载（不阻塞取数/渲染） — */
+.page-frame { position: relative; min-width: 0; }
+.page-enter-active { transition: opacity .2s var(--eo); will-change: opacity; }
+.page-enter-from { opacity: 0; transform: none; filter: none; }
+.page-leave-active {
+  position: absolute; top: 0; left: 0; right: 0; width: 100%;
+  z-index: 2; pointer-events: none;
+  transition: opacity .12s ease;
+  will-change: opacity;
+}
+.page-leave-to { opacity: 0; transform: none; filter: none; }
+
+/* — 2. 卡片头 / 分段控件：宁可换行，也不挤字 — */
+.chamber-head, .panel-head, .section-head { flex-wrap: wrap; row-gap: 10px; }
+.chamber-head > *, .panel-head > *, .section-head > * { min-width: 0; }
+.chamber-head > :first-child, .panel-head > :first-child { flex: 1 1 140px; }
+.chamber-actions, .panel-link, .panel-stat,
+.chamber-head > .seg, .panel-head > .seg { flex: 0 0 auto; }
+.chamber-head > .btn, .panel-head > .btn { flex: 0 0 auto; margin-left: auto; }
+
+.seg {
+  flex: 0 0 auto;
+  max-width: 100%;
+  height: auto;
+  flex-wrap: wrap;
+}
+.seg button { flex: 0 0 auto; white-space: nowrap; }
+.pill { flex: 0 0 auto; }
+.nav-link { overflow: hidden; }
+.nav-link > span:not(.nav-badge) { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* — 3. 文字不再被压成竖排；长 ID / 模型名有处可落 — */
+.chamber-title, .panel-title, .section-title, .ct-t,
+.hero-model, .dash-title, .ph-t { text-wrap: balance; overflow-wrap: break-word; }
+.chamber-sub, .panel-meta, .ct-s, .ph-s { text-wrap: pretty; }
+.hero-identity, .approval-body, .perception-main, .tool-row-top,
+.run-main, .cf-item .info, .ct > div { min-width: 0; }
+.approval-row { min-width: 0; }
+.approval-act { min-width: 68px; white-space: nowrap; }
+
+/* — 4. 同排卡片共享行高；不再出现孤零零的半排 — */
+.bento > .card, .bento > .chamber,
+.grid > .card, .grid > .chamber { height: 100%; }
+.chamber-body { flex: 1 1 auto; }
+.approvals { min-height: 0; }
+
+@media (max-width: 1400px) and (min-width: 921px) {
+  .bento { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .hero, .approvals, .chart-chamber { grid-column: 1 / -1; }
+  .tool-panel, .switch-panel, .cache-panel, .perception-panel { grid-column: span 1; }
+}
+
+/* 窄屏点按区域不再被 26px 高的 seg 按钮挤扁；空间不够就换行，不裁字 */
+@media (max-width: 920px) {
+  .seg { min-height: 38px; }
+  .seg button { min-height: 30px; padding: 0 12px; }
+  .seg-sm button { height: 30px; font-size: 11px; }
+  /* 页面整体不再叠一层全屏 backdrop-filter，滚动/点按更轻 */
+  .viewport { backdrop-filter: none; }
+  .card, .chamber, .panel, .cf-sec, .subpanel, .tbl-w, .runtime, .kpi-strip {
+    backdrop-filter: blur(10px) saturate(130%);
+  }
+}
+
+/* — 5. 点按 / 悬停反馈：动作立刻可见，但不位移布局 — */
+button, [role="button"], a, .nav-link, .dock-i, .nav-sheet-item,
+.cmd-item, .seg button, .cf-sh, .run-row, .scp, .tc-tag,
+.ps-card, .cv-item, .tf-item, .card.lift {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.nav-link, .dock-i, .nav-sheet-item, .cmd-item, .seg button,
+.card.lift, .ps-card, .scp, .cv-item, .run-row, .tf-item, .cf-sh {
+  transition: background-color var(--dur) var(--eo), color var(--dur) var(--eo),
+    border-color var(--dur) var(--eo), box-shadow var(--dur) var(--eo),
+    transform .14s var(--eo);
+}
+.nav-link:active, .dock-i:active, .nav-sheet-item:active, .cmd-item:active { transform: scale(.985); }
+.seg button:active { transform: scale(.96); }
+.btn:active:not(:disabled) { transform: translateY(1px) scale(.98); }
+@media (hover: hover) {
+  .card.lift:hover, .ps-card:hover { transform: translateY(-2px); }
+}
+
+/* — 6. 页面进入：只做 6px 的轻微上浮 + 短 stagger，没有整页 blur — */
+@keyframes tideViewIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.view > *:not(.ovl):not(.mdl) { animation: tideViewIn .26s var(--es) backwards; }
+.view > *:not(.ovl):not(.mdl):nth-child(2) { animation-delay: .03s; }
+.view > *:not(.ovl):not(.mdl):nth-child(3) { animation-delay: .055s; }
+.view > *:not(.ovl):not(.mdl):nth-child(n+4) { animation-delay: .075s; }
+/* 配置中心 / 伪人 / 群世界的大表单整块位移成本高，也可能影响 fixed 保存条；
+ * 它们仍由页面级淡入覆盖，不额外做子块动画。 */
+.view > .cf-wrap { animation: none !important; }
+
+/* 动效偏好：本条必须留在所有新增 animation/transition 之后 */
+@media (prefers-reduced-motion: reduce) {
+  .page-enter-active, .page-leave-active,
+  .nav-link, .dock-i, .nav-sheet-item, .cmd-item, .seg button,
+  .card.lift, .ps-card, .scp, .cv-item, .run-row, .tf-item, .cf-sh {
+    transition-duration: .01ms !important;
+    animation: none !important;
+  }
+  .view > *:not(.ovl):not(.mdl) { animation: none !important; }
+  .card.lift:hover, .ps-card:hover, .btn:active:not(:disabled),
+  .nav-link:active, .dock-i:active, .nav-sheet-item:active,
+  .cmd-item:active, .seg button:active { transform: none !important; }
+}

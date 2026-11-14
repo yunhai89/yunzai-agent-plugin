@@ -86,6 +86,14 @@
       if (!valid.value) route.value = 'dashboard'
       const menuOpen = ref(false)
       const go = (id) => {
+        if (!window.VIEWS[id]) return
+        /* 先切 route 再改 hash：点击同一个 tick 就启动新视图，避免等 hashchange
+         * 事件 + 离场过渡才开始挂载，整页导航更「跟手」。 */
+        if (route.value !== id) {
+          route.value = id
+          syncTitle(id)
+          window.scrollTo({ top: 0 })
+        }
         location.hash = '#/' + id
         menuOpen.value = false
         paletteOpen.value = false
@@ -324,9 +332,12 @@
 
         <div class="viewport">
           <main class="page">
-            <Transition name="page" mode="out-in">
-              <component :is="view" :key="route"/>
-            </Transition>
+            <div class="page-frame">
+              <!-- 新旧视图同时在场做交叉淡入淡出；旧页绝对定位，不阻塞新页挂载/取数 -->
+              <Transition name="page">
+                <component :is="view" :key="route"/>
+              </Transition>
+            </div>
           </main>
         </div>
       </div>
