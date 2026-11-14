@@ -14,7 +14,7 @@
       return { skills: window.MOCK.skills, detail, q, filtered }
     },
     template: `
-    <div>
+    <div class="view view-skills">
       <page-head title="技能" icon="skill" desc="skills/*.md · YAML frontmatter 描述触发条件，正文为使用说明；always=true 常驻注入">
         <input class="inp" style="width:230px" v-model="q" placeholder="搜索名称 / 关键词…">
       </page-head>

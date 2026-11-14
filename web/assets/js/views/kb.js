@@ -64,7 +64,7 @@
       return { docs: computed(() => M.kb || []), title, text, url, urlTitle, busy, msg, add, addUrl, refreshDoc, remove, rebuild, dateStr }
     },
     template: `
-    <div>
+    <div class="view view-kb">
       <page-head title="知识库" icon="book" desc="全局共享文档库 · chunk + embedding 向量化 · 对话时 Agent 调 kb_search 检索（RAG）；支持网页 URL 入库 + 定时拉取最新">
         <button class="btn b-line" @click="rebuild" :disabled="busy"><v-icon name="refresh"/>重建索引</button>
       </page-head>

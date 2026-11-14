@@ -66,7 +66,7 @@
       return { tab, switchTab, dataGid, dataGroups, overview, relations, loading, load, mood, resetGroup, clearMember, toggleFreeze, pct, emoZh, concZh, MOOD_ZH }
     },
     template: `
-    <div>
+    <div class="view view-selfstate">
       <page-head title="自我状态" icon="bot" desc="自我认知与情绪 · 心境/情绪/期待/心事；管理员调试视图"/>
       <div class="seg" style="display:inline-flex;margin-bottom:14px;border:1px solid var(--line);border-radius:10px;padding:3px">
         <button class="btn" :class="tab==='state' ? 'b-pri' : 'b-line'" @click="switchTab('state')"><v-icon name="bot"/> 状态概览</button>

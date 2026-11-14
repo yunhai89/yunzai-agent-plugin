@@ -165,9 +165,11 @@
       /* —— 主趋势：一条线，一个总量 —— */
       const tokenChart = computed(() => lineChart(
         (M.tokenTrend || []).map((d) => ({ day: d.day, v: (d.input || 0) + (d.output || 0) })),
+        { W: 820, H: 300, L: 54, R: 18, T: 18, B: 34 },
       ))
       const reqBars = computed(() => barChart(
         (M.requestTrend || []).map((d) => ({ day: d.day, v: d.count || 0 })),
+        { W: 560, H: 210, L: 40, R: 12, T: 12, B: 30 },
       ))
 
       /* —— 明细图（保留旧图表的数据口径） —— */
@@ -368,103 +370,79 @@
       }
     },
     template: `
-    <div class="dash">
-      <!-- 抬头 -->
+    <div class="view view-dashboard dash">
       <header class="dash-head">
-        <div class="dash-head-main">
-          <h1 class="dash-title">概览</h1>
-          <p class="dash-sub">TRSS-Yunzai · {{ today }} · {{ runtime.provider }} / {{ runtime.model }} · 数据更新于 {{ lastUpdatedLabel }}</p>
+        <div>
+          <h1 class="dash-title">运行概览</h1>
+          <p class="dash-sub">TRSS-Yunzai，{{ today }}，数据更新于 {{ lastUpdatedLabel }}</p>
         </div>
         <div class="dash-actions">
           <span class="pill" :class="pending ? 'p-honey' : 'p-green'">
-            <span class="status-dot" :class="pending ? 'is-warn' : 'is-ok'"></span>{{ pending ? pending + ' 条待批' : '队列已清空' }}
+            <span class="status-dot" :class="pending ? 'is-warn' : 'is-ok'"></span>{{ pending ? pending + ' 项待处理' : '没有待处理事项' }}
           </span>
           <button class="btn b-line b-sm" :disabled="refreshing" @click="reload">
-            <v-icon name="refresh"/>{{ refreshing ? '刷新中…' : '刷新' }}
+            <v-icon name="refresh"/>{{ refreshing ? '刷新中…' : '刷新数据' }}
           </button>
         </div>
       </header>
 
-      <!-- 运行时一行：当前模型 + 近 7 日链路 -->
-      <section class="runtime" aria-label="运行时状态">
-        <div class="runtime-main">
-          <div class="runtime-state">
-            <span class="live-dot"></span>
-            <span>{{ runtime.ready ? '运行时在线' : '待配置模型' }}</span>
-            <span class="runtime-sep"></span>
-            <span class="mono">沙箱 {{ sandbox }}</span>
-          </div>
-          <div class="runtime-name">
-            <span class="runtime-provider">{{ runtime.provider }}</span>
-            <span class="runtime-slash">/</span>
-            <span class="runtime-model mono">{{ runtime.model }}</span>
-          </div>
-          <div class="runtime-meta">
-            <span>协议 {{ runtime.protocol }}</span>
-            <span>触发 {{ runtime.trigger }}</span>
-            <span>记忆 {{ runtime.memory ? '开启' : '关闭' }}</span>
-            <span>隔离 {{ runtime.isolation ? '开启' : '关闭' }}</span>
-          </div>
-        </div>
-        <div class="runtime-chain">
-          <div class="chain-head">近 7 日运行链路</div>
-          <div class="chain">
-            <div class="chain-step">
-              <span class="chain-value num">{{ fmt.num(conversations) }}</span>
-              <span class="chain-label">活跃会话</span>
+      <section class="bento">
+        <article class="chamber hero span-8">
+          <div class="hero-top">
+            <div class="hero-identity">
+              <div class="hero-label">当前模型</div>
+              <h2 class="hero-model">{{ runtime.model }}</h2>
+              <p class="hero-provider">{{ runtime.provider }} / {{ runtime.protocol }} / {{ runtime.trigger }}<span v-if="!runtime.ready">，尚未接入模型</span></p>
             </div>
-            <span class="chain-arrow">→</span>
-            <div class="chain-step">
-              <span class="chain-value num">{{ fmt.num(M.totalRequests || 0) }}</span>
-              <span class="chain-label">请求</span>
-            </div>
-            <span class="chain-arrow">→</span>
-            <div class="chain-step">
-              <span class="chain-value num">{{ fmt.num(M.totalToolCalls || 0) }}</span>
-              <span class="chain-label">工具调用</span>
-            </div>
-            <span class="chain-arrow">→</span>
-            <div class="chain-step">
-              <span class="chain-value num">{{ fmt.num(totalTokens) }}</span>
-              <span class="chain-label">Token</span>
-            </div>
+            <span class="hero-live"><span class="live-dot"></span>{{ runtime.ready ? '运行时在线' : '等待配置' }}</span>
           </div>
-        </div>
-      </section>
 
-      <!-- 关键数字：一个容器，四条分隔 -->
-      <section class="kpi-strip" aria-label="关键指标">
-        <div class="kpi">
-          <span class="kpi-label">活跃会话</span>
-          <span class="kpi-value num">{{ fmt.num(conversations) }}</span>
-          <span class="kpi-note">群聊 / 私聊</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi-label">待你决定</span>
-          <span class="kpi-value num" :class="{ 'is-alert': pending > 0 }">{{ pending }}</span>
-          <span class="kpi-note">{{ pendingNote }}</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi-label">工具成功率</span>
-          <span class="kpi-value num">{{ successRateText }}</span>
-          <span class="kpi-note">近 7 日 · 失败 {{ failureText }}</span>
-        </div>
-        <div class="kpi">
-          <span class="kpi-label">Token 消耗</span>
-          <span class="kpi-value num">{{ fmt.num(totalTokens) }}</span>
-          <span class="kpi-note">缓存命中 {{ cacheStats.hitRate != null ? cacheStats.hitRate.toFixed(1) + '%' : '—' }}</span>
-        </div>
-      </section>
+          <div class="hero-chart">
+            <svg class="chart-svg" :viewBox="'0 0 ' + tokenChart.W + ' ' + tokenChart.H" role="img" aria-label="近 7 日 Token 用量">
+              <defs>
+                <linearGradient id="tokenArea" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="var(--cobalt)" stop-opacity=".18"/>
+                  <stop offset="100%" stop-color="var(--cobalt)" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <g class="chart-grid">
+                <line v-for="g in tokenChart.grid" :key="'g' + g.y" :x1="tokenChart.L" :x2="tokenChart.W - tokenChart.R" :y1="g.y" :y2="g.y"/>
+              </g>
+              <g class="chart-ticks">
+                <text v-for="g in tokenChart.grid" :key="'t' + g.y" :x="tokenChart.L - 10" :y="g.y + 3.5" text-anchor="end">{{ g.label }}</text>
+              </g>
+              <path v-if="tokenChart.path" class="chart-area" :d="tokenChart.area"/>
+              <path v-if="tokenChart.path" class="chart-line" :d="tokenChart.path" pathLength="1"/>
+              <circle v-for="p in tokenChart.points" :key="'hp' + p.day" class="hero-dot" :cx="p.x" :cy="p.y" r="3.2">
+                <title>{{ p.day }} · {{ fmt.num(p.v) }} tokens</title>
+              </circle>
+              <g class="chart-days">
+                <text v-for="d in tokenChart.days" :key="'d' + d.label" :x="d.x" :y="tokenChart.H - 8" text-anchor="middle">{{ d.label }}</text>
+              </g>
+              <line v-if="!tokenChart.hasData" class="chart-zero" :x1="tokenChart.L" :x2="tokenChart.W - tokenChart.R" :y1="tokenChart.zeroY" :y2="tokenChart.zeroY"/>
+            </svg>
+            <div v-if="!tokenChart.hasData" class="chart-empty">还没有用量记录。产生一次对话后，这里会出现趋势。</div>
+            <div class="hero-chart-meta">
+              <span>近 7 日 Token 用量</span>
+              <span>输入 {{ fmt.num(cacheStats.input) }}，输出 {{ fmt.num(cacheStats.output) }}，缓存命中 {{ cacheStats.hitRate != null ? cacheStats.hitRate.toFixed(1) + '%' : '—' }}</span>
+            </div>
+          </div>
 
-      <!-- 主工作区 -->
-      <div class="dash-grid dash-grid-main">
-        <section class="panel approvals">
-          <header class="panel-head">
+          <div class="hero-metrics">
+            <div class="hero-metric"><b>{{ fmt.num(conversations) }}</b><span>活跃会话</span></div>
+            <div class="hero-metric"><b>{{ fmt.num(M.totalToolCalls || 0) }}</b><span>工具调用</span></div>
+            <div class="hero-metric"><b>{{ successRateText }}</b><span>工具成功率</span></div>
+            <div class="hero-metric"><b>{{ fmt.num(totalTokens) }}</b><span>Token 消耗</span></div>
+          </div>
+        </article>
+
+        <section class="chamber approvals span-4">
+          <header class="chamber-head">
             <div>
-              <h2 class="panel-title">待你决定</h2>
-              <p class="panel-meta">工具确认 · 人设采纳 · 进化建议，批准后立即生效</p>
+              <h2 class="chamber-title">待你决定</h2>
+              <p class="chamber-sub">工具确认、人设采纳与进化建议。批准后立即生效。</p>
             </div>
-            <a class="panel-link" href="#/confirm">全部审批 <span aria-hidden="true">→</span></a>
+            <a class="panel-link" href="#/confirm">全部审批</a>
           </header>
           <div v-if="todoShown.length" class="approval-list">
             <div v-for="t in todoShown" :key="t.key" class="approval-row">
@@ -481,18 +459,20 @@
           </div>
           <div v-else class="queue-empty">
             <v-icon name="check"/>
-            <div><b>队列已清空</b><span>没有在等你定的事。</span></div>
+            <div><b>队列已清空</b><span>目前没有需要你审批的动作。</span></div>
           </div>
           <div v-if="todoRest" class="queue-more">
-            还有 {{ todoRest }} 条 · <a href="#/confirm">去审批门</a> 或 <a href="#/suggestions">进化建议</a>
+            还有 {{ todoRest }} 项。<a href="#/confirm">去审批页查看</a>
           </div>
         </section>
+      </section>
 
-        <section class="panel chart-panel">
-          <header class="panel-head">
+      <section class="bento">
+        <section class="chamber chart-chamber span-5">
+          <header class="chamber-head">
             <div>
-              <h2 class="panel-title">Token 消耗</h2>
-              <p class="panel-meta">输入 + 输出 · {{ winLabel }}</p>
+              <h2 class="chamber-title">对话轮次</h2>
+              <p class="chamber-sub">每日请求 · {{ winLabel }}</p>
             </div>
             <div class="seg seg-sm">
               <button v-for="w in ['1h','24h','7d','new','all']" :key="w" :class="{ on: win === w }" @click="setWin(w)">
@@ -500,54 +480,15 @@
               </button>
             </div>
           </header>
-          <div class="chart-body">
-            <svg class="chart-svg" :viewBox="'0 0 ' + tokenChart.W + ' ' + tokenChart.H" role="img" aria-label="Token 消耗趋势">
-              <g class="chart-grid">
-                <line v-for="g in tokenChart.grid" :key="'g' + g.y" :x1="tokenChart.L" :x2="tokenChart.W - tokenChart.R" :y1="g.y" :y2="g.y"/>
-              </g>
-              <g class="chart-ticks">
-                <text v-for="g in tokenChart.grid" :key="'t' + g.y" :x="tokenChart.L - 8" :y="g.y + 3.5" text-anchor="end">{{ g.label }}</text>
-              </g>
-              <path v-if="tokenChart.path" class="chart-area" :d="tokenChart.area"/>
-              <path v-if="tokenChart.path" class="chart-line" :d="tokenChart.path" pathLength="1"/>
-              <circle v-for="p in tokenChart.points" :key="'p' + p.day" class="chart-dot" :cx="p.x" :cy="p.y" r="2.6">
-                <title>{{ p.day }} · {{ fmt.num(p.v) }} tokens</title>
-              </circle>
-              <g class="chart-days">
-                <text v-for="d in tokenChart.days" :key="'d' + d.label" :x="d.x" :y="tokenChart.H - 8" text-anchor="middle">{{ d.label }}</text>
-              </g>
-              <line v-if="!tokenChart.hasData" class="chart-zero" :x1="tokenChart.L" :x2="tokenChart.W - tokenChart.R" :y1="tokenChart.zeroY" :y2="tokenChart.zeroY"/>
-            </svg>
-            <div v-if="!tokenChart.hasData" class="chart-empty">暂无 Token 数据：产生对话后自动统计</div>
-            <div class="token-split">
-              <div><span>输入</span><b class="mono">{{ fmt.num(cacheStats.input) }}</b></div>
-              <div><span>输出</span><b class="mono">{{ fmt.num(cacheStats.output) }}</b></div>
-              <div><span>缓存读取</span><b class="mono">{{ fmt.num(cacheStats.cached) }}</b></div>
-              <div><span>日均</span><b class="mono">{{ fmt.num(tokenAvg) }}</b></div>
-              <div><span>峰值</span><b class="mono">{{ fmt.num(tokenPeak) }}</b></div>
-            </div>
-          </div>
-        </section>
-      </div>
-
-      <div class="dash-grid dash-grid-2">
-        <section class="panel chart-panel">
-          <header class="panel-head">
-            <div>
-              <h2 class="panel-title">对话轮次</h2>
-              <p class="panel-meta">每日请求 · {{ winLabel }}</p>
-            </div>
-            <span class="panel-stat"><b>{{ fmt.num(M.totalRequests || 0) }}</b> 次</span>
-          </header>
-          <div class="chart-body">
+          <div class="chamber-body">
             <svg class="chart-svg" :viewBox="'0 0 ' + reqBars.W + ' ' + reqBars.H" role="img" aria-label="每日对话轮次">
               <g class="chart-grid">
                 <line v-for="g in reqBars.grid" :key="'rg' + g.y" :x1="reqBars.L" :x2="reqBars.W - reqBars.R" :y1="g.y" :y2="g.y"/>
               </g>
               <g class="chart-ticks">
-                <text v-for="g in reqBars.grid" :key="'rt' + g.y" :x="reqBars.L - 8" :y="g.y + 3.5" text-anchor="end">{{ g.label }}</text>
+                <text v-for="g in reqBars.grid" :key="'rt' + g.y" :x="reqBars.L - 10" :y="g.y + 3.5" text-anchor="end">{{ g.label }}</text>
               </g>
-              <rect v-for="(b, i) in reqBars.bars" :key="'b' + b.day" class="chart-bar" :x="b.x" :y="b.y" :width="b.w" :height="b.h" :style="{ animationDelay: (i * 45) + 'ms' }">
+              <rect v-for="(b, i) in reqBars.bars" :key="'b' + b.day" class="chart-bar" :x="b.x" :y="b.y" :width="b.w" :height="b.h" :style="{ animationDelay: (i * 50) + 'ms' }">
                 <title>{{ b.day }} · {{ b.v }} 次</title>
               </rect>
               <line v-if="!reqBars.hasData" class="chart-zero" :x1="reqBars.L" :x2="reqBars.W - reqBars.R" :y1="reqBars.zeroY" :y2="reqBars.zeroY"/>
@@ -555,78 +496,126 @@
                 <text v-for="d in reqBars.days" :key="'rd' + d.label" :x="d.x" :y="reqBars.H - 8" text-anchor="middle">{{ d.label }}</text>
               </g>
             </svg>
-            <div v-if="!reqBars.hasData" class="chart-empty">暂无请求数据：产生对话后自动统计</div>
+            <div v-if="!reqBars.hasData" class="chart-empty">暂无请求数据。产生对话后自动统计。</div>
+            <div class="chart-legend" style="margin-top:12px">
+              <span><i style="background:var(--cobalt)"></i>请求数</span>
+              <span class="spacer"></span>
+              <span class="mono">共 {{ fmt.num(M.totalRequests || 0) }} 次</span>
+            </div>
           </div>
         </section>
 
-        <section class="panel">
-          <header class="panel-head">
+        <section class="chamber tool-panel span-4">
+          <header class="chamber-head">
             <div>
-              <h2 class="panel-title">工具调用 Top 5</h2>
-              <p class="panel-meta">近 7 日 · 共 {{ fmt.num(toolTotal) }} 次</p>
+              <h2 class="chamber-title">工具调用</h2>
+              <p class="chamber-sub">近 7 日 Top 5 · 共 {{ fmt.num(toolTotal) }} 次</p>
             </div>
-            <a class="panel-link" href="#/evolution">工具进化 <span aria-hidden="true">→</span></a>
+            <a class="panel-link" href="#/evolution">工具进化</a>
           </header>
-          <div v-if="toolTop.length" class="tool-rank">
-            <div v-for="(t, i) in toolTop" :key="t.name" class="tool-row">
-              <div class="tool-row-top">
-                <span class="tool-name mono">{{ t.name }}</span>
-                <span class="tool-count num">{{ fmt.num(t.count) }}<em> 次</em></span>
+          <div class="chamber-body">
+            <div v-if="toolTop.length" class="tool-rank">
+              <div v-for="(t, i) in toolTop" :key="t.name" class="tool-row">
+                <div class="tool-row-top">
+                  <span class="tool-name">{{ t.name }}</span>
+                  <span class="tool-count">{{ fmt.num(t.count) }}<em> 次</em></span>
+                </div>
+                <div class="tool-track"><i :style="{ width: (t.count / toolMax * 100) + '%', animationDelay: (i * 55) + 'ms' }"></i></div>
+                <div v-if="t.rate != null" class="tool-meta">成功率 {{ (t.rate * 100).toFixed(0) }}%（{{ t.ok }}/{{ t.count }}）</div>
               </div>
-              <div class="tool-track"><i :style="{ width: (t.count / toolMax * 100) + '%', animationDelay: (i * 45) + 'ms' }"></i></div>
-              <div v-if="t.rate != null" class="tool-meta">成功率 {{ (t.rate * 100).toFixed(0) }}%（{{ t.ok }}/{{ t.count }}）</div>
             </div>
-          </div>
-          <div v-else class="queue-empty compact">
-            <v-icon name="tool"/>
-            <div><b>暂无工具调用</b><span>产生对话后自动统计。</span></div>
-          </div>
-        </section>
-      </div>
-
-      <div class="dash-grid dash-grid-2">
-        <section class="panel">
-          <header class="panel-head">
-            <div>
-              <h2 class="panel-title">功能开关</h2>
-              <p class="panel-meta">{{ switchOn }} / {{ switches.length }} 开启 · 只读</p>
-            </div>
-            <a class="panel-link" href="#/config">配置中心 <span aria-hidden="true">→</span></a>
-          </header>
-          <div class="switch-grid">
-            <div v-for="s in switches" :key="s.name" class="switch-item">
-              <span class="switch-dot" :class="{ on: s.on, danger: s.danger && s.on }"></span>
-              <span class="switch-name">{{ s.name }}</span>
-              <span class="switch-state">{{ s.on ? '开启' : '关闭' }}</span>
+            <div v-else class="queue-empty compact">
+              <v-icon name="tool"/>
+              <div><b>暂无工具调用</b><span>产生对话后自动统计。</span></div>
             </div>
           </div>
         </section>
 
-        <section class="panel">
-          <header class="panel-head">
+        <section class="chamber switch-panel span-3">
+          <header class="chamber-head">
             <div>
-              <h2 class="panel-title">群情境</h2>
-              <p class="panel-meta">{{ perceptions.length }} 个群在观察范围</p>
+              <h2 class="chamber-title">功能状态</h2>
+              <p class="chamber-sub">{{ switchOn }} / {{ switches.length }} 开启</p>
             </div>
-            <a class="panel-link" href="#/groupworld">群聊小世界 <span aria-hidden="true">→</span></a>
+            <a class="panel-link" href="#/config">配置</a>
           </header>
-          <div v-if="perceptions.length" class="perception-list">
-            <div v-for="p in perceptions" :key="p.groupId" class="perception-row">
-              <div class="perception-main">
-                <div class="perception-id mono">群 {{ p.groupId }}</div>
-                <div class="perception-meta">入群 {{ fmt.ago(p.met.at) }}</div>
+          <div class="chamber-body">
+            <div class="switch-grid" style="grid-template-columns:1fr">
+              <div v-for="s in switches" :key="s.name" class="switch-item">
+                <span class="switch-dot" :class="{ on: s.on, danger: s.danger && s.on }"></span>
+                <span class="switch-name">{{ s.name }}</span>
+                <span class="switch-state">{{ s.on ? '开' : '关' }}</span>
               </div>
-              <span class="pill" :class="(Date.now() - p.lastActive.at) > 6 * 3600e3 ? 'p-honey' : 'p-green'">
-                {{ (Date.now() - p.lastActive.at) > 6 * 3600e3 ? '久离 ' : '活跃 ' }}{{ fmt.ago(p.lastActive.at) }}
-              </span>
             </div>
           </div>
-          <div v-else class="queue-empty compact">
-            <v-icon name="group"/>
-            <div><b>暂无群感知数据</b><span>bot 入群并产生互动后会出现在这里。</span></div>
+        </section>
+      </section>
+
+      <section class="bento">
+        <section class="chamber cache-panel span-8">
+          <header class="chamber-head">
+            <div>
+              <h2 class="chamber-title">上下文缓存</h2>
+              <p class="chamber-sub">同一窗口内的缓存读取 / 观测输入 · {{ winLabel }}</p>
+            </div>
+            <button class="btn b-danger b-sm" :disabled="clearing" @click="clearCache">
+              <v-icon name="trash"/>{{ clearing ? '清空中…' : '清空统计' }}
+            </button>
+          </header>
+          <div class="chamber-body">
+            <template v-if="cacheStats.hasData">
+              <div class="cache-hero">
+                <div>
+                  <div class="cache-big">{{ cacheStats.hitRate != null ? cacheStats.hitRate.toFixed(1) : '—' }}<small>%</small></div>
+                  <div class="cache-label">Token 命中率</div>
+                </div>
+                <div class="cache-track cache-track-lg">
+                  <i :style="{ width: (cacheStats.hitRate || 0) + '%', background: 'var(--cobalt)' }"></i>
+                  <i :style="{ width: (cacheStats.missRate || 0) + '%', background: 'rgba(16,43,44,.14)' }"></i>
+                </div>
+              </div>
+              <div class="cache-facts">
+                <div><span>输入</span><b>{{ fmt.num(cacheStats.input) }}</b></div>
+                <div><span>缓存读取</span><b>{{ fmt.num(cacheStats.cached) }}</b></div>
+                <div><span>未命中</span><b>{{ fmt.num(cacheStats.miss) }}</b></div>
+                <div><span>输出</span><b>{{ fmt.num(cacheStats.output) }}</b></div>
+                <div v-if="cacheStats.warmTokenHitRate != null"><span>稳态命中率</span><b>{{ cacheStats.warmTokenHitRate.toFixed(1) }}%</b></div>
+              </div>
+            </template>
+            <div v-else class="queue-empty compact">
+              <v-icon name="cpu"/>
+              <div><b>暂无缓存数据</b><span>产生对话后自动统计。</span></div>
+            </div>
           </div>
         </section>
-      </div>
+
+        <section class="chamber perception-panel span-4">
+          <header class="chamber-head">
+            <div>
+              <h2 class="chamber-title">群情境</h2>
+              <p class="chamber-sub">{{ perceptions.length }} 个群在观察范围</p>
+            </div>
+            <a class="panel-link" href="#/groupworld">群聊小世界</a>
+          </header>
+          <div class="chamber-body">
+            <div v-if="perceptions.length" class="perception-list">
+              <div v-for="p in perceptions" :key="p.groupId" class="perception-row">
+                <div class="perception-main">
+                  <div class="perception-id">群 {{ p.groupId }}</div>
+                  <div class="perception-meta">入群 {{ fmt.ago(p.met.at) }}</div>
+                </div>
+                <span class="pill" :class="(Date.now() - p.lastActive.at) > 6 * 3600e3 ? 'p-honey' : 'p-green'">
+                  {{ (Date.now() - p.lastActive.at) > 6 * 3600e3 ? '久离 ' : '活跃 ' }}{{ fmt.ago(p.lastActive.at) }}
+                </span>
+              </div>
+            </div>
+            <div v-else class="queue-empty compact">
+              <v-icon name="group"/>
+              <div><b>暂无群感知数据</b><span>Bot 入群并产生互动后会出现在这里。</span></div>
+            </div>
+          </div>
+        </section>
+      </section>
 
       <!-- 运行明细 -->
       <section class="dash-section">

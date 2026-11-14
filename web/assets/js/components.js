@@ -104,6 +104,15 @@
     arrowr: 'M5 12h14m-7-7 7 7-7 7',
     layers: 'm12 2 10 5.5-10 5.5L2 7.5 12 2Zm-10 11 10 5.5 10-5.5M2 18l10 5.5 10-5.5',
     book: 'M4 19.5A2.5 2.5 0 0 1 6.5 17H20M4 19.5A2.5 2.5 0 0 0 6.5 22H20V2H6.5A2.5 2.5 0 0 0 4 4.5v15Z',
+    /* — tide observatory additions — */
+    sun: 'M12 17a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0-14v2m0 18v2M3 12h2m14 0h2M5.6 5.6l1.4 1.4m10 10 1.4 1.4m0-12.8-1.4 1.4m-10 10-1.4 1.4',
+    moon: 'M20.5 14.2A8.6 8.6 0 0 1 9.8 3.5 8.7 8.7 0 1 0 20.5 14.2Z',
+    wave: 'M3 9c3-4.2 6-4.2 9 0s6 4.2 9 0M3 15c3-4.2 6-4.2 9 0s6 4.2 9 0M3 21c3-4.2 6-4.2 9 0s6 4.2 9 0',
+    pulse: 'M2 12h4l2.5-6 4 12 3-8 2 2H22',
+    orbit: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20Zm0-6a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm7.5-9.5c2.7 2.7-2 10-7.5 13S2.8 19.2 5.5 16.5s10-8 13-4Z',
+    droplet: 'M12 2.5c4.2 5 7 8.5 7 12a7 7 0 0 1-14 0c0-3.5 2.8-7 7-12Z',
+    command: 'M9 6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6Z',
+    arrowup: 'M12 19V5m-7 7 7-7 7 7',
   }
 
   /* ---------------- <v-icon> ---------------- */
@@ -126,9 +135,11 @@
     name: 'BrandMark',
     template: `
     <svg class="brand-mark-svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-      <path d="M16 4.4 27 10.7v10.6L16 27.6 5 21.3V10.7L16 4.4Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/>
-      <circle cx="16" cy="16" r="3.7" fill="currentColor"/>
-      <path d="M16 4.4v7.9M27 10.7l-7.1 4M27 21.3l-7.1-4M16 27.6V20M5 21.3l7.1-4M5 10.7l7.1 4" stroke="currentColor" stroke-width="1.1" stroke-linecap="round" opacity=".55"/>
+      <circle cx="16" cy="16" r="10.6" stroke="currentColor" stroke-width="1.35" opacity=".85"/>
+      <circle cx="16" cy="16" r="5.4" stroke="currentColor" stroke-width="1" opacity=".28"/>
+      <path d="M4.8 18.2c3.5-5 7.4-5 10.8 0s7.1 5 10.5 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <circle cx="16" cy="16" r="2.5" fill="currentColor"/>
+      <circle cx="25.4" cy="9.1" r="1.1" fill="currentColor" opacity=".7"/>
     </svg>`,
   })
 
@@ -175,7 +186,7 @@
     components: { VIcon },
     props: { title: String, desc: { type: String, default: '' }, icon: { type: String, default: '' } },
     template: `
-    <div class="pagehead" style="--i:0">
+    <div class="pagehead">
       <span v-if="icon" class="ph-ico"><v-icon :name="icon"/></span>
       <div class="ph-main">
         <h1 class="ph-t">{{ title }}</h1>
@@ -472,18 +483,82 @@
     props: { modelValue: { type: String, required: true } },
     emits: ['update:modelValue'],
     setup(props, { emit }) {
-      const { computed } = Vue
+      const { ref, computed, nextTick, onMounted, onUnmounted, watch } = Vue
+      const open = ref(false)
+      const query = ref('')
+      const rootEl = ref(null)
+      const searchEl = ref(null)
       // 计算属性取值：store.loadScopes 会整体替换 MOCK.scopes，直接捕获旧数组会拿到空壳
       const scopes = computed(() => window.MOCK.scopes || [])
-      return { scopes, emit }
+      const current = computed(() => scopes.value.find((s) => s.scopeId === props.modelValue) || null)
+      const filtered = computed(() => {
+        const q = query.value.trim().toLowerCase()
+        if (!q) return scopes.value
+        return scopes.value.filter((s) => `${s.label || ''} ${s.scopeId || ''}`.toLowerCase().includes(q))
+      })
+      const countText = computed(() => (scopes.value.length > 99 ? '99+' : String(scopes.value.length)))
+      const close = () => { open.value = false; query.value = '' }
+      const toggle = () => {
+        if (!scopes.value.length) return
+        open.value = !open.value
+      }
+      const choose = (s) => {
+        emit('update:modelValue', s.scopeId)
+        close()
+      }
+      const onDocClick = (e) => {
+        if (!open.value) return
+        if (rootEl.value && rootEl.value.contains(e.target)) return
+        close()
+      }
+      const onKey = (e) => { if (e.key === 'Escape' && open.value) close() }
+      watch(open, (v) => {
+        try { document.body.classList.toggle('scope-open', v) } catch { /* noop */ }
+        if (v) nextTick(() => { try { searchEl.value?.focus?.() } catch { /* noop */ } })
+      })
+      onMounted(() => {
+        document.addEventListener('click', onDocClick)
+        document.addEventListener('keydown', onKey)
+      })
+      onUnmounted(() => {
+        document.removeEventListener('click', onDocClick)
+        document.removeEventListener('keydown', onKey)
+        try { document.body.classList.remove('scope-open') } catch { /* noop */ }
+      })
+      return { open, query, rootEl, searchEl, scopes, current, filtered, countText, close, toggle, choose }
     },
     template: `
-    <div class="scp-bar">
-      <span class="scp-lab">数据隔离维度</span>
-      <div v-for="s in scopes" :key="s.scopeId" class="scp" :class="{on: s.scopeId === modelValue}"
-        @click="emit('update:modelValue', s.scopeId)" :title="s.scopeId">
-        <v-icon :name="s.type === 'private' ? 'user' : 'group'"/>
-        <span>{{ s.label }}</span>
+    <div class="scope-picker" ref="rootEl">
+      <button type="button" class="sp-trigger" :class="{ open }" :disabled="!scopes.length"
+        aria-haspopup="listbox" :aria-expanded="open" @click="toggle">
+        <v-icon :name="current?.type === 'private' ? 'user' : 'group'"/>
+        <span class="sp-label">{{ current?.label || '选择数据隔离维度' }}</span>
+        <span class="sp-count">{{ countText }}</span>
+        <v-icon class="sp-caret" name="chevron"/>
+      </button>
+      <div v-if="open" class="sp-back" @click="close"></div>
+      <div v-if="open" class="sp-pop" role="listbox" aria-label="数据隔离维度" @keydown.esc.stop.prevent="close">
+        <div class="sp-pop-head">
+          <span>数据隔离维度</span>
+          <span class="sp-head-meta">{{ scopes.length }} 个 · 按群/私聊隔离</span>
+          <button type="button" class="sp-x" aria-label="关闭隔离维度选择" @click="close"><v-icon name="x"/></button>
+        </div>
+        <label class="sp-search">
+          <v-icon name="search"/>
+          <input ref="searchEl" v-model="query" placeholder="搜索群、私聊或 scopeId" aria-label="搜索数据隔离维度">
+        </label>
+        <div class="sp-list">
+          <button v-for="s in filtered" :key="s.scopeId" type="button" class="sp-item" :class="{ on: s.scopeId === modelValue }"
+            role="option" :aria-selected="s.scopeId === modelValue" :title="s.scopeId" @click="choose(s)">
+            <v-icon :name="s.type === 'private' ? 'user' : 'group'"/>
+            <span class="sp-item-main">
+              <b>{{ s.label || s.scopeId }}</b>
+              <em>{{ s.scopeId }}</em>
+            </span>
+            <v-icon v-if="s.scopeId === modelValue" name="check" class="sp-check"/>
+          </button>
+          <div v-if="!filtered.length" class="sp-empty">没有匹配的隔离维度，换个关键词试试。</div>
+        </div>
       </div>
     </div>`,
   })

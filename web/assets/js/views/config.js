@@ -96,7 +96,7 @@
     guardAction: [['block', '拦截(block)'], ['flag', '隔离标注(flag)'], ['sanitize', '脱敏(sanitize)']],
     guardSensitivity: [['low', '低 (0.95)'], ['medium', '中 (0.7)'], ['high', '高 (0.5)']],
     reflect: [['off', '关闭'], ['auto', '自动'], ['always', '总是']],
-    replyMode: [['image', '图片渲染'], ['text', '纯文本']],
+    replyMode: [['text', '纯文本（默认）'], ['image', '图片渲染']],
     degrade: [['skip', 'skip 丢弃'], ['note', 'note 占位说明（默认）'], ['text', 'text 文本类提取']],
     researchPerm: [['master', '仅主人(防滥用)'], ['all', '所有人']],
     shMode: [['local', 'local 本地(Playwright+chromium,默认)'], ['cloud', 'cloud Browserbase 云']],
@@ -1089,7 +1089,7 @@
       }
     },
     template: `
-    <div>
+    <div class="view view-config">
       <page-head title="配置中心" icon="config" desc="config.yaml 全量配置项 · 修改会校验、保存并热加载；常用项、安全项与高级项都在这一页">
         <span class="pill p-green"><span class="st-dot"></span>热加载</span>
       </page-head>
@@ -1594,7 +1594,7 @@
             <cfg-row name="进度消息撤回(秒)" desc="0=不撤回">
               <input type="number" class="inp" style="width:110px" min="0" max="120" v-model.number="form.progressRecall">
             </cfg-row>
-            <cfg-row name="回复渲染方式" desc="image=markdown 渲染精美浅色图">
+            <cfg-row name="回复渲染方式" desc="text=纯文本（默认）；image=markdown 渲染精美浅色图，失败自动退文本">
               <div class="seg">
                 <button v-for="o in OPT.replyMode" :class="{active: form.reply.mode === o[0]}" @click="form.reply.mode = o[0]">{{ o[1] }}</button>
               </div>

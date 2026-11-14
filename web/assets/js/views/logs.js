@@ -233,7 +233,7 @@
       return { files, fileIdx, pickFile, traces, activeTrace, events, expanded, toggle, EV, evMeta, summary, cachePct, uIn, uCached, uOut, uTotal, fmt, filter, hitTotal, runFilter, resetFilter }
     },
     template: `
-    <div>
+    <div class="view view-logs">
       <page-head title="日志时间线" icon="log" desc="devLog 全链路 · traceId 串联；按文件与事件筛选，展开查看真实请求与工具结果"/>
       <div class="grid cols-300" style="align-items:start">
       <!-- 会话文件 -->

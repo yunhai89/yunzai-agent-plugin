@@ -14,6 +14,8 @@
  *            action:{type, permission:{type,specify_user_ids?}, data, enter?} }] }] } }
  */
 
+import { protectCommands } from '../qqofficial/index.js'
+
 export const MAX_TEXT_CHARS = 3800
 export const MAX_MARKDOWN_CHARS = 3800
 export const KEYBOARD_MAX_ROWS = 5
@@ -255,10 +257,10 @@ export function buildMessageJobs(msg, { msgId = '', preferMarkdown = false, owne
   const jobs = []
   const passiveId = msgId || replyId || ''
   const keyboard = keyboards.length ? buildKeyboard(keyboards, { ownerId, appId, scene }) : null
-  const mdText = markdowns
+  const mdText = protectCommands(markdowns
     .map((m) => (m.content != null ? m.content : ''))
     .filter(Boolean)
-    .join('\n\n')
+    .join('\n\n'))
   const plain = texts.join('').trim()
 
   if (hasMarkdown) {
@@ -275,7 +277,7 @@ export function buildMessageJobs(msg, { msgId = '', preferMarkdown = false, owne
     const payload2 = payload && payload.markdown ? { ...payload, markdown: withMentions(payload.markdown) } : payload
     if (payload2) jobs.push({ kind: 'markdown', payload: withKeyboard(payload2, keyboard), msgId: passiveId })
   } else if (plain) {
-    if (preferMarkdown) jobs.push({ kind: 'markdown', payload: withKeyboard({ markdown: { content: plain } }, keyboard), msgId: passiveId })
+    if (preferMarkdown) jobs.push({ kind: 'markdown', payload: withKeyboard({ markdown: { content: protectCommands(plain) } }, keyboard), msgId: passiveId })
     else jobs.push({ kind: 'text', payload: withKeyboard({ content: plain }, keyboard), msgId: passiveId })
   }
 

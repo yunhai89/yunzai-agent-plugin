@@ -269,7 +269,7 @@ export function supportGuoba() {
         { field: 'agent.maxToolResultChars', label: '工具结果字符上限', bottomHelpMessage: '默认 8000；内容获取类工具可经 meta.resultCap 单独放宽到 12000', component: 'InputNumber', componentProps: { min: 100 } },
         { field: 'agent.progress', label: '工具调用进度消息', bottomHelpMessage: '消除干等；默认开', component: 'Switch' },
         { field: 'agent.progressRecall', label: '进度消息撤回(秒)', bottomHelpMessage: 'N 秒后自动撤回进度消息；0=不撤回；适配器不支持则忽略', component: 'InputNumber', componentProps: { min: 0, max: 120 } },
-        { field: 'agent.reply.mode', label: '回复渲染方式', component: 'Select', componentProps: { options: [{ label: '图片（markdown→精美浅色图，默认）', value: 'image' }, { label: '纯文本', value: 'text' }] } },
+        { field: 'agent.reply.mode', label: '回复渲染方式', component: 'Select', componentProps: { options: [{ label: '纯文本（默认）', value: 'text' }, { label: '图片（markdown→精美浅色图）', value: 'image' }] } },
         { field: 'agent.reply.narrate', label: '中途播报', bottomHelpMessage: '模型调工具时附带的思路/进展自动转发给用户（别埋头苦干）；默认开', component: 'Switch' },
         { field: 'agent.reply.atSender', label: '群聊回复艾特发言人', bottomHelpMessage: '默认开；私聊不艾特', component: 'Switch' },
         { field: 'agent.reply.quote', label: '群聊回复引用触发消息', bottomHelpMessage: '默认开；私聊不引用；可与艾特同开，人多时便于定位回复对象', component: 'Switch' },

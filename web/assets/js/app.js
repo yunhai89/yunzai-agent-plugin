@@ -1,5 +1,8 @@
 /**
- * 应用外壳: hash 路由 + 桌面侧栏 / 移动端顶条 + 底部 Dock + 登录态 + 命令面板
+ * 应用外壳：hash 路由 + 潮汐观测台导航 + 登录门 + 命令面板
+ *
+ * 视觉语言见 web/assets/css/main.css 顶部注释：玻璃观察舱、深海环境光、
+ * 编辑感衬线标题与数据等宽字体。所有业务逻辑保持原样，只替换外壳与呈现。
  */
 (function () {
   const { createApp, ref, computed, onMounted, onUnmounted, nextTick } = Vue
@@ -10,7 +13,7 @@
   const NAV = [
     { group: '总览', items: [{ id: 'dashboard', name: '概览', icon: 'dashboard' }] },
     {
-      group: '数据中心', items: [
+      group: '数据', items: [
         { id: 'memory', name: '声明式记忆', icon: 'memory' },
         { id: 'recall', name: '长期记忆', icon: 'recall' },
         { id: 'profile', name: '用户画像', icon: 'user' },
@@ -30,10 +33,21 @@
         { id: 'evolution', name: '工具进化', icon: 'tool', badge: () => (window.MOCK?.tevoTools || []).filter((v) => v.status === 'verified').length },
       ],
     },
-    { group: '系统', items: [{ id: 'config', name: '配置中心', icon: 'config' }, { id: 'qqbot', name: '机器人账号', icon: 'bot' }, { id: 'toolpacks', name: '外置工具', icon: 'tool' }, { id: 'tts', name: '语音合成', icon: 'music' }, { id: 'humanize', name: '伪人模式', icon: 'group' }, { id: 'groupworld', name: '群聊小世界', icon: 'globe' }, { id: 'selfstate', name: '自我状态', icon: 'bot' }, { id: 'sticker', name: '表情包', icon: 'smile' }] },
+    {
+      group: '系统', items: [
+        { id: 'config', name: '配置中心', icon: 'config' },
+        { id: 'qqbot', name: '机器人账号', icon: 'bot' },
+        { id: 'toolpacks', name: '外置工具', icon: 'tool' },
+        { id: 'tts', name: '语音合成', icon: 'music' },
+        { id: 'humanize', name: '伪人模式', icon: 'group' },
+        { id: 'groupworld', name: '群聊小世界', icon: 'globe' },
+        { id: 'selfstate', name: '自我状态', icon: 'bot' },
+        { id: 'sticker', name: '表情包', icon: 'smile' },
+      ],
+    },
   ]
   const TITLES = {
-    dashboard: ['概览', '插件运行状态与核心指标'],
+    dashboard: ['概览', '运行时状态、近 7 日用量与待处理事项'],
     memory: ['声明式记忆', 'MEMORY.md / USER.md · 按 scope 隔离'],
     recall: ['长期记忆', 'LLM 抽取沉淀 · L2/L3/L4 分层'],
     profile: ['用户画像', '统一用户模型 · 分面/证据/置信/纠错'],
@@ -43,20 +57,20 @@
     sessions: ['会话回放', '对话列表与消息历史'],
     logs: ['日志时间线', 'devLog 全链路 · traceId 串联'],
     schedule: ['定时任务', '到点投递提醒'],
-    tasks: ['任务账本', '可恢复任务记录 · 阶段/事件/检查点（P0-3）'],
+    tasks: ['任务账本', '可恢复任务记录 · 阶段/事件/检查点'],
     confirm: ['审批门', '高危工具人工把关'],
     suggestions: ['进化建议', '自评审产出的待审改进项'],
-    evolution: ['工具进化', 'Tool Evolution · 候选生成/验证/审批/版本'],
-    config: ['配置中心', 'config.yaml 全量配置项'],
-    qqbot: ['QQ 官方机器人账号', '自实现适配器 · AppID + AppSecret 直连 · 连接管理'],
-    toolpacks: ['外置工具', 'tools/ 自研工具 · 元信息与配置（tool.config.js 约定）'],
-    humanize: ['伪人模式', '群聊环境参与者 · 旁听/门控/决策/发送'],
+    evolution: ['工具进化', '候选生成 / 验证 / 审批 / 版本'],
+    config: ['配置中心', '修改配置并热加载；常用项、安全项与高级项都在这一页'],
+    qqbot: ['QQ 官方机器人账号', 'AppID + AppSecret 直连 · 连接管理'],
+    toolpacks: ['外置工具', 'tools/ 自研工具 · 元信息与配置'],
+    humanize: ['伪人模式', '旁听 / 门控 / 决策 / 发送'],
     groupworld: ['群聊小世界', '群聊社会记忆层 · 画像/关系/事件/圈子'],
-    selfstate: ['自我状态', '自我认知与情绪 · 心境/情绪/期待/心事'],
+    selfstate: ['自我状态', '情绪 / 心境 / 期待 / 心事'],
     sticker: ['表情包', '配置 + 库概览 · 发送策略 / 自动发现'],
-    tts: ['语音合成', 'TTS 服务配置 + 参考音频库 · 情绪化支持（pro/max）'],
+    tts: ['语音合成', 'TTS 服务配置 + 参考音频库'],
   }
-  /* 移动端底部 Dock: 四个常用 + 更多 */
+  /* 移动端底部 Dock：四个常用 + 更多 */
   const DOCK = [
     { id: 'dashboard', name: '概览', icon: 'home' },
     { id: 'memory', name: '记忆', icon: 'memory' },
@@ -70,7 +84,7 @@
       const route = ref((location.hash || '#/dashboard').slice(2))
       const valid = computed(() => !!window.VIEWS[route.value])
       if (!valid.value) route.value = 'dashboard'
-      const menuOpen = ref(false) // 移动端全屏菜单
+      const menuOpen = ref(false)
       const go = (id) => {
         location.hash = '#/' + id
         menuOpen.value = false
@@ -78,9 +92,17 @@
       }
       const view = computed(() => window.VIEWS[route.value])
       const title = computed(() => TITLES[route.value] || ['', ''])
-      const groupName = computed(() => (NAV.find((g) => g.items.some((it) => it.id === route.value)) || {}).group || 'agents-plugin')
-      const syncTitle = (r) => { try { document.title = `${(TITLES[r] || ['控制台'])[0]} · agents-plugin` } catch { /* noop */ } }
+      const groupName = computed(() => (NAV.find((g) => g.items.some((it) => it.id === route.value)) || {}).group || '总览')
+      const syncTitle = (r) => { try { document.title = `${(TITLES[r] || ['运行控制台'])[0]} · agents-plugin` } catch { /* noop */ } }
       syncTitle(route.value)
+
+      /* —— 观测钟 —— */
+      const clock = ref('')
+      let clockTimer = null
+      const tickClock = () => {
+        const d = new Date()
+        clock.value = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+      }
 
       /* —— 命令面板：一个页面搜索，键盘可达 —— */
       const paletteOpen = ref(false)
@@ -147,7 +169,6 @@
       window.addEventListener('agents-need-login', () => { loggedIn.value = false })
       const loginInput = ref('')
       const doLogin = async () => {
-        // 允许直接粘贴整条登录地址/整段消息；非法 token 明确拒绝（旧代码原样存会污染 Authorization 头）
         const t = window.api.normalizeToken(loginInput.value)
         if (!t) {
           window.UI.alert({
@@ -162,8 +183,6 @@
         try { await window.store.loadScopes(); loggedIn.value = true }
         catch (e) {
           const msg = String(e?.message || e)
-          // 只有「确实没认证」才清 token。运行时未就绪（首次部署还没配模型/API Key）不是登录失败：
-          // 面板服务与令牌都不依赖运行时，必须能进去填配置。
           if (/4010|未认证|token 已失效|未登录/.test(msg)) {
             window.api.setToken('')
             window.UI.alert({
@@ -172,7 +191,7 @@
               message: `Token 校验未通过：${msg}<br>请私聊 bot 重新发送 <b>#agent登录</b> 获取新链接，或核对粘贴的 token 是否完整。`,
             })
           } else {
-            window.api.setToken(t) // 保留 token：认证已通过，只是部分接口暂时不可用
+            window.api.setToken(t)
             loggedIn.value = true
             window.UI.toast?.(`已登录，但运行时未就绪（${msg}）；可先在「配置中心」填模型/API Key`, 'warn')
           }
@@ -191,6 +210,8 @@
       window.addEventListener('hashchange', onHashChange)
 
       onMounted(async () => {
+        tickClock()
+        clockTimer = setInterval(tickClock, 30000)
         document.addEventListener('keydown', onKey)
         if (!loggedIn.value) return
         try { await window.store.loadScopes() } catch { /* 未登录或运行时未就绪，各页 load 时再处理 */ }
@@ -199,68 +220,68 @@
       onUnmounted(() => {
         document.removeEventListener('keydown', onKey)
         window.removeEventListener('hashchange', onHashChange)
+        if (clockTimer) clearInterval(clockTimer)
       })
 
       return {
         route, go, view, title, groupName, NAV, DOCK, menuOpen, loggedIn, loginInput, doLogin, logout,
+        clock,
         paletteOpen, paletteQuery, paletteIndex, paletteInput, paletteGroups, paletteMatches,
         openPalette, closePalette, paletteMove, paletteChoose,
       }
     },
     template: `
-    <div v-if="!loggedIn" class="login-wrap">
-      <section class="login-aside">
-        <div class="login-brand">
-          <span class="login-brand-mark"><brand-mark/></span>
-          <span class="login-brand-name">agents-plugin</span>
-          <span class="login-brand-tag">Runtime</span>
+    <div v-if="!loggedIn" class="gate">
+      <section class="gate-aside">
+        <div class="gate-brand">
+          <span class="gate-brand-mark"><brand-mark/></span>
+          <span class="gate-brand-name">agents-plugin</span>
+          <span class="gate-brand-tag">runtime</span>
         </div>
-        <div class="login-copy">
-          <h1>一个能回话、能干活、<br class="login-br">能记住的 Agent 运行时</h1>
-          <p class="login-lead">多模型对话、工具调用、长期记忆、人设、MCP 与沙箱，在同一个面板里配置和观察。</p>
-          <div class="login-facts">
-            <div><span>模型</span><b>OpenAI / Anthropic / Gemini</b></div>
-            <div><span>记忆</span><b class="mono">MEMORY.md · USER.md</b></div>
-            <div><span>执行</span><b>E2B 沙箱 · 工具审批</b></div>
+        <div class="gate-copy">
+          <span class="gate-kicker"><span class="live-dot"></span>本地面板 · 仅限主人</span>
+          <h1 class="gate-title">运行时<br>控制台</h1>
+          <p class="gate-lead">查看模型、记忆和工具如何运作，审批高风险操作，调整 Agent 的行为。所有数据都留在你自己的服务器上。</p>
+          <div class="gate-facts">
+            <span class="gate-fact"><v-icon name="cpu"/><b>OpenAI</b> / Anthropic / Gemini</span>
+            <span class="gate-fact"><v-icon name="memory"/><b>MEMORY.md</b> / USER.md</span>
+            <span class="gate-fact"><v-icon name="shield"/><b>E2B</b> 沙箱与审批</span>
           </div>
         </div>
-        <div class="login-foot"><span>TRSS-Yunzai</span><span>·</span><span>插件管理面板</span></div>
+        <div class="gate-foot"><span>TRSS-Yunzai</span><span>/</span><span>agent runtime</span></div>
       </section>
-      <section class="login-panel">
-        <div class="login-card">
-          <div class="login-card-head">
-            <span class="login-card-mark"><brand-mark/></span>
-            <div><h2>进入控制台</h2><p>使用登录链接或访问令牌</p></div>
+      <section class="gate-panel">
+        <div class="gate-card">
+          <div class="gate-card-head">
+            <span class="gate-card-mark"><v-icon name="key"/></span>
+            <div>
+              <h2>登录</h2>
+              <p>使用访问令牌或登录链接</p>
+            </div>
           </div>
           <label class="f-label" for="login-token">访问令牌</label>
-          <input id="login-token" class="inp" v-model="loginInput" placeholder="粘贴登录 token 或完整登录链接" autocomplete="off" spellcheck="false" @keyup.enter="doLogin"/>
-          <button class="btn b-pri login-btn" @click="doLogin"><v-icon name="key"/><span>登录</span></button>
-          <p class="login-hint">私聊 bot 发送 <code>#agent登录</code> 获取带 token 的地址；也可直接粘贴完整链接。</p>
-          <div class="login-after">
-            <p class="login-after-title">登录后可管理</p>
-            <div class="login-after-row"><span class="status-dot is-ok"></span>运行时状态、模型与工具</div>
-            <div class="login-after-row"><span class="status-dot is-ok"></span>审批、记忆、人设与会话</div>
-            <div class="login-after-row"><span class="status-dot is-ok"></span>配置热加载与日志回放</div>
-          </div>
+          <input id="login-token" class="inp mono" v-model="loginInput" placeholder="粘贴 48 位令牌或完整登录链接" autocomplete="off" spellcheck="false" @keyup.enter="doLogin"/>
+          <button class="btn b-pri gate-login" @click="doLogin"><v-icon name="key"/><span>进入控制台</span></button>
+          <p class="gate-hint">私聊 bot 发送 <code>#agent登录</code> 获取带令牌的地址；也可以直接粘贴整条链接。</p>
+          <div class="gate-quiet">令牌 24 小时滑动续期。首次部署时，启动日志和 <code>data/web/console-url.txt</code> 里也有默认地址。</div>
+          <p class="gate-legal">仅限授权主人。配置与数据只保存在你自己的服务器</p>
         </div>
-        <p class="login-legal">仅限授权用户 · 令牌 24 小时滑动续期</p>
       </section>
     </div>
     <div v-else class="shell">
-      <!-- 桌面侧栏 -->
       <aside class="rail">
         <div class="rail-head">
           <span class="brand-badge"><brand-mark/></span>
           <div>
             <div class="brand-t">agents-plugin</div>
-            <div class="brand-s">AI Agent Runtime</div>
+            <div class="brand-s">运行控制台</div>
           </div>
         </div>
         <div class="rail-scope">
           <span class="st-dot"></span>
           <span>TRSS-Yunzai</span>
           <span class="rail-scope-sep">/</span>
-          <span class="mono">本地</span>
+          <span class="mono">local</span>
         </div>
         <nav class="rail-nav" aria-label="主导航">
           <template v-for="g in NAV" :key="g.group">
@@ -272,33 +293,36 @@
             </div>
           </template>
         </nav>
-        <div class="rail-foot"><span class="st-dot"></span><span>面板运行中</span><span class="rail-ver mono">v1.50.0</span></div>
+        <div class="rail-foot">
+          <span class="st-dot"></span><span>面板运行中</span>
+          <span class="rail-ver mono">v1.50.0</span>
+        </div>
       </aside>
 
       <div class="stage">
-        <!-- 桌面顶栏 -->
-        <header class="bar">
-          <button class="bar-search" type="button" aria-label="搜索页面" @click="openPalette">
-            <v-icon name="search"/><span class="bar-search-text">搜索页面</span><kbd>Ctrl K</kbd>
+        <header class="crown">
+          <button class="crown-search" type="button" aria-label="搜索页面" @click="openPalette">
+            <v-icon name="search"/><span class="crown-search-text">搜索页面与功能</span><kbd>Ctrl K</kbd>
           </button>
-          <div class="bar-acts">
-            <span class="pill p-mint bar-status"><span class="st-dot"></span>运行中</span>
-            <button class="bar-btn" type="button" @click="logout" title="退出登录"><v-icon name="logout"/><span>退出</span></button>
+          <div class="crown-right">
+            <span class="crown-status"><span class="live-dot"></span>运行时在线</span>
+            <span class="crown-clock">{{ clock }}</span>
+            <button class="crown-exit" type="button" @click="logout" title="退出登录">
+              <v-icon name="logout"/><span>退出</span>
+            </button>
           </div>
         </header>
 
-        <!-- 移动端顶栏 -->
         <header class="m-top">
           <span class="m-brand"><brand-mark/></span>
-          <div class="m-tt">{{ groupName }}</div>
+          <div class="m-tt">agents-plugin</div>
           <div class="m-acts">
             <button class="m-x" type="button" aria-label="搜索页面" @click="openPalette"><v-icon name="search"/></button>
             <button class="m-x" type="button" aria-label="退出登录" @click="logout"><v-icon name="logout"/></button>
           </div>
         </header>
 
-        <!-- 白色工作台 -->
-        <div class="sheet">
+        <div class="viewport">
           <main class="page">
             <Transition name="page" mode="out-in">
               <component :is="view" :key="route"/>
@@ -307,7 +331,6 @@
         </div>
       </div>
 
-      <!-- 移动端底部 Dock -->
       <nav class="dock" aria-label="快捷导航">
         <div v-for="d in DOCK" :key="d.id" class="dock-i" :class="{ on: route === d.id }" role="button" tabindex="0"
           @click="go(d.id)" @keydown.enter.prevent="go(d.id)" @keydown.space.prevent="go(d.id)">
@@ -320,7 +343,6 @@
         </div>
       </nav>
 
-      <!-- 移动端全屏菜单 -->
       <Transition name="fade">
         <div v-if="menuOpen" class="nav-sheet-back" @click="menuOpen = false"></div>
       </Transition>
@@ -345,7 +367,6 @@
         </div>
       </Transition>
 
-      <!-- 命令面板 -->
       <Transition name="fade">
         <div v-if="paletteOpen" class="cmd-back" @click.self="closePalette">
           <div class="cmd" role="dialog" aria-modal="true" aria-label="搜索页面">
@@ -369,7 +390,6 @@
         </div>
       </Transition>
     </div>
-    <!-- 全局服务宿主：放在登录壳之外，未登录/掉线（4010 清 token）时依然可用 -->
     <toast-host/>
     <dialog-host>`,
   }

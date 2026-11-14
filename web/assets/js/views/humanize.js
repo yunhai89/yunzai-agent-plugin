@@ -201,7 +201,7 @@
       }
     },
     template: `
-    <div>
+    <div class="view view-humanize">
       <page-head title="伪人模式" icon="group" desc="群聊环境参与者 · 旁听/门控/决策/发送；默认 shadow 只记录决策、不实发"/>
       <div class="cf-wrap">
       <!-- 锚点导航 -->

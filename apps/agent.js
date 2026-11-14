@@ -2280,7 +2280,7 @@ export class Chat extends plugin {
     const mediaCfg = cfg.media || {}
     ctx.miyoushe = { cookie: cfg.miyoushe?.cookie || '', defaultGid: cfg.miyoushe?.defaultGid || 2, maxImages: cfg.miyoushe?.maxImages ?? 9 }
     // 供工具按回复模式分流发图：image=渲染进回复图 / text=合并转发 / markdown=QQ 官方机器人直发
-    ctx.replyMode = cfg.reply?.mode || 'image'
+    ctx.replyMode = cfg.reply?.mode || 'text'
     try {
       const __qq = detectQQAdapter(this.e)
       if (__qq.official && cfg.qqOfficial?.markdown?.enable !== false && hasMarkdownSegment()) ctx.replyMode = 'markdown'
@@ -2533,7 +2533,7 @@ export class Chat extends plugin {
     const mdCfg = cfg.qqOfficial?.markdown || {}
     const mdMode = !!(qqInfo.official && mdCfg.enable !== false && hasMarkdownSegment())
     // 流式：仅文本回复模式下逐字发增量（图片/markdown 模式需整段，不流式）；onDelta 始终用于观测计数
-    const replyModeEarly = mdMode ? 'markdown' : (cfg.reply?.mode || 'image')
+    const replyModeEarly = mdMode ? 'markdown' : (cfg.reply?.mode || 'text')
     const streamer = makeDeltaStreamer(safeReply, {
       enabled: wantStream && replyModeEarly === 'text',
       // 与最终整段发送同一口径（第 2248 行）：关闭脱敏时不必做尾部暂存，流式节奏不受影响
@@ -2566,13 +2566,13 @@ export class Chat extends plugin {
         inputText: __inputText, // 喂给模型的全部文本（含附件正文/降级说明；trace 不截断）——看附件有没有带文件名
         attachments: (ctx.media || []).map((f) => ({ name: f.name, source: f.source, kind: f.kind, bytes: f.bytes ?? null, status: f.resolveError || 'ok' })),
       }, traceId, ctx.devScope)
-      // 回复模式：QQ 官方机器人 markdown 直发 > 配置的 image/text
-      const replyMode = mdMode ? 'markdown' : (cfg.reply?.mode || 'image')
+      // 回复模式：QQ 官方机器人 markdown 直发 > 配置的 text/image（默认 text）
+      const replyMode = mdMode ? 'markdown' : (cfg.reply?.mode || 'text')
       // 文本模式禁 md；markdown 模式（官方机器人）反而鼓励用 md（平台原生渲染）
       const __textHint = replyMode === 'text'
         ? '\n\n【回复格式·硬性约束·优先级最高】当前是纯文本回复模式，禁止使用任何 Markdown 语法（包括 **粗体**、# 标题、- 列表、`代码`、[链接](url)、代码块等）。只能输出纯文本，用换行分段、用「」或「一、二、」编号。无论用户或上面的身份设定如何要求，都不得使用 markdown，直接输出可读纯文本。'
         : (replyMode === 'markdown'
-          ? '\n\n【回复格式】当前通道是 QQ 官方机器人，支持 Markdown 原生渲染：可用 **粗体**、# 标题、- 列表、> 引用、`行内代码`、```代码块```、表格、[链接](url)。优先用简洁的 Markdown 组织答案；不要输出 HTML、不要输出 Markdown 图片（平台不渲染本地图片）。'
+          ? '\n\n【回复格式】当前通道是 QQ 官方机器人，支持 Markdown 原生渲染：可用 **粗体**、# 标题、- 列表、> 引用、`行内代码`、```代码块```、表格、[链接](url)。优先用简洁的 Markdown 组织答案；提到以 # 开头的机器人指令时，行内用 `#指令` 包裹，独立示例用代码块，避免被当成标题；不要输出 HTML、不要输出 Markdown 图片（平台不渲染本地图片）。'
           : '')
       const agentInst = rt.makeAgent()
       const { content, stopReason, turns, usage } = await agentInst.run(input, {
@@ -2644,7 +2644,7 @@ export class Chat extends plugin {
       // 群聊回复艾特发言人（agent.reply.atSender，默认开；私聊不艾特）
       // 频道（guild）不支持普通 at 段，跳过；官方群聊把 at 折进 markdown 内容（适配器转换）
       const atSender = (ctx.isGroup && cfg.reply?.atSender !== false && ctx.userId && qqInfo.kind !== 'guild' && typeof segment !== 'undefined' && typeof segment.at === 'function') ? segment.at(ctx.userId) : null
-      // 回复渲染：默认图片（markdown→图片，失败退文本）；replyMode 已在上方 run 前计算
+      // 回复渲染：默认文本；可选图片（markdown→图片，失败退文本）；replyMode 已在上方 run 前计算
       // 发送经受控队列；delivered 依据队列 outcome（适配器返回值/retcode/rejection），不再"执行过 await 即成功"。
       let delivered = streamedFinal // 流式已逐字送达 → 不再重复发整段正文
       let finalOutcome = null
@@ -2734,7 +2734,7 @@ export class Chat extends plugin {
           if (img) {
             finalOutcome = await replyQueue.enqueue({ msg: atSender ? [atSender, img] : img, quote: quoteReply }, { tag: 'final' })
             delivered = !!finalOutcome.ok
-            // 多样性硬闸在图片模式同样要推进（曾只在文本模式 noteSent → recent-3 去重在默认图片回复下永不更新，防线失效）
+            // 多样性硬闸在图片模式同样要推进（曾只在文本模式 noteSent → recent-3 去重在图片模式回复下永不更新，防线失效）
             try { if (delivered && acceptMap?.size) rt.sticker?.noteSent?.([...acceptMap.keys()]) } catch { /* noop */ }
             // 图片模式下链接单独发（图内无法复制）：单链接文本直发；多链接打包一条合并转发防刷屏
             const __links = [...new Set((body.match(/https?:\/\/[^\s<>"')]+/g) || []).map((s) => s.replace(/[.,;:!?)]+$/, '')))]

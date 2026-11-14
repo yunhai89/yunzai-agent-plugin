@@ -216,7 +216,7 @@
       }
     },
     template: `
-    <div>
+    <div class="view view-tts">
       <page-head title="语音合成" icon="music" desc="TTS 服务配置 + 参考音频库 · 情绪化支持（pro/max）；总开关默认关闭"/>
       <div class="cf-wrap">
       <div class="cf-nav">

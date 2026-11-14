@@ -23,7 +23,7 @@ v1.45.4 起已修：以前 `@机器人 + #指令` 会被本插件的 AI catch-al
 到 Web 配置中心核对「厂商配置」的 baseURL / apiKey / protocol。国内访问海外模型建议配 `agent.proxy`（仅 HTTP(S)；SOCKS 会提示直连）。日志 `[provider]` 有重试原因。
 
 **Q3：回复变成纯文本 / 图片渲染失败？**
-`reply.mode=image` 需要 Chromium（Yunzai 自带 puppeteer）；渲染失败会自动退文本。官方机器人下本就走 Markdown，不是故障。弱服务器可设 `render.card=false`。
+默认 `reply.mode=text`，不需要 Chromium。只有切到 `reply.mode=image` 才需要 Chromium（Yunzai 自带 puppeteer）；渲染失败会自动退文本。官方机器人下本就走 Markdown，不是故障。弱服务器可设 `render.card=false`。
 帮助图（`#agent帮助`）有独立超时 `agent.render.helpTimeoutMs`（默认 **300000ms = 5 分钟**）；若首次渲染仍超时（之后会进入冷却、暂时直接回文本），可在 Web 配置中心「进度 / 回复渲染」或锅巴调整该项，或把 `render.card=false` 直接走文本。
 
 **Q4：Token 消耗/费用偏高？**

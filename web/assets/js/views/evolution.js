@@ -65,7 +65,7 @@
       return { list, loading, filter, filtered, stats, metrics, health, load, approve, decommission, rollback, detail, loadDetail, STATUS }
     },
     template: `
-    <div>
+    <div class="view view-evolution">
       <page-head title="工具进化" icon="tool" desc="Tool Evolution · 候选生成(LLM+AST) → 验证(沙箱) → 审批 → 版本。在 QQ 对 bot 发 #进化工具 <能力描述> 生成候选">
         <button class="btn b-line" @click="load"><v-icon name="refresh"/>刷新</button>
       </page-head>

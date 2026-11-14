@@ -63,54 +63,110 @@
       })
       onUnmounted(() => clearInterval(timer))
 
-      return { jobs, tick, until, del, addModal, add, ownerId, fmt }
+      const taskCount = computed(() => jobs.value.filter((j) => j.type === 'task').length)
+      const reminderCount = computed(() => jobs.value.filter((j) => j.type !== 'task').length)
+      const nextJob = computed(() => {
+        void tick.value
+        return jobs.value.filter((j) => j.type !== 'task' && j.at > Date.now()).sort((a, b) => a.at - b.at)[0] || null
+      })
+
+      return { jobs, tick, until, del, addModal, add, ownerId, fmt, taskCount, reminderCount, nextJob }
     },
     template: `
-    <div>
-      <page-head title="定时任务" icon="schedule" desc="一次性提醒（到点发静态消息）+ cron 重复任务链（到点跑 Agent + 发结果）。时间支持自然语言：每天8点 / 每2小时 / 工作日9点">
+    <div class="view view-schedule">
+      <page-head title="定时任务" icon="schedule" desc="一次性提醒到点发送消息；cron 任务链到点运行 Agent 并发送结果。时间支持自然语言：每天 8 点、每 2 小时、工作日 9 点。">
         <button class="btn b-pri" @click="addModal.show = true"><v-icon name="plus"/>新建任务</button>
       </page-head>
 
-      <div class="grid g3 stagger">
-        <div v-for="(j, i) in jobs" :key="j.id" class="card lift pad" :style="{'--i': i + 1}">
-          <div class="row-b">
-            <span class="pill" :class="j.type === 'task' ? 'p-green' : (j.groupId ? 'p-sky' : 'p-vio')">
-              <v-icon :name="j.type === 'task' ? 'tool' : (j.groupId ? 'group' : 'user')"/>{{ j.type === 'task' ? '任务链' : (j.groupId ? '群 ' + j.groupId : '私聊') }}
-            </span>
-            <button class="bic dg" @click="del(j)"><v-icon name="trash"/></button>
+      <div class="split">
+        <aside class="split-aside">
+          <section class="chamber">
+            <header class="chamber-head">
+              <div>
+                <h2 class="chamber-title">队列</h2>
+                <p class="chamber-sub">当前 bot 的定时安排</p>
+              </div>
+            </header>
+            <div class="chamber-body">
+              <div class="metric-stack">
+                <div class="metric">
+                  <div class="metric-label">下一件事</div>
+                  <div class="metric-value" style="font-size:26px">{{ nextJob ? until(nextJob.at) : '—' }}</div>
+                  <div class="metric-note">{{ nextJob ? nextJob.message : '没有待触发的提醒' }}</div>
+                </div>
+                <div class="metric">
+                  <div class="metric-label">全部安排</div>
+                  <div class="metric-value">{{ jobs.length }}<small>项</small></div>
+                  <div class="metric-note">{{ taskCount }} 条任务链 · {{ reminderCount }} 条提醒</div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <section class="chamber">
+            <div class="chamber-body" style="padding-top:22px">
+              <div class="stat-line"><span>归属</span><b>{{ ownerId || '未取到主人 QQ' }}</b></div>
+              <div class="stat-line"><span>时间基准</span><b>服务器本地时区</b></div>
+              <p class="aside-note" style="margin-top:14px">任务链到点会运行完整 Agent，再发送结果；一次性提醒只发送静态文本。取消后不可恢复。</p>
+            </div>
+          </section>
+        </aside>
+
+        <section class="chamber">
+          <header class="chamber-head">
+            <div>
+              <h2 class="chamber-title">时间线</h2>
+              <p class="chamber-sub">按类型与触发时间排列</p>
+            </div>
+            <button class="btn b-line b-sm" @click="addModal.show = true"><v-icon name="plus"/>新建</button>
+          </header>
+          <div class="chamber-body">
+            <div v-if="jobs.length" class="schedule-list">
+              <article v-for="j in jobs" :key="j.id" class="schedule-row">
+                <div class="schedule-time">
+                  <b>{{ j.type === 'task' ? '周期' : until(j.at) }}</b>
+                  <span v-if="j.type === 'task'">{{ j.cron }}</span>
+                  <span v-else>{{ new Date(j.at).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) }}</span>
+                </div>
+                <div class="schedule-axis"><i :class="{ task: j.type === 'task' }"></i></div>
+                <div class="schedule-main">
+                  <div class="pill-row" style="margin-bottom:7px">
+                    <span class="pill" :class="j.type === 'task' ? 'p-green' : (j.groupId ? 'p-sky' : 'p-vio')">
+                      <v-icon :name="j.type === 'task' ? 'tool' : (j.groupId ? 'group' : 'user')"/>{{ j.type === 'task' ? '任务链' : (j.groupId ? '群 ' + j.groupId : '私聊') }}
+                    </span>
+                    <span class="pill p-line mono">#{{ j.id }}</span>
+                  </div>
+                  <div class="entry-text">{{ j.type === 'task' ? j.prompt : j.message }}</div>
+                  <div class="entry-meta">
+                    <span>bot {{ j.selfId || '?' }}</span>
+                    <span v-if="j.type === 'task'">到点运行 Agent</span>
+                    <span v-else>到点发送消息</span>
+                  </div>
+                </div>
+                <button class="bic dg" title="取消" @click="del(j)"><v-icon name="trash"/></button>
+              </article>
+            </div>
+            <empty-state v-else icon="schedule" text="还没有定时任务" sub="新建一条提醒，或让 Agent 定时执行一串动作"/>
           </div>
-          <template v-if="j.type === 'task'">
-            <div class="mono mt12" style="font-size:12px;color:var(--mint)">⏱ {{ j.cron }}</div>
-            <p class="mt8" style="font-size:13.5px;font-weight:600;line-height:1.7;min-height:44px">{{ j.prompt }}</p>
-          </template>
-          <template v-else>
-            <p class="mt12" style="font-size:13.5px;font-weight:600;line-height:1.7;min-height:44px">{{ j.message }}</p>
-            <div class="hr" style="margin:12px 0"></div>
-            <div class="grad-t num" style="font-weight:800;font-size:20px">{{ until(j.at) }}</div>
-            <div class="mut2" style="font-size:11px;margin-top:2px">{{ new Date(j.at).toLocaleString('zh-CN', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) }} 触发</div>
-          </template>
-          <div class="mut2" style="font-size:11px;text-align:right;margin-top:8px">bot {{ j.selfId || '?' }} · #{{ j.id }}</div>
-        </div>
+        </section>
       </div>
-      <empty-state v-if="!jobs.length" icon="schedule" text="暂无定时任务"/>
 
       <v-modal v-if="addModal.show" title="新建定时任务" icon="plus" @close="addModal.show = false">
         <div class="seg mb12">
-          <button :class="{on: addModal.type==='reminder'}" @click="addModal.type='reminder'">一次性提醒</button>
-          <button :class="{on: addModal.type==='task'}" @click="addModal.type='task'">cron 重复任务</button>
+          <button :class="{ on: addModal.type === 'reminder' }" @click="addModal.type = 'reminder'">一次性提醒</button>
+          <button :class="{ on: addModal.type === 'task' }" @click="addModal.type = 'task'">cron 重复任务</button>
         </div>
         <div class="field mb12">
-          <label class="f-label">目标群（留空=私聊）</label>
+          <label class="f-label">目标群（留空为私聊）</label>
           <input class="inp" v-model="addModal.groupId" placeholder="群号">
         </div>
-        <template v-if="addModal.type==='task'">
+        <template v-if="addModal.type === 'task'">
           <div class="field mb12">
-            <label class="f-label">时间（自然语言）</label>
-            <input class="inp" v-model="addModal.when" placeholder="每天8点 / 每2小时 / 工作日9点 / 每周一8点30 / 每30分钟">
+            <label class="f-label">时间</label>
+            <input class="inp" v-model="addModal.when" placeholder="每天 8 点 / 每 2 小时 / 工作日 9 点 / 每周一 8:30">
           </div>
           <div class="field">
-            <label class="f-label">任务描述（到点 Agent 执行 + 发结果）</label>
-            <textarea class="txa" v-model="addModal.prompt" placeholder="如：搜索今日AI资讯并总结5条"></textarea>
+            <label class="f-label">任务描述（到点运行 Agent 并发送结果）</label>
+            <textarea class="txa" v-model="addModal.prompt" placeholder="例如：搜索今日 AI 资讯，总结 5 条"></textarea>
           </div>
         </template>
         <template v-else>
@@ -119,11 +175,11 @@
             <textarea class="txa" v-model="addModal.message" placeholder="到点发送的文本"></textarea>
           </div>
           <div class="field">
-            <label class="f-label">N 小时后触发</label>
+            <label class="f-label">多少小时后触发</label>
             <input type="number" class="inp" min="1" v-model.number="addModal.inHours">
           </div>
         </template>
-        <div v-if="!ownerId" class="mut2" style="font-size:11.5px;color:var(--rose);margin-top:10px">未取到主人 QQ（配置中心 · 主人列表为空），无法创建任务</div>
+        <div v-if="!ownerId" class="dlg-hint" style="margin-top:10px">未取到主人 QQ（配置中心的主人列表为空），无法创建任务。</div>
         <template #foot>
           <button class="btn b-line" @click="addModal.show = false">取消</button>
           <button class="btn b-pri" :disabled="!ownerId" @click="add"><v-icon name="check"/>创建</button>

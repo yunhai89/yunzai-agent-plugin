@@ -42,7 +42,7 @@
       return { convs, activeId, conv, session, showReasoning, showArgs, toggleR, toggleA, parseArgs, fmt }
     },
     template: `
-    <div>
+    <div class="view view-sessions">
       <page-head title="会话回放" icon="session" desc="对话列表与消息历史 · 推理过程与工具调用可展开查看"/>
       <div class="grid cols-320" style="align-items:start">
       <!-- 对话列表 -->

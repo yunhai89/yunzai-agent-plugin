@@ -69,7 +69,7 @@
       return { packs, state, active, loading, load, dirty, reset, save, openCfg, closeCfg, iconUrl }
     },
     template: `
-    <div>
+    <div class="view view-toolpacks">
       <page-head title="外置工具" icon="tool" desc="tools/ 目录下自研工具（tool.config.js 约定）· 点击卡片打开配置">
         <button class="btn b-sm" @click="load"><v-icon name="refresh"/>刷新</button>
       </page-head>

@@ -157,7 +157,7 @@
       }
     },
     template: `
-    <div>
+    <div class="view view-qqbot">
       <page-head title="QQ 官方机器人账号" icon="bot" desc="自实现适配器：只需 AppID + AppSecret 直连官方网关（无需机器人 QQ 号与 Token）。与 Yunzai-QQBot-Plugin 二选一，否则同一条机器人会重复收发">
         <button class="btn b-line" @click="load" :disabled="loading"><v-icon name="refresh"/>刷新状态</button>
         <button class="btn b-line" @click="reloadAll" :disabled="busy === 'reload'"><v-icon name="refresh"/>重连全部</button>

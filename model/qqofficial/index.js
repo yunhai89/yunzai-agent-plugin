@@ -255,6 +255,53 @@ export function markdownSegment(content) {
 }
 
 /**
+ * QQ 官方 Markdown 会把它认为的「#指令」当成标题语法渲染，导致用户看到的指令
+ * 不是可复制的命令。这里做两层保护：
+ *  - 整行以 #指令 开头：包成 fenced code block（用户建议的 ``` 形式）；
+ *  - 行内出现的 #指令：包成 inline code，避免破坏整段语义。
+ * 正常 Markdown 标题（`# 标题`，# 后有空格）、已有代码块/行内代码、缩进代码不处理。
+ * @param {string} md
+ * @returns {string}
+ */
+export function protectCommands(md) {
+  const text = str(md)
+  if (!text || !text.includes('#')) return text
+  const out = []
+  let inFence = false
+  let batch = []
+  const flush = () => {
+    if (!batch.length) return
+    out.push('```', ...batch, '```')
+    batch = []
+  }
+  const inline = (line) => line.split(/(`+[^`]*`+)/g).map((part, i) => {
+    if (i % 2) return part // 已有行内代码，原样保留
+    // 只处理“行首 / 空白 / 中文标点 / 引号”后的 #指令；避开链接、加粗与 Markdown 语法字符
+    return part.replace(/(^|[\s(（【「『“"',，、。；;:：!！?？])(#{1,6}[^\s#`*\[\]()<>，。、；：！？,.;:!?]+)/g,
+      (_, pre, cmd) => `${pre}\`${cmd}\``)
+  }).join('')
+  for (const line of text.split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      flush()
+      out.push(line)
+      inFence = !inFence
+      continue
+    }
+    if (inFence) { out.push(line); continue }
+    if (/^( {4}|\t)/.test(line)) { flush(); out.push(line); continue } // 缩进代码块
+    if (/^\s{0,3}#{1,6}\s/.test(line)) { flush(); out.push(line); continue } // 合法标题：`# 标题`
+    if (/^\s{0,3}#{1,6}(?=[^\s#`])/.test(line)) {
+      batch.push(line.trim()) // 连续的独立指令合成一个代码块
+      continue
+    }
+    flush()
+    out.push(inline(line))
+  }
+  flush()
+  return out.join('\n')
+}
+
+/**
  * 归一按钮定义为 Yunzai `segment.button(...rows)` 需要的「行数组」。
  * 按钮字段（前端/LLM 友好）：
  *  - text         按钮文案（必填）
@@ -339,7 +386,9 @@ export function keyboardSegments(rows, { ownerId = '', allowPublic = false } = {
  * @returns {object|null} 单段或段数组；能力缺失返回 null
  */
 export function buildMarkdownMessage(e, markdown, { atSender = null, keyboard = null, ownerId = '', allowPublic = false } = {}) {
-  const md = markdownSegment(markdown)
+  // QQ 官方 Markdown 会把 #指令 误判成标题；模板对象交给平台，纯文本统一做指令保护。
+  const content = typeof markdown === 'string' ? protectCommands(markdown) : markdown
+  const md = markdownSegment(content)
   if (!md) return null
   const parts = []
   if (atSender) {
@@ -469,6 +518,7 @@ export default {
   normalizeKeyboard,
   keyboardSegments,
   buildMarkdownMessage,
+  protectCommands,
   markdownToPlain,
   splitMarkdown,
   describeContext,

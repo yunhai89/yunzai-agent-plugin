@@ -63,7 +63,7 @@
       return { data, loading, phase, PHASES, detail, events, plan, load, open, loadPlan, cancel, resume, phaseCn, phaseClass, isTerminal, fmtTime }
     },
     template: `
-    <div>
+    <div class="view view-tasks">
       <page-head title="任务账本" icon="schedule" desc="可恢复任务记录（P0-3）：任务阶段、事件与检查点。启用后记录每次任务的关键边界；阶段一恢复仅取回检查点，不自动重放副作用">
         <select class="inp" style="width:150px" v-model="phase" @change="load">
           <option v-for="p in PHASES" :key="p" :value="p">{{ p ? (p) : '全部阶段' }}</option>

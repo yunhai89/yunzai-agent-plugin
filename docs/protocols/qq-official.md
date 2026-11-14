@@ -148,6 +148,7 @@ scopeId：g1024-G_OPENID_u1024-U_OPENID
 官方适配器支持原生 Markdown 消息，插件在官方协议下**自动改为 Markdown 直发**，不再把回复渲染成图片（`agent.reply.mode` 在官方下被忽略）：
 
 - 长回复按 `agent.qqOfficial.markdown.maxChars`（默认 3500）按行分片发送，代码块会补闭合围栏；
+- 回复中的行首 `#指令` 会自动包成代码块，行内 `#指令` 会包成行内代码，避免被 Markdown 当成标题；
 - 平台拒绝 markdown 时**自动降级为纯文本**（剥掉 md 标记），不会丢消息；
 - 需要官方模板消息时填 `agent.qqOfficial.markdown.templateId`（后台申请）。
 

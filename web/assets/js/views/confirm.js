@@ -65,91 +65,120 @@
       return { items, adoptions, tick, remain, remainPct, ringOffset, decide, decideAdopt, danger, fmt, TIMEOUT }
     },
     template: `
-    <div>
-      <page-head title="审批门" icon="confirm" desc="高危工具人工把关 · 工具确认不持久化；人设采纳持久待审，批准后才生效"/>
-      <div class="card pad row-b wrap g14" style="--i:0">
-        <div class="ct">
-          <span class="ct-ico" style="background:var(--cinnabar)"><v-icon name="confirm"/></span>
-          <div>
-            <div class="ct-t">待审批队列</div>
-            <div class="ct-s">工具确认=纯内存不持久化 · 超时({{ TIMEOUT / 1000 }}s)自动拒绝；人设采纳=持久待审 · 须批准才生效</div>
-          </div>
-        </div>
-        <span class="pill" :class="(items.length + adoptions.length) ? 'p-rose' : 'p-green'" style="font-size:13px;padding:7px 15px">
-          {{ (items.length + adoptions.length) ? (items.length + adoptions.length) + ' 条待审批' : '队列已清空' }}
-        </span>
-      </div>
+    <div class="view view-confirm">
+      <page-head title="审批门" icon="confirm" desc="高风险工具在真正执行前停在这里；人设资料的采纳也会进入待审队列。批准后立即生效。"/>
 
-      <!-- 人设资料采纳待审（持久） -->
-      <div v-if="adoptions.length" class="card pad" style="margin-top:16px;--i:1">
-        <div class="ct" style="margin-bottom:12px">
-          <span class="ct-ico" style="background:var(--pri)"><v-icon name="persona"/></span>
-          <div>
-            <div class="ct-t">人设资料采纳待审</div>
-            <div class="ct-s">#采纳补齐 /  Web 采纳 会先进入此队列；批准后草稿才 draft→active 并注入身份层</div>
-          </div>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:12px">
-          <div v-for="a in adoptions" :key="a.id" class="card pad lift">
-            <div class="row-b wrap g10">
-              <div class="row g6 wrap">
-                <span class="pill p-pri"><v-icon name="persona"/>{{ a.personaName || a.personaId }}</span>
-                <span class="pill p-line mono">#{{ a.id }}</span>
-                <span class="pill p-line mono">{{ a.personaId }}</span>
+      <div class="split">
+        <aside class="split-aside">
+          <section class="chamber">
+            <header class="chamber-head">
+              <div><h2 class="chamber-title">队列</h2><p class="chamber-sub">需要你手动决定的事项</p></div>
+            </header>
+            <div class="chamber-body">
+              <div class="metric-stack">
+                <div class="metric">
+                  <div class="metric-label">全部待审</div>
+                  <div class="metric-value">{{ items.length + adoptions.length }}<small>项</small></div>
+                </div>
+                <div class="metric">
+                  <div class="metric-label">工具确认 / 人设采纳</div>
+                  <div class="metric-value" style="font-size:24px">{{ items.length }} <small>/</small> {{ adoptions.length }}</div>
+                </div>
               </div>
-              <span class="mut2" style="font-size:11.5px">{{ a.via === 'qq' ? 'QQ' : 'Web' }} 提交 · {{ a.by || '—' }} · {{ fmt.ago(a.createdAt) }}</span>
             </div>
-            <div v-if="a.snapshot && a.snapshot.summary" class="mut mt8" style="font-size:13px">{{ a.snapshot.summary }}</div>
-            <div v-if="a.snapshot && a.snapshot.facts" class="json-block mt8" style="max-height:180px;overflow:auto;white-space:pre-wrap;font-size:12px">{{ a.snapshot.facts }}</div>
-            <div class="mut2 mt8" style="font-size:11.5px">
-              出处 {{ a.snapshot?.sourceCount || 0 }} 条 · 长尾 {{ a.snapshot?.rawNotesLen || 0 }} 字（批准后入库供检索）
+          </section>
+          <section class="chamber">
+            <div class="chamber-body" style="padding-top:22px">
+              <div class="stat-line"><span>确认超时</span><b>{{ TIMEOUT / 1000 }} 秒</b></div>
+              <div class="stat-line"><span>超时处理</span><b>自动拒绝</b></div>
+              <p class="aside-note" style="margin-top:14px">工具确认只保存在内存里，重启即清空。人设采纳会持久保存，批准后草稿才会生效。</p>
             </div>
-            <div class="row g10 mt12" style="justify-content:flex-end">
-              <button class="btn b-danger" @click="decideAdopt(a, false)"><v-icon name="x"/>驳回（保留草稿）</button>
-              <button class="btn b-ok" @click="decideAdopt(a, true)"><v-icon name="check"/>批准采纳</button>
-            </div>
-          </div>
-        </div>
-      </div>
+          </section>
+        </aside>
 
-      <div class="ct" v-if="items.length" style="margin:18px 2px 10px">
-        <span class="ct-ico" style="background:var(--cinnabar)"><v-icon name="confirm"/></span>
-        <div><div class="ct-t">工具确认</div><div class="ct-s">需二次确认的工具（定时任务等）</div></div>
-      </div>
-      <TransitionGroup name="list" tag="div" class="grid g2" :style="{marginTop: items.length ? '0' : '16px', position:'relative'}">
-        <div v-for="(c, i) in items" :key="c.id" class="card lift pad" :style="{'--i': i + 1}">
-          <div class="row g14" style="align-items:flex-start">
-            <!-- 倒计时环 -->
-            <div class="cd-ring">
-              <svg width="46" height="46">
-                <circle cx="23" cy="23" r="19" fill="none" stroke="var(--well)" stroke-width="5"/>
-                <circle cx="23" cy="23" r="19" fill="none" stroke-linecap="round" stroke-width="5"
-                  :stroke="remainPct(c) > 40 ? 'var(--pri)' : 'var(--cinnabar)'"
-                  :stroke-dasharray="2 * Math.PI * 19" :stroke-dashoffset="ringOffset(c)"
-                  style="transition:stroke-dashoffset 1s linear, stroke .5s"/>
-              </svg>
-              <div class="cd-num num">{{ Math.ceil(remain(c) / 1000) }}</div>
-            </div>
-            <div style="flex:1;min-width:0">
-              <div class="row g6 wrap">
-                <span class="pill" :class="danger(c.tool) ? 'p-rose' : 'p-sky'"><v-icon :name="danger(c.tool) ? 'warn' : 'tool'"/>{{ c.tool }}</span>
-                <span class="pill p-line mono">#{{ c.id }}</span>
+        <div class="split-main">
+          <section class="chamber">
+            <header class="chamber-head">
+              <div>
+                <h2 class="chamber-title">工具确认</h2>
+                <p class="chamber-sub">需二次确认的工具调用</p>
               </div>
-              <div class="mut mt8" style="font-size:12px">
-                申请人 <b class="mono">{{ c.ctx?.user || '未知' }}</b> · {{ c.ctx?.gid ? '群 ' + c.ctx.gid : '私聊' }} · {{ fmt.ago(c.createdAt) }}发起
+              <span class="pill" :class="items.length ? 'p-rose' : 'p-green'">{{ items.length ? items.length + ' 条待审' : '已清空' }}</span>
+            </header>
+            <div class="chamber-body">
+              <div v-if="items.length" class="review-list">
+                <article v-for="c in items" :key="c.id" class="review-row">
+                  <div class="review-count">
+                    <div class="cd-ring">
+                      <svg width="46" height="46">
+                        <circle cx="23" cy="23" r="19" fill="none" stroke="var(--well)" stroke-width="5"/>
+                        <circle cx="23" cy="23" r="19" fill="none" stroke-linecap="round" stroke-width="5"
+                          :stroke="remainPct(c) > 40 ? 'var(--cobalt)' : 'var(--coral)'"
+                          :stroke-dasharray="2 * Math.PI * 19" :stroke-dashoffset="ringOffset(c)"
+                          style="transition:stroke-dashoffset 1s linear, stroke .5s"/>
+                      </svg>
+                      <div class="cd-num">{{ Math.ceil(remain(c) / 1000) }}</div>
+                    </div>
+                    <span>秒</span>
+                  </div>
+                  <div class="review-main">
+                    <div class="pill-row" style="margin-bottom:7px">
+                      <span class="pill" :class="danger(c.tool) ? 'p-rose' : 'p-sky'"><v-icon :name="danger(c.tool) ? 'warn' : 'tool'"/>{{ c.tool }}</span>
+                      <span class="pill p-line mono">#{{ c.id }}</span>
+                    </div>
+                    <div class="entry-meta" style="margin-top:0">
+                      <span>申请人 {{ c.ctx?.user || '未知' }}</span>
+                      <span>{{ c.ctx?.gid ? '群 ' + c.ctx.gid : '私聊' }}</span>
+                      <span>{{ fmt.ago(c.createdAt) }}发起</span>
+                    </div>
+                    <div v-if="c.ctx?.reason" class="entry-text" style="margin-top:6px;font-size:12px;color:var(--ink-2)">事由：{{ c.ctx.reason }}</div>
+                    <div class="mt12"><json-block :data="c.args"/></div>
+                  </div>
+                  <div class="review-actions">
+                    <button class="btn b-danger b-sm" @click="decide(c, false)"><v-icon name="x"/>拒绝</button>
+                    <button class="btn b-pri b-sm" @click="decide(c, true)"><v-icon name="check"/>批准</button>
+                  </div>
+                </article>
               </div>
-              <!-- 事由：链路目前无生产方，有值才显示（空着比「（未提供）」更少噪音） -->
-              <div v-if="c.ctx?.reason" class="mut" style="font-size:12px;margin-top:2px">事由:{{ c.ctx.reason }}</div>
+              <empty-state v-else icon="confirm" text="没有待确认的工具调用" sub="高风险工具发起时会出现在这里；终端命令已在 E2B 沙箱内直接执行，stagehand act 不再单独审批"/>
             </div>
-          </div>
-          <div class="mt12"><json-block :data="c.args"/></div>
-          <div class="row g10 mt12" style="justify-content:flex-end">
-            <button class="btn b-danger" @click="decide(c, false)"><v-icon name="x"/>拒绝</button>
-            <button class="btn b-ok" @click="decide(c, true)"><v-icon name="check"/>批准执行</button>
-          </div>
+          </section>
+
+          <section v-if="adoptions.length" class="chamber">
+            <header class="chamber-head">
+              <div>
+                <h2 class="chamber-title">人设资料采纳</h2>
+                <p class="chamber-sub">批准后草稿才会从 draft 变为 active，并注入身份层</p>
+              </div>
+              <span class="pill p-pri">{{ adoptions.length }} 条</span>
+            </header>
+            <div class="chamber-body">
+              <div class="review-list">
+                <article v-for="a in adoptions" :key="a.id" class="review-row">
+                  <div class="review-main">
+                    <div class="pill-row" style="margin-bottom:7px">
+                      <span class="pill p-pri"><v-icon name="persona"/>{{ a.personaName || a.personaId }}</span>
+                      <span class="pill p-line mono">#{{ a.id }}</span>
+                      <span class="pill p-line">{{ a.via === 'qq' ? 'QQ 提交' : 'Web 提交' }}</span>
+                    </div>
+                    <div v-if="a.snapshot && a.snapshot.summary" class="entry-text">{{ a.snapshot.summary }}</div>
+                    <div v-if="a.snapshot && a.snapshot.facts" class="json-block mt12" style="max-height:180px;overflow:auto">{{ a.snapshot.facts }}</div>
+                    <div class="entry-meta">
+                      <span>{{ a.by || '—' }} · {{ fmt.ago(a.createdAt) }}</span>
+                      <span>出处 {{ a.snapshot?.sourceCount || 0 }} 条</span>
+                      <span>长尾 {{ a.snapshot?.rawNotesLen || 0 }} 字</span>
+                    </div>
+                  </div>
+                  <div class="review-actions">
+                    <button class="btn b-line b-sm" @click="decideAdopt(a, false)"><v-icon name="x"/>驳回</button>
+                    <button class="btn b-pri b-sm" @click="decideAdopt(a, true)"><v-icon name="check"/>采纳</button>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </section>
         </div>
-      </TransitionGroup>
-      <empty-state v-if="!items.length && !adoptions.length" icon="confirm" text="暂无待审批项" sub="需二次确认的工具（如定时任务等）与人设资料采纳（#采纳补齐）发起时会出现在这里；终端命令已改在 E2B 沙箱内直接执行，stagehand act 不单独审批"/>
+      </div>
     </div>`,
   }
 })()

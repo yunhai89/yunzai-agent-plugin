@@ -16,7 +16,7 @@ import {
   detectAdapter, contextKind, contextLabel, stripSelfPrefix, rawUserId, rawGroupId, splitGuildId,
   safeScopePart, deriveScope, markdownSegment, hasMarkdownSegment, hasButtonSegment,
   groupRoleOf, isGroupAdminEvent,
-  normalizeKeyboard, keyboardSegments, buildMarkdownMessage, markdownToPlain, splitMarkdown,
+  normalizeKeyboard, keyboardSegments, buildMarkdownMessage, protectCommands, markdownToPlain, splitMarkdown,
   describeContext, MARKDOWN_MAX_CHARS, KEYBOARD_MAX_ROWS, KEYBOARD_MAX_PER_ROW,
 } from './index.js'
 import { makeSendKeyboardTool, normalizeCardSpec, flushPendingCards, MAX_CARDS_PER_RUN } from './tool.js'
@@ -155,6 +155,21 @@ console.log('\n[4] markdown / keyboard 段构造')
   eq(msg[2].type, 'button', '第三段是按钮')
   const single = buildMarkdownMessage({ user_id: 'u' }, '# hi')
   ok(single && !Array.isArray(single) && single.type === 'markdown', '无 @ / 无按钮时返回单段')
+}
+
+console.log('\n[4b] #指令 防 Markdown 标题误判')
+{
+  eq(protectCommands('#agent登录'), '```\n#agent登录\n```', '行首指令包成代码块')
+  eq(protectCommands('#agent登录\n#ai 你好'), '```\n#agent登录\n#ai 你好\n```', '连续行首指令合并为一个代码块')
+  eq(protectCommands('发送 #agent登录 获取令牌'), '发送 `#agent登录` 获取令牌', '行内指令包成 inline code')
+  eq(protectCommands('# 标题\n正文 #标签'), '# 标题\n正文 `#标签`', '合法标题保留，正文标签保护')
+  eq(protectCommands('```\n#agent登录\n```'), '```\n#agent登录\n```', '已有代码块原样保留')
+  eq(protectCommands('`#agent登录`'), '`#agent登录`', '已有行内代码原样保留')
+  eq(protectCommands('[#agent登录](https://x)'), '[#agent登录](https://x)', '链接文本不与链接语法抢写')
+  const built = buildMarkdownMessage({ user_id: 'u' }, '发送 #agent登录')
+  eq(built.data, '发送 `#agent登录`', 'buildMarkdownMessage 自动保护指令')
+  const heading = buildMarkdownMessage({ user_id: 'u' }, '# 标题')
+  eq(heading.data, '# 标题', '正常 # 标题 不被误包')
 }
 
 console.log('\n[5] markdown→纯文本 与 分片')

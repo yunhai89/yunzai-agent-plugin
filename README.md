@@ -135,9 +135,9 @@ agent:
 - 发 **`#人设`** 切人设、**`#new`** 新建对话、**`#记忆`** 看记忆、**`#agent帮助`** 看指令卡片；
 - 官方机器人用户先发 **`/uid`** 把主人 ID 加进 `agent.masters`，否则主人指令不可用（详见 [QQ 官方机器人接入](docs/protocols/qq-official.md)）。
 
-### 图片回复（默认开启）
+### 回复模式
 
-回复默认渲染成**浅色卡片图**（完整 markdown + 代码高亮），失败自动退文本。`agent.reply.mode`：`image`（默认）/ `text`。
+回复默认走**纯文本**；需要时设 `agent.reply.mode: image`，渲染成**浅色卡片图**（完整 markdown + 代码高亮），失败自动退文本。`agent.reply.mode`：`text`（默认）/ `image`。
 > **QQ 官方机器人**下自动改为 Markdown 直发（不渲染图片），`reply.mode` 被忽略。
 
 ### 配置文件与热加载
@@ -160,7 +160,7 @@ agent:
 到 Web 配置中心核对厂商 `baseURL` / `apiKey` / `protocol`；海外端点可配 `agent.proxy`。
 
 **Q3：回复变纯文本 / 图片渲染失败？**
-需要 Chromium；失败会自动退文本。官方机器人本来就走 Markdown。弱服务器可设 `agent.render.card=false`。
+默认 `reply.mode=text`，不需要 Chromium；切到 `reply.mode=image` 才需要 Chromium，失败会自动退文本。官方机器人本来就走 Markdown。弱服务器可设 `agent.render.card=false`。
 
 **Q5：QQ 官方机器人连不上？**
 确认 AppID + AppSecret（Token 已废弃）；看 Web「机器人账号」页状态；4004=密钥错，4013/4914=intents 权限问题，4008=频控；不要和 Yunzai-QQBot-Plugin 同时开。

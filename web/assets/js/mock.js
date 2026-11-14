@@ -135,7 +135,7 @@
     progress: true,
     progressRecall: 3,
     reply: {
-      mode: "image",
+      mode: "text",
       atSender: true,
       quote: true,
       narrate: true,
@@ -908,14 +908,14 @@
       { level: 'info', time: '2026-07-28T22:10:36.948Z', event: 'reflect', traceId: t1, revise: false, feedback: '回答给出了原因与两个可选方案,无需修正', iter: 1 },
       { level: 'info', time: '2026-07-28T22:10:37.001Z', event: 'recall_extract', traceId: t1, scopeUserId: '2854196310', ok: true, msgs: 4, hasLlm: true, ms: 1740 },
       { level: 'info', time: '2026-07-28T22:10:37.020Z', event: 'run_end', traceId: t1, turns: 2, stopReason: 'stop', usage: { input: 7033, output: 311, total: 7344 }, replyLen: 168, totalMs: 6619, usedTools: true },
-      { level: 'info', time: '2026-07-28T22:10:37.402Z', event: 'reply', traceId: t1, mode: 'image', delivered: true, body: '查到了:宿主机 2536 端口被 redis-server……', turns: 2, stopReason: 'stop' },
+      { level: 'info', time: '2026-07-28T22:10:37.402Z', event: 'reply', traceId: t1, mode: 'text', delivered: true, body: '查到了:宿主机 2536 端口被 redis-server……', turns: 2, stopReason: 'stop' },
       { level: 'info', time: '2026-07-28T23:02:11.500Z', event: 'trigger', traceId: t2, user: '2854196310', gid: '960179589', isGroup: true, scopeId: 'g960179589_u2854196310', conv: 'c_1001', text: '把容器名也改了', inputLen: 8 },
       { level: 'info', time: '2026-07-28T23:02:11.731Z', event: 'input', traceId: t2, caps: { vision: true, file: true }, inputKind: 'text', inputText: '把容器名也改了', attachments: [] },
       { level: 'info', time: '2026-07-28T23:02:11.780Z', event: 'run_start', traceId: t2, model: 'deepseek-chat', msgs: 9, tools: 38, discoveryOn: true, activeTools: ['tool_search', 'clarify'], toolsSent: 6, toolsTokensEst: 812, maxTurns: 50 },
       { level: 'warn', time: '2026-07-28T23:02:14.110Z', event: 'error', traceId: t2, error: 'LLM request timeout after 2000ms', stack: 'Error: timeout\n    at /root/Yunzai/plugins/agents-plugin/model/openai/client.js:88:11', input: '把容器名也改了', model: 'deepseek-chat', turns: 1 },
       { level: 'info', time: '2026-07-28T23:02:16.552Z', event: 'turn', traceId: t2, turn: 1, finish: 'stop', content: '已改好:端口映射与 container_name……', reasoning: false, toolCalls: [], usage: { prompt_tokens: 3901, prompt_cache_hit_tokens: 3502, prompt_cache_miss_tokens: 399, completion_tokens: 122 }, ms: 4771 },
       { level: 'info', time: '2026-07-28T23:02:16.580Z', event: 'run_end', traceId: t2, turns: 1, stopReason: 'stop', usage: { input: 3901, output: 122, total: 4023 }, replyLen: 96, totalMs: 4800, usedTools: false },
-      { level: 'info', time: '2026-07-28T23:02:16.912Z', event: 'reply', traceId: t2, mode: 'image', delivered: true, body: '已改好:端口映射与 container_name……', turns: 1, stopReason: 'stop' },
+      { level: 'info', time: '2026-07-28T23:02:16.912Z', event: 'reply', traceId: t2, mode: 'text', delivered: true, body: '已改好:端口映射与 container_name……', turns: 1, stopReason: 'stop' },
     ] },
     { file: 'private-2854196310-c_1002-20260727_093015.log', label: '私聊 · 云汐 · 07-27 09:30', events: [
       { level: 'info', time: '2026-07-27T09:30:15.021Z', event: 'trigger', traceId: t1, user: '2854196310', gid: null, isGroup: false, scopeId: 'u_2854196310', conv: 'c_1002', text: '帮我按老模板生成本周运维周报 PDF', inputLen: 24 },
@@ -928,7 +928,7 @@
       { level: 'info', time: '2026-07-27T09:30:24.008Z', event: 'tool', traceId: t1, name: 'render', args: { template: 'weekly-report', format: 'pdf' }, ok: true, result: '(PDF 3 页, 1.2MB)', ms: 5211 },
       { level: 'info', time: '2026-07-27T09:30:25.430Z', event: 'turn', traceId: t1, turn: 2, finish: 'stop', content: '周报已生成 ✅ 本周告警 42 条……', reasoning: false, toolCalls: [], usage: { prompt_tokens: 3120, prompt_cache_hit_tokens: 2560, prompt_cache_miss_tokens: 560, completion_tokens: 156 }, ms: 1390 },
       { level: 'info', time: '2026-07-27T09:30:25.502Z', event: 'run_end', traceId: t1, turns: 2, stopReason: 'stop', usage: { input: 5920, output: 244, total: 6164 }, replyLen: 132, totalMs: 10201, usedTools: true },
-      { level: 'info', time: '2026-07-27T09:30:25.833Z', event: 'reply', traceId: t1, mode: 'image', delivered: true, body: '周报已生成 ✅……', turns: 2, stopReason: 'stop' },
+      { level: 'info', time: '2026-07-27T09:30:25.833Z', event: 'reply', traceId: t1, mode: 'text', delivered: true, body: '周报已生成 ✅……', turns: 2, stopReason: 'stop' },
     ] },
   ]
 

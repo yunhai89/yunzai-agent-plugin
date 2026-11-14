@@ -504,6 +504,14 @@ console.log('\n[5] payload：段 → 官方消息体')
   ok(jobs2[0].payload.keyboard, '键盘挂在同一条消息上')
   eq(jobs2[0].msgId, 'evt9', '引用段作为被动回复 msg_id')
 
+  // #指令 防 Markdown 标题误判（agent 层已保护；适配器层再做一次兜底）
+  const jobsCmd = buildMessageJobs([{ type: 'markdown', data: '发送 #agent登录' }])
+  eq(jobsCmd[0].payload.markdown.content, '发送 `#agent登录`', 'markdown 指令在适配器层保护')
+  const jobsCmdFence = buildMessageJobs([{ type: 'markdown', data: '#agent登录' }])
+  eq(jobsCmdFence[0].payload.markdown.content, '```\n#agent登录\n```', '行首指令包成代码块')
+  const jobsPlainMd = buildMessageJobs('发送 #agent登录', { preferMarkdown: true })
+  eq(jobsPlainMd[0].payload.markdown.content, '发送 `#agent登录`', '纯文本偏好 markdown 时同样保护')
+
   // 模板 markdown
   const jobs3 = buildMessageJobs([{ type: 'markdown', data: { templateId: 'tpl-1', params: [{ key: 'k', values: ['v'] }] } }], { templateId: 'tpl-1' })
   eq(jobs3[0].payload.markdown.custom_template_id, 'tpl-1', '模板 ID 模式')

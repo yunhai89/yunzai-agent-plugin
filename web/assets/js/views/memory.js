@@ -62,71 +62,86 @@
       return { scopeId, tab, data, pct, scopeInfo, editor, openAdd, openEdit, applyEdit, del, fileName, headerLine }
     },
     template: `
-    <div>
-      <page-head title="声明式记忆" icon="memory" desc="MEMORY.md / USER.md · 按 scope 隔离；私聊 u_qq / 群隔离 g群_uqq / 群共享 g群，同一用户在不同群是独立数据集">
+    <div class="view view-memory">
+      <page-head title="声明式记忆" icon="memory" desc="MEMORY.md / USER.md · 按 scope 隔离。私聊 u_qq，群隔离 g群_uqq，群共享 g群；同一用户在不同群是独立数据集。">
         <button class="btn b-pri" @click="openAdd"><v-icon name="plus"/>新增条目</button>
       </page-head>
 
-      <div class="card pad" style="--i:1">
-        <div class="row-b wrap g14">
-          <scope-picker v-model="scopeId"/>
-          <div class="seg">
-            <button :class="{on: tab === 'memory'}" @click="tab = 'memory'">MEMORY.md</button>
-            <button :class="{on: tab === 'user'}" @click="tab = 'user'">USER.md</button>
-          </div>
+      <div class="toolbar">
+        <scope-picker v-model="scopeId"/>
+        <div class="seg">
+          <button :class="{ on: tab === 'memory' }" @click="tab = 'memory'">MEMORY.md</button>
+          <button :class="{ on: tab === 'user' }" @click="tab = 'user'">USER.md</button>
         </div>
-        <div class="mut2 mt12" style="font-size:12px">
-          路径 <span class="mono">data/memories/{{ scopeId }}/{{ fileName }}</span>
-        </div>
+        <span class="spacer"></span>
+        <span class="code-strip">data/memories/{{ scopeId }}/{{ fileName }}</span>
       </div>
 
-      <div class="grid mt16 cols-300">
-        <!-- 用量 -->
-        <div class="card pad lift col" style="--i:2;align-items:center;gap:14px">
-          <ring-progress :percent="pct" :key="scopeId + tab">
-            <template #default="{ percent }">
-              <div style="font-size:26px;font-weight:800" class="num">{{ percent }}<span style="font-size:14px">%</span></div>
-              <div class="mut2" style="font-size:11px">容量占用</div>
-            </template>
-          </ring-progress>
-          <div style="text-align:center">
-            <div class="num" style="font-weight:800;font-size:15px">{{ data.usedChars }} / {{ data.limitChars }} <span style="font-size:11px" class="mut">chars</span></div>
-            <div class="mut2" style="font-size:11.5px;margin-top:2px">{{ data.entries.length }} 条 bullet 条目</div>
-          </div>
-          <div class="meter" :class="pct > 85 ? 'm-rose' : pct > 60 ? 'm-honey' : 'm-mint'" style="width:100%">
-            <i :style="{width: pct + '%'}"></i>
-          </div>
-        </div>
-
-        <!-- 条目 -->
-        <div class="card pad" style="--i:3">
-          <div class="row-b mb16 wrap g10">
-            <div class="ct">
-              <span class="ct-ico" style="background:var(--grad)"><v-icon name="memory"/></span>
+      <div class="split" style="margin-top:18px">
+        <aside class="split-aside">
+          <section class="chamber">
+            <header class="chamber-head">
               <div>
-                <div class="ct-t">{{ fileName }} 条目</div>
-                <div class="ct-s mono" style="font-size:11px">{{ headerLine }}</div>
+                <h2 class="chamber-title">容量</h2>
+                <p class="chamber-sub">{{ scopeInfo?.label || '未选择 scope' }}</p>
               </div>
+            </header>
+            <div class="chamber-body" style="display:flex;flex-direction:column;align-items:center;gap:14px">
+              <ring-progress :percent="pct" :key="scopeId + tab" :size="148" :stroke="10">
+                <template #default="{ percent }">
+                  <div class="metric-value" style="margin:0">{{ percent }}<small>%</small></div>
+                  <div class="metric-note">容量占用</div>
+                </template>
+              </ring-progress>
+              <div class="metric-value" style="font-size:24px">{{ data.usedChars }}<small>/ {{ data.limitChars }} chars</small></div>
+              <div class="meter" :class="pct > 85 ? 'm-rose' : pct > 60 ? 'm-honey' : 'm-mint'" style="width:100%">
+                <i :style="{ width: pct + '%' }"></i>
+              </div>
+              <div class="metric-note">{{ data.entries.length }} 条 bullet 条目</div>
             </div>
+          </section>
+
+          <section class="chamber">
+            <div class="chamber-body" style="padding-top:22px">
+              <div class="stat-line"><span>文件</span><b>{{ fileName }}</b></div>
+              <div class="stat-line"><span>条目</span><b>{{ data.entries.length }}</b></div>
+              <div class="stat-line"><span>Scope</span><b>{{ scopeId || '—' }}</b></div>
+              <p class="aside-note" style="margin-top:14px">文件即真相。Agent 在对话里可以 add / replace / remove；你也可以直接编辑 <code>data/memories/</code> 下的 Markdown，重启后生效。</p>
+            </div>
+          </section>
+        </aside>
+
+        <section class="chamber">
+          <header class="chamber-head">
+            <div>
+              <h2 class="chamber-title">{{ fileName }}</h2>
+              <p class="chamber-sub mono">{{ headerLine }}</p>
+            </div>
+            <button class="btn b-line b-sm" @click="openAdd"><v-icon name="plus"/>新增</button>
+          </header>
+          <div class="chamber-body">
+            <TransitionGroup name="list" tag="div" class="list-stack">
+              <div v-for="(e, i) in data.entries" :key="e + i" class="entry-row">
+                <span class="entry-index">{{ i + 1 }}</span>
+                <div class="entry-main">
+                  <div class="entry-text">{{ e }}</div>
+                </div>
+                <div class="entry-actions">
+                  <button class="bic" title="编辑" @click="openEdit(i)"><v-icon name="edit"/></button>
+                  <button class="bic dg" title="删除" @click="del(i)"><v-icon name="trash"/></button>
+                </div>
+              </div>
+            </TransitionGroup>
+            <empty-state v-if="!data.entries.length" icon="memory" text="此 scope 暂无记忆" sub="Agent 会在对话中自动沉淀，也可手动新增"/>
           </div>
-          <TransitionGroup name="list" tag="div" style="display:flex;flex-direction:column;gap:9px;position:relative">
-            <div v-for="(e, i) in data.entries" :key="e + i" class="mem-row">
-              <span class="mem-idx">{{ i + 1 }}</span>
-              <span style="flex:1;font-size:13px;line-height:1.65;word-break:break-word">{{ e }}</span>
-              <button class="bic" @click="openEdit(i)"><v-icon name="edit"/></button>
-              <button class="bic dg" @click="del(i)"><v-icon name="trash"/></button>
-            </div>
-          </TransitionGroup>
-          <empty-state v-if="!data.entries.length" icon="memory" text="此 scope 暂无记忆" sub="Agent 会在对话中自动沉淀,也可手动新增"/>
-        </div>
+        </section>
       </div>
 
-      <!-- 编辑弹窗 -->
       <v-modal v-if="editor.show" :title="editor.idx === -1 ? '新增记忆条目' : '编辑条目 #' + (editor.idx + 1)" icon="edit" @close="editor.show = false">
         <div class="field">
-          <label class="f-label">条目内容(一条 bullet)</label>
-          <textarea class="txa" v-model="editor.text" maxlength="500" placeholder="例如:用户偏好简洁回答"></textarea>
-          <span class="f-help">写入 {{ scopeInfo?.label }} 的 {{ fileName }};超过上限会触发淘汰策略。</span>
+          <label class="f-label">条目内容（一条 bullet）</label>
+          <textarea class="txa" v-model="editor.text" maxlength="500" placeholder="例如：用户偏好简洁回答"></textarea>
+          <span class="f-help">写入 {{ scopeInfo?.label }} 的 {{ fileName }}；超过上限会触发淘汰策略。</span>
         </div>
         <template #foot>
           <button class="btn b-line" @click="editor.show = false">取消</button>

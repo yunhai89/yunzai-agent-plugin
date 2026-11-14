@@ -105,7 +105,7 @@
       return { personas, personaLore, loreOf, lorePending, loreView, detail, editor, openCreate, openEdit, tagInput, addTag, applyEdit, del, busy, doComplete, doAdopt, doDiscard, AVA_BG, fmt }
     },
     template: `
-    <div>
+    <div class="view view-personas">
       <page-head title="人设库" icon="persona" desc="data/personas/&lt;id&gt;.json + data/persona-lore/&lt;id&gt;.json · 内置为代码常量(只读)；资料采纳须经「审批门」批准后生效">
         <button class="btn b-pri" @click="openCreate"><v-icon name="plus"/>新建人设</button>
       </page-head>
