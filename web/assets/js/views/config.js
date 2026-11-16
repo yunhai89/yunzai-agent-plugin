@@ -1451,22 +1451,22 @@
               <div class="mut2" style="font-size:12px"><v-icon name="info"/> 没有默认厂商：这里登记的就是全部可用厂商，未被「基础 / 模型」或任何功能选中的厂商不会被运行时加载。改 Key / 改地址后基础模型会自动跟随。</div>
             </div>
             <div class="full">
-              <div class="row-b mb12">
+              <div class="row-b mb12" style="flex-wrap:wrap;gap:8px">
                 <div style="font-weight:800;font-size:13px">厂商列表（{{ form.llmProviders.length }}）</div>
                 <button class="btn b-soft b-sm" @click="openProvEdit(-1)"><v-icon name="plus"/>添加厂商</button>
               </div>
               <div style="display:flex;flex-direction:column;gap:8px">
                 <div v-for="(p, i) in form.llmProviders" :key="p.id" class="card" style="padding:10px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                  <div style="flex:1;min-width:220px">
-                    <div class="row g6" style="align-items:center">
+                  <div style="flex:1 1 240px;min-width:0">
+                    <div class="row g6" style="align-items:center;flex-wrap:wrap">
                       <b style="font-size:13px">{{ p.name || '（未命名）' }}</b>
                       <span class="pill p-line" style="font-size:10px">{{ (OPT.protocol.find((o) => o[0] === p.protocol) || ['', p.protocol])[1] }}</span>
                       <span v-if="p.preset" class="pill p-honey" style="font-size:10px">{{ (OPT.preset.find((o) => o[0] === p.preset) || ['', p.preset])[1] }}</span>
                       <span v-if="p.id === form.providerId" class="pill p-pri" style="font-size:10px">基础模型在用</span>
                     </div>
-                    <div class="mono mut" style="font-size:12px;margin-top:2px">{{ p.baseURL || '(未填接口地址)' }}</div>
+                    <div class="mono mut" style="font-size:12px;margin-top:2px;overflow-wrap:anywhere">{{ p.baseURL || '(未填接口地址)' }}</div>
                   </div>
-                  <div class="row g6">
+                  <div class="row g6" style="flex-wrap:wrap">
                     <button class="btn b-line b-sm" @click="testProvider(p)" :disabled="testing[p.id]">{{ testing[p.id] ? '测试中…' : '测试' }}</button>
                     <button class="btn b-line b-sm" @click="openProvView(i)"><v-icon name="search"/>查看</button>
                     <button class="btn b-soft b-sm" @click="openProvEdit(i)"><v-icon name="edit"/>编辑</button>
@@ -1488,24 +1488,24 @@
           </div>
           <div class="cf-body" v-show="open.models"><div class="cf-grid">
             <div class="full">
-              <div class="row-b mb12">
+              <div class="row-b mb12" style="flex-wrap:wrap;gap:8px">
                 <div style="font-weight:800;font-size:13px">模型列表（{{ form.llmModels.length }}）</div>
                 <button class="btn b-soft b-sm" @click="openModelEdit(-1)"><v-icon name="plus"/>添加模型</button>
               </div>
               <div style="display:flex;flex-direction:column;gap:8px">
                 <div v-for="(m, i) in form.llmModels" :key="m.id" class="card" style="padding:10px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
-                  <div style="flex:1;min-width:220px">
-                    <div class="row g6" style="align-items:center">
+                  <div style="flex:1 1 240px;min-width:0">
+                    <div class="row g6" style="align-items:center;flex-wrap:wrap">
                       <b style="font-size:13px">{{ m.name || '（未命名）' }}</b>
                       <span class="pill p-line" style="font-size:10px">{{ provName(m.providerId) }}</span>
                       <span v-if="m.id === form.modelId" class="pill p-pri" style="font-size:10px">基础模型</span>
                       <span v-if="m.thinking === 'on'" class="pill p-honey" style="font-size:10px">思考</span>
                       <span v-else-if="m.thinking === 'off'" class="pill p-rose" style="font-size:10px">禁思考</span>
                     </div>
-                    <div class="mono mut" style="font-size:12px;margin-top:2px">{{ m.model || '(未填模型 ID)' }}</div>
+                    <div class="mono mut" style="font-size:12px;margin-top:2px;overflow-wrap:anywhere">{{ m.model || '(未填模型 ID)' }}</div>
                     <div class="mut2" style="font-size:11px;margin-top:2px" v-if="m.note || m.temperature != null || m.maxTokens != null">{{ [m.note, m.temperature != null ? '温度 ' + m.temperature : '', m.maxTokens != null ? 'maxTokens ' + m.maxTokens : ''].filter(Boolean).join(' · ') }}</div>
                   </div>
-                  <div class="row g6">
+                  <div class="row g6" style="flex-wrap:wrap">
                     <button class="btn b-line b-sm" @click="openModelView(i)"><v-icon name="search"/>查看</button>
                     <button class="btn b-soft b-sm" @click="openModelEdit(i)"><v-icon name="edit"/>编辑</button>
                     <button class="btn b-line b-sm" style="color:var(--rose,#e5484d)" @click="delModel(i)"><v-icon name="trash"/>删除</button>
