@@ -30,7 +30,7 @@ https://github.com/yunhai89/yunzai-agent-plugin/security/advisories/new
 - **主人权限**：`agent.masters` 定义主人；QQ 官方机器人的 openid 不是 QQ 号，相关指令通过 `installMasterGate` 复核，不能依赖框架的 `permission: 'master'` 直接判定。
 - **工具 RBAC**：工具按 `query` / `personal` / `message` / `group_manage` / `system` 分级；未声明 `category` 的工具默认 `system`（仅主人）。高危写操作走 `#确认` 审批，超时拒绝；同名工具不会被静默覆盖。
 - **不可信内容**：用户消息、引用、网页、MCP/工具结果、记忆都按数据处理；命中注入特征时加 `<untrusted_data>` 边界。写长期记忆、设提醒/定时任务必须带用户原话证据，不能由注入内容或模型推断自证。
-- **SSRF 防护**：`web_crawl`、`web_download`、`send_file` 远程 URL、`stagehand__goto` 默认拒绝环回、私有、链路本地与云元数据地址，并逐跳复验重定向；内网访问需显式开启对应 `allowPrivateHosts`（如 `agent.kb.crawl.allowPrivateHosts`；`send_file` 无放宽项）。
+- **SSRF 防护**：`web_crawl`、`web_download`、`send_file` 远程 URL、`stagehand__goto` 默认拒绝环回、私有、链路本地与云元数据地址，并逐跳复验重定向；内网访问需显式开启对应 `allowPrivateHosts`（如 `agent.kb.crawl.allowPrivateHosts`；`send_file` 无放宽项）；`agent.kb.crawl.sharedHosts` 仅对「域名解析到 CGNAT 100.64/10」的指定后缀做窄豁免（本机 GitHub 加速器场景），字面 IP 与元数据地址仍拦。
 - **终端与沙箱**：`agent.sandbox.mode` 默认 `off`，此时 terminal 工具不注册；开启后命令只在 E2B microVM 内执行，连不上 E2B 即 fail-closed，绝不回退宿主 shell。沙箱网络默认放通，可按需收紧 `agent.sandbox.network.allowInternet` / `allowOut`。
 - **密钥处理**：`config/config.yaml` 不会入库；Web API 对 API Key 做掩码；回复默认开启 `agent.redactSecrets` 脱敏。外置工具与 MCP 服务端都是受信代码（外置工具在插件进程内运行，MCP 通常以子进程运行），安装前需自行审查。
 

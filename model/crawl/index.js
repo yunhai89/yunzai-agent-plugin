@@ -39,6 +39,22 @@ function kbCfg() {
   return Config.get?.()?.agent?.kb || {}
 }
 
+/**
+ * 允许「域名解析到 CGNAT(100.64/10) 仍放行」的主机后缀。
+ * 典型场景：本机 DNS / GitHub 加速器把 github.com、raw.githubusercontent.com 映射到 100.65.x，
+ * 公网 IP 被本地代理接管；SSRF 门禁若按「私网」一刀切会误杀整条 GitHub 链路。
+ * 默认只豁免 GitHub 域；其他加速器域名可在 kb.crawl.sharedHosts 追加。字面 IP、元数据地址仍恒拦。
+ */
+export const DEFAULT_SHARED_HOSTS = ['github.com', 'api.github.com', 'githubusercontent.com']
+
+/** 把配置里的 sharedHosts（数组或逗号/空白分隔字符串）归一为小写后缀列表；去掉通配前缀与末尾斜杠。 */
+export function normalizeSharedHosts(v) {
+  const arr = Array.isArray(v) ? v : (typeof v === 'string' ? v.split(/[\s,]+/) : [])
+  return [...new Set(arr
+    .map((x) => String(x || '').trim().toLowerCase().replace(/^\*\./, '').replace(/^\.+/, '').replace(/\/+$/, ''))
+    .filter((x) => x && !x.includes('/') && !x.includes(':')))]
+}
+
 /** 浏览器 UA 池（重试时轮换，降低被固定指纹拦截概率；版本与真实桌面浏览器对齐） */
 const UA_POOL = [
   'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
@@ -513,7 +529,12 @@ export function resolveCrawlPolicy(cfg = {}, opts = {}) {
     engine: String(opts.engine || c.engine || 'crawl4ai'),
     stealth: tri(opts.stealth, c.stealth !== false),
     retryBlocked: tri(opts.retryBlocked, c.retryBlocked !== false),
+    // 兜底阅读器：正确抓取被 Cloudflare/403 拦截时，用 r.jina.ai 代取（服务端渲染，免本地浏览器）
+    readerFallback: tri(opts.readerFallback, c.readerFallback !== false),
     allowPrivateHosts: tri(opts.allowPrivateHosts, c.allowPrivateHosts === true),
+    sharedHosts: normalizeSharedHosts(opts.sharedHosts ?? c.sharedHosts ?? DEFAULT_SHARED_HOSTS),
+    // 浏览器渠道：auto=交给 Python 侧探测（自带 Chromium 缺失时自动复用系统 Chrome/Edge，免 200MB 下载）
+    chromeChannel: String(opts.chromeChannel || c.chromeChannel || process.env.CRAWL4AI_CHROME_CHANNEL || 'auto'),
     sessionPersist: tri(opts.sessionPersist, c.sessionPersist !== false),
     sessionTtlHours: num(opts.sessionTtlHours ?? c.sessionTtlHours, 12, 0.1, 24 * 30),
     sessionDir: typeof opts.sessionDir === 'string' && opts.sessionDir ? opts.sessionDir : null,
@@ -564,7 +585,7 @@ export function resolveCrawlExecution(cfg = {}, ctx = {}) {
  *   避免「本地 DNS 被污染/不可用但代理可用」被误拦；
  * - 域名解析失败按网络错误返回（非 SSRF）。
  */
-export async function checkTargetAllowed(target, { allowPrivateHosts = false, lookup = null, viaProxy = false } = {}) {
+export async function checkTargetAllowed(target, { allowPrivateHosts = false, lookup = null, viaProxy = false, sharedHosts = DEFAULT_SHARED_HOSTS } = {}) {
   const raw = String(target || '')
   if (!/^https?:\/\//i.test(raw)) return { ok: false, code: 'invalid_url', error: '仅支持 http/https 地址' }
   if (allowPrivateHosts) return { ok: true }
@@ -572,7 +593,11 @@ export async function checkTargetAllowed(target, { allowPrivateHosts = false, lo
   const literal = checkHostLiteral(raw)
   if (!literal.ok) return literal
   if (viaProxy && !lookup) return { ok: true }
-  const v = await assertUrlAllowed(raw, lookup ? { lookup, timeoutMs: 3000 } : { timeoutMs: 3000 })
+  const v = await assertUrlAllowed(raw, {
+    ...(lookup ? { lookup } : {}),
+    timeoutMs: 3000,
+    sharedHosts: normalizeSharedHosts(sharedHosts),
+  })
   if (v.ok) return { ok: true }
   if (/解析失败|无解析结果|解析超时/.test(v.reason || '')) {
     return { ok: false, code: 'network', error: `目标域名无法解析：${v.reason}`, hint: '域名错误或 DNS/网络受限；可在 agent.proxy 配置代理后重试' }
@@ -606,6 +631,67 @@ function checkHostLiteral(target) {
     return { ok: true }
   }
   return { ok: true }
+}
+
+
+/**
+ * 静态/纯文本/API 类 URL 是否应当先走 HTTP fetch。
+ * 这类资源不需要 JS 渲染，浏览器反而更慢；而 crawl4ai 的反爬检测会把「正文很短的小页面」
+ * 误判为 blocked（如 48 字节的 README），先 fetch 能直接拿到正文。
+ */
+export function prefersHttpFetch(raw) {
+  let u
+  try { u = new URL(String(raw || '')) } catch { return false }
+  if (!/^https?:$/.test(u.protocol)) return false
+  const host = u.hostname.toLowerCase().replace(/\.$/, '')
+  if (['raw.githubusercontent.com', 'gist.githubusercontent.com', 'api.github.com', 'objects.githubusercontent.com'].includes(host)) return true
+  if (['cdn.jsdelivr.net', 'gcore.jsdelivr.net', 'unpkg.com', 'raw.githack.com'].includes(host)) return true
+  return /\.(?:md|markdown|txt|json|json5|xml|rss|atom|csv|tsv|ya?ml|ini|conf|log|patch|diff|map)$/i.test(u.pathname)
+}
+
+/**
+ * 把 GitHub 的 HTML 页面地址换成 raw 原文地址：
+ *   github.com/{owner}/{repo}/blob/{ref}/{path} → raw.githubusercontent.com/{owner}/{repo}/{ref}/{path}
+ *   github.com/{owner}/{repo}/raw/{ref}/{path}  → 同上
+ * fetch 拿 HTML 也能读，但取原文更干净、体积更小；非匹配地址原样返回。
+ */
+export function toRawGithubUrl(raw) {
+  let u
+  try { u = new URL(String(raw || '')) } catch { return String(raw || '') }
+  // ghproxy 形式：https://ghfast.top/https://raw.githubusercontent.com/... 或 .../https://github.com/...
+  // 这类镜像站点本身常被反爬/限流（用户日志里的 403），解包出原始 GitHub 地址后直连 raw / 走官方镜像更稳。
+  const proxied = u.pathname.match(/^\/+(https?:\/\/.+)$/)
+  if (proxied) {
+    try {
+      const inner = new URL(proxied[1])
+      const innerHost = inner.hostname.toLowerCase()
+      if (innerHost === 'raw.githubusercontent.com') return inner.href
+      if (innerHost === 'github.com') return toRawGithubUrl(inner.href)
+    } catch { /* 非合法内嵌 URL：按原样 */ }
+    return u.href
+  }
+  if (u.hostname.toLowerCase() !== 'github.com') return u.href
+  const m = u.pathname.match(/^\/([^/]+)\/([^/]+)\/(?:blob|raw)\/(.+)$/)
+  if (!m) return u.href
+  return `https://raw.githubusercontent.com/${m[1]}/${m[2]}/${m[3]}`
+}
+
+/**
+ * raw.githubusercontent.com 主源失败时的镜像候选（jsDelivr / githack）。
+ * 只接受 /owner/repo/ref/path 四段以上；ref 含斜杠（分支名）会被截断，镜像失败时自然回退。
+ */
+export function githubRawMirrors(raw) {
+  let u
+  try { u = new URL(String(raw || '')) } catch { return [] }
+  if (u.hostname.toLowerCase() !== 'raw.githubusercontent.com') return []
+  const m = u.pathname.match(/^\/([^/]+)\/([^/]+)\/([^/]+)\/(.+)$/)
+  if (!m) return []
+  const [, owner, repo, ref, rest] = m
+  return [
+    `https://cdn.jsdelivr.net/gh/${owner}/${repo}@${ref}/${rest}`,
+    `https://gcore.jsdelivr.net/gh/${owner}/${repo}@${ref}/${rest}`,
+    `https://raw.githack.com/${owner}/${repo}/${ref}/${rest}`,
+  ]
 }
 
 /** 被反爬拦截的信号：只对确定性拦截/挑战升级重试（协议错误/超时/崩溃不升级） */
@@ -691,6 +777,12 @@ export async function crawlUrl(url, opts = {}) {
   // ① SSRF 门禁（入口；fetch 路径在重定向逐跳复验）
   const entry = await checkTarget(u)
   if (!entry.ok) return { success: false, code: entry.code, error: entry.error, ...(entry.hint ? { hint: entry.hint } : {}) }
+  // GitHub blob/raw 页面换成 raw 原文地址（等价的纯文本，fetch 更快更干净）；替换后仍需单独过门禁。
+  let fetchUrl = toRawGithubUrl(u)
+  if (fetchUrl !== u) {
+    const alt = await checkTarget(fetchUrl)
+    if (!alt.ok) fetchUrl = u
+  }
 
   const avail = o._avail || isCrawl4aiAvailable
   const doC4ai = o._c4ai || runCrawl4ai
@@ -716,6 +808,8 @@ export async function crawlUrl(url, opts = {}) {
     if (/\.pdf(?:$|[?#])/i.test(u)) return 'fetch'
     if (remembered === 'undetected') return 'undetected'
     if (remembered === 'fetch' && advancedUsed.length === 0) return 'fetch'
+    // 静态/纯文本/API 资源：先 fetch（无需浏览器；避免 crawl4ai 把小页面误判成反爬）
+    if (advancedUsed.length === 0 && (prefersHttpFetch(fetchUrl) || prefersHttpFetch(u))) return 'fetch'
     return null
   })()
   const release = gate ? await gate.acquire(host) : null
@@ -735,6 +829,7 @@ export async function crawlUrl(url, opts = {}) {
     stealth: policy.stealth, // 配置默认开；工具显式 stealth:false 可关
     flatShadowDom: o.flatShadowDom === true, virtualScroll: o.virtualScroll,
     proxy: browserProxy,
+    chromeChannel: policy.chromeChannel,
     // 会话：把该站已有 cookie 注入浏览器上下文（storage_state），并请求回传本次新拿到的 cookie
     storageState, sessionCapture: !!(session && host),
     userDataDir: profileDir,
@@ -745,8 +840,8 @@ export async function crawlUrl(url, opts = {}) {
     // 站点记忆命中「fetch 就够」→ 先纯 HTTP（省一次浏览器启动）；失败再进浏览器阶梯
     if (startTier === 'fetch' && engine !== 'fetch') {
       attempted.tier = 'fetch'
-      r = await doFetch(u, { ...o, checkUrl: checkTarget, ...(fetchJar ? { jar: fetchJar } : {}) })
-      if (r?.success) Log.info(`[crawl] ${u} via=fetch（站点记忆命中，跳过浏览器）len=${r.markdown?.length ?? 0}`)
+      r = await doFetch(fetchUrl, { ...o, checkUrl: checkTarget, ...(fetchJar ? { jar: fetchJar } : {}) })
+      if (r?.success) Log.info(`[crawl] ${u} via=fetch（${startTier === 'fetch' && prefersHttpFetch(fetchUrl) ? '静态资源直取' : '站点记忆命中'}，跳过浏览器）len=${r.markdown?.length ?? 0}`)
     }
     if (engine !== 'fetch' && !r?.success) {
       let probe = null
@@ -809,11 +904,23 @@ export async function crawlUrl(url, opts = {}) {
     // crawl4ai 把 PDF 二进制当正文返回时（未识别 content-type 的 PDF），改走 fetch 做文本提取
     if (r?.success && isRawPdfMarkdown(r.markdown)) {
       Log.warn(`[crawl] 检测到 PDF 原始字节（crawl4ai 未解析），改走 fetch + PDF 提取：${u}`)
-      r = await doFetch(u, { ...o, checkUrl: checkTarget, ...(fetchJar ? { jar: fetchJar } : {}) })
+      r = await doFetch(fetchUrl, { ...o, checkUrl: checkTarget, ...(fetchJar ? { jar: fetchJar } : {}) })
+    }
+    if (!r?.success && advancedUsed.length === 0) {
+      // GitHub raw 主源失败（本地加速器不稳/限流）→ 依次尝试 jsDelivr、githack 镜像
+      for (const mirror of githubRawMirrors(fetchUrl)) {
+        let rr = null
+        try { rr = await doFetch(mirror, { ...o, checkUrl: checkTarget, ...(fetchJar ? { jar: fetchJar } : {}) }) } catch { rr = null }
+        if (rr?.success) {
+          r = { ...rr, via: 'fetch', mirror }
+          Log.info(`[crawl] ${u} via=mirror(${mirror}) len=${r.markdown?.length ?? 0}`)
+          break
+        }
+      }
     }
     if (!r?.success) {
       // 降级标注：本次请求的高级能力未生效（fetch 无浏览器/无 JS），调用方据 degraded 决定是否重试或提示
-      r = await doFetch(u, { ...o, checkUrl: checkTarget, ...(fetchJar ? { jar: fetchJar } : {}) })
+      r = await doFetch(fetchUrl, { ...o, checkUrl: checkTarget, ...(fetchJar ? { jar: fetchJar } : {}) })
       if (advancedUsed.length) r = { ...r, degraded: true, skipped: advancedUsed }
       if (!r.success && c4aiErr) {
         r = {
@@ -823,6 +930,21 @@ export async function crawlUrl(url, opts = {}) {
         }
       }
       if (r.success) Log.info(`[crawl] ${u} via=fetch len=${r.markdown.length}${advancedUsed.length ? `（降级：跳过 ${advancedUsed.join('/')}）` : ''}`)
+    }
+    if (!r?.success && policy.readerFallback && /^(challenge|blocked)$/.test(String(r?.code || ''))) {
+      // 最后一道兜底：反爬挑战页交给 r.jina.ai 服务端代取（仍需通过本机 SSRF 门禁；失败不影响原错误）
+      const readerUrl = `https://r.jina.ai/${u}`
+      try {
+        const rr = await doFetch(readerUrl, { ...o, timeout: Math.min(Number(o.timeout) || 60, 20), checkUrl: checkTarget })
+        if (rr?.success && rr.markdown) {
+          r = {
+            ...rr,
+            via: 'reader',
+            ...(advancedUsed.length ? { degraded: true, skipped: advancedUsed } : {}),
+          }
+          Log.info(`[crawl] ${u} via=reader（反爬页由 r.jina.ai 代取）len=${r.markdown.length}`)
+        }
+      } catch { /* 兜底失败保留原错误 */ }
     }
     if (!r?.success) Log.warn(`[crawl] ${u} 抓取失败：${r?.error}${r?.crawl4ai ? `（crawl4ai：${r.crawl4ai.code}）` : ''}`)
     return r

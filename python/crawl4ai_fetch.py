@@ -30,9 +30,11 @@
 import asyncio
 import inspect
 import json
+import os
 import re
 import signal
 import sys
+import shutil
 from http.cookies import SimpleCookie
 from urllib.parse import urlparse
 
@@ -138,6 +140,14 @@ def parse_request():
         emit({"ok": False, "code": "invalid_request", "error": f"wait_until 需为 {'/'.join(WAIT_UNTIL_ALLOWED)} 之一"})
         sys.exit(3)
 
+    # chrome_channel：浏览器渠道（chrome/msedge 复用系统浏览器，免下载 Chromium）；auto/空=自动探测
+    chrome_channel = (_s(req.get("chrome_channel"), 40, "chrome_channel") or "").lower()
+    if chrome_channel in ("auto", "default"):
+        chrome_channel = ""
+    if chrome_channel and chrome_channel not in ("chromium", "chrome", "msedge"):
+        emit({"ok": False, "code": "invalid_request", "error": "chrome_channel 仅支持 chromium/chrome/msedge/auto"})
+        sys.exit(3)
+
     # extra_args：浏览器启动附加 flag（仅内部策略注入，不做 LLM 参数；形状仍校验）
     extra_args = req.get("extra_args")
     if extra_args is not None:
@@ -167,6 +177,7 @@ def parse_request():
         "flat_shadow_dom": req.get("flat_shadow_dom") is True,
         "virtual_scroll": vs,
         "extra_args": extra_args,
+        "chrome_channel": chrome_channel,
         "user_data_dir": _s(req.get("user_data_dir"), 500, "user_data_dir") or None,
         "storage_state": parse_storage_state(req.get("storage_state"), urlparse(url).hostname or ""),
         "session_capture": req.get("session_capture") is True,
@@ -296,8 +307,42 @@ def filter_kwargs(cls, kwargs, label):
     return accepted
 
 
+_PW_BROWSER_OK = None
+
+
+def playwright_chromium_available():
+    """Playwright 自带 Chromium 是否真的落盘（只看路径不够：下载中断会留下空目录）。"""
+    global _PW_BROWSER_OK
+    if _PW_BROWSER_OK is not None:
+        return _PW_BROWSER_OK
+    try:
+        from playwright.sync_api import sync_playwright
+        with sync_playwright() as pw:
+            exe = pw.chromium.executable_path
+        _PW_BROWSER_OK = bool(exe) and os.path.exists(exe)
+    except Exception:
+        _PW_BROWSER_OK = False
+    return _PW_BROWSER_OK
+
+
+def detect_chrome_channel():
+    """未指定渠道时的兜底：自带 Chromium 不可用但系统装了 Chrome/Edge 就直接复用系统浏览器，
+    避免数百 MB 下载（受限网络/离线部署尤其有用）。"""
+    if playwright_chromium_available():
+        return ""
+    for name, channel in (("google-chrome", "chrome"), ("google-chrome-stable", "chrome"),
+                          ("microsoft-edge", "msedge"), ("msedge", "msedge")):
+        if shutil.which(name):
+            sys.stderr.write(f"自带 Chromium 不可用，改用系统浏览器（{name} → channel={channel}）\n")
+            return channel
+    return ""
+
+
 def build_browser_config(BrowserConfig, p):
     kwargs = {"headless": p["headless"], "verbose": False}
+    channel = p.get("chrome_channel") or detect_chrome_channel()
+    if channel:
+        kwargs["chrome_channel"] = channel
     if p["stealth"]:
         kwargs["enable_stealth"] = True  # playwright-stealth（v0.7+ 字段，老版本经 filter_kwargs 跳过）
     if p["proxy"]:
@@ -480,8 +525,25 @@ async def crawl(p):
         crawler = AsyncWebCrawler(config=browser_config)
 
     fallback_domain = urlparse(p["url"]).hostname or ""
-    async with crawler:
-        result = await crawler.arun(url=p["url"], config=run_config)
+    undetected_used = p["undetected"]
+
+    async def _run(c):
+        async with c:
+            return await c.arun(url=p["url"], config=run_config)
+
+    try:
+        result = await _run(crawler)
+    except Exception as e:
+        # undetected 档的深层补丁依赖 patchright 自带浏览器：缺失时不要让整次抓取失败，
+        # 退常规浏览器（channel 兜底会自动复用系统 Chrome）；其它模式的异常照旧抛出。
+        if undetected_used and crawler is not None:
+            sys.stderr.write(f"undetected 浏览器启动失败（{type(e).__name__}: {e}），回退常规浏览器\n")
+            crawler = AsyncWebCrawler(config=browser_config)
+            undetected_used = False
+            result = await _run(crawler)
+        else:
+            raise
+    if result is not None:
         status = getattr(result, "status_code", None) or getattr(result, "status", None)
         meta = getattr(result, "metadata", None) or {}
         title = str(meta.get("title") or "") if isinstance(meta, dict) else ""

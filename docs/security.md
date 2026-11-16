@@ -30,7 +30,7 @@
 - **同名工具不再静默覆盖**：`ToolRegistry.register` 遇到已注册名称会保留原工具并告警，避免外置工具或第三方 MCP 服务端顶掉内置工具后，连带丢失 `meta.shell` / `meta.alwaysConfirm` 等安全语义；工具进化上线/回滚等受控路径显式使用 `replace()`。
 - **第三方能力默认 fail-closed**：`defineTool` 未声明 `category` 时默认 `system`（仅主人）；MCP 工具未配置 `category` 时同样默认 `system`。只读工具必须在工具代码/服务端配置里显式声明 `query`（或更低门槛的自定义类别），不会再默认对全员开放。
 - **`web_crawl` 的页面 JS 仅主人可用**：`js_code` 与 `wait_for: js:...` 会在宿主浏览器执行任意页面脚本（可 `fetch` 内网或读取页面凭据），因此非主人调用会被确定性拒绝；普通成员仍可使用无 JS 的被动抓取、CSS 等待、结构化抽取与链接清单。
-- **远程 URL 统一过 SSRF 门禁**：`web_crawl` / `web_download` / `send_file`（远程 URL）/ `stagehand__goto` 默认拒绝环回、私有、链路本地与云元数据地址；抓取/导航路径还会逐跳复验重定向。内网抓取需显式开启 `agent.kb.crawl.allowPrivateHosts`（`send_file` 不提供该放宽项）。
+- **远程 URL 统一过 SSRF 门禁**：`web_crawl` / `web_download` / `send_file`（远程 URL）/ `stagehand__goto` 默认拒绝环回、私有、链路本地与云元数据地址；抓取/导航路径还会逐跳复验重定向。内网抓取需显式开启 `agent.kb.crawl.allowPrivateHosts`（`send_file` 不提供该放宽项）；`agent.kb.crawl.sharedHosts` 仅对「域名解析到 CGNAT 100.64/10」的指定后缀做窄豁免（本机 GitHub 加速器场景），字面 IP 与元数据地址仍拦。
 - **抓取运行时自动安装**：为开箱即用，插件启动时可能从 PyPI / Playwright CDN 下载 crawl4ai 与 Chromium（`agent.kb.crawl.autoInstall: false` 可关闭）。下载内容会以运行 Yunzai 的用户身份执行；供应链敏感环境应关闭自动安装，改为审查后手动运行 `scripts/install-crawl4ai.sh`。
 
 ---

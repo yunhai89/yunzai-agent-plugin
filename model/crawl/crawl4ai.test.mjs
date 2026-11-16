@@ -14,8 +14,8 @@ import os from 'node:os'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { spawnSync } from 'node:child_process'
-import { runCrawl4ai, isCrawl4aiAvailable, resetCrawl4aiProbe, CRAWL4AI_TIMEOUTS } from './crawl4ai.js'
-import { crawlUrl as crawlUrlRaw, resolveCrawlPolicy, resolveCrawlExecution, checkTargetAllowed, isBlockSignal, requiresBrowserJs } from './index.js'
+import { runCrawl4ai, isCrawl4aiAvailable, resetCrawl4aiProbe, CRAWL4AI_TIMEOUTS, buildCrawl4aiRequest } from './crawl4ai.js'
+import { crawlUrl as crawlUrlRaw, resolveCrawlPolicy, resolveCrawlExecution, checkTargetAllowed, isBlockSignal, requiresBrowserJs, prefersHttpFetch, toRawGithubUrl, githubRawMirrors, normalizeSharedHosts, DEFAULT_SHARED_HOSTS } from './index.js'
 
 // 测试隔离：本文件覆盖「降级/升级阶梯」本身，站点记忆与会话持久化会跨用例（并跨进程写真实 data 目录）
 // 改变同站后续行为 → 统一关掉；两项能力各自的专项测试见 model/crawl/session.test.mjs。
@@ -537,6 +537,86 @@ process.stdin.on('data', (d) => {
     _fetch: async () => { throw new Error('不应走 fetch') },
   })
   ok(r2.success && r2.escalated === true && calls === 2, 'challenge 触发 undetected 升级并命中')
+})
+
+await test('共享地址豁免：CGNAT 仅对白名单后缀放行，字面 IP/元数据仍拦', async () => {
+  const cgnat = async () => [{ address: '100.65.138.175', family: 4 }]
+  let v = await checkTargetAllowed('https://raw.githubusercontent.com/a/b.md', { lookup: cgnat })
+  ok(v.ok, `默认白名单放行 GitHub 的 CGNAT 解析（${v.error || 'ok'}）`)
+  v = await checkTargetAllowed('https://example.com/x', { lookup: cgnat })
+  ok(!v.ok && v.code === 'ssrf_blocked', '不在白名单的域名解析到 CGNAT → 拒绝')
+  v = await checkTargetAllowed('https://raw.githubusercontent.com/a/b.md', { lookup: async () => [{ address: '100.100.100.200', family: 4 }] })
+  ok(!v.ok && v.code === 'ssrf_blocked', 'CGNAT 内的元数据地址 100.100.100.200 仍拦')
+  v = await checkTargetAllowed('http://100.65.138.175/', {})
+  ok(!v.ok && v.code === 'ssrf_blocked', 'CGNAT 字面 IP 仍拦（白名单只对域名生效）')
+  v = await checkTargetAllowed('https://raw.githubusercontent.com/a/b.md', { lookup: async () => [{ address: '100.65.1.2', family: 4 }, { address: '10.0.0.1', family: 4 }] })
+  ok(!v.ok, 'CGNAT + 私网混合解析 → 拒绝')
+  ok(normalizeSharedHosts('*.GitHub.com, raw.githubusercontent.com/').join(',') === 'github.com,raw.githubusercontent.com', 'sharedHosts 归一（去通配/斜杠/大小写）')
+  ok(DEFAULT_SHARED_HOSTS.includes('github.com') && DEFAULT_SHARED_HOSTS.includes('githubusercontent.com'), '默认白名单覆盖 GitHub 全系')
+})
+
+await test('静态直取 / GitHub raw 归一 / 镜像兜底', async () => {
+  const mk = (markdown) => ({ success: true, markdown: markdown || 'X'.repeat(40), via: 'fetch' })
+  let called = []
+  let r = await crawlUrl('https://a.example/README.md', {
+    engine: 'crawl4ai', _lookup: pubLookup,
+    _avail: async () => ({ ok: true }),
+    _c4ai: async () => { called.push('c4ai'); return { success: true, markdown: 'B'.repeat(40), via: 'crawl4ai' } },
+    _fetch: async (u) => { called.push(`fetch:${u}`); return mk() },
+  })
+  ok(r.success && called[0]?.startsWith('fetch:') && !called.includes('c4ai'), '静态 .md 先 fetch，命中后不启浏览器')
+
+  called = []
+  r = await crawlUrl('https://github.com/o/r/blob/main/README.md', {
+    engine: 'crawl4ai', _lookup: pubLookup,
+    _avail: async () => ({ ok: false }),
+    _c4ai: async () => { throw new Error('不应调用') },
+    _fetch: async (u) => { called.push(u); return mk() },
+  })
+  ok(r.success && called[0] === 'https://raw.githubusercontent.com/o/r/main/README.md', `github blob → raw 原文（${called[0]}）`)
+  ok(prefersHttpFetch('https://example.com/a.md') && !prefersHttpFetch('https://example.com/app'), '静态资源判定：.md 直取、无扩展名走浏览器')
+  ok(toRawGithubUrl('https://github.com/o/r/raw/main/x.txt') === 'https://raw.githubusercontent.com/o/r/main/x.txt', 'github raw 页面也归一')
+  ok(githubRawMirrors('https://raw.githubusercontent.com/o/r/main/x.txt').length === 3, 'raw 镜像候选 3 个')
+  ok(githubRawMirrors('https://example.com/x.txt').length === 0, '非 raw 地址无镜像')
+  ok(toRawGithubUrl('https://ghfast.top/https://raw.githubusercontent.com/o/r/main/a.md') === 'https://raw.githubusercontent.com/o/r/main/a.md', 'ghfast 代理解包为 raw')
+  ok(toRawGithubUrl('https://ghproxy.net/https://github.com/o/r/blob/main/a.md') === 'https://raw.githubusercontent.com/o/r/main/a.md', 'ghproxy + blob 解包为 raw')
+
+  const seen = []
+  r = await crawlUrl('https://raw.githubusercontent.com/o/r/main/README.md', {
+    engine: 'crawl4ai', _lookup: pubLookup,
+    _avail: async () => ({ ok: true }),
+    _c4ai: async () => ({ success: false, code: 'blocked', error: 'HTTP 403' }),
+    _fetch: async (u) => {
+      seen.push(u)
+      return u.includes('jsdelivr') ? mk() : { success: false, code: 'network', error: 'boom' }
+    },
+  })
+  ok(r.success && r.mirror?.includes('jsdelivr') && seen.some((x) => x.includes('cdn.jsdelivr.net/gh/')), `raw 主源失败 → jsDelivr 镜像命中（${r.mirror}）`)
+})
+
+await test('浏览器渠道：chromeChannel 透传（auto 不写字段，chrome/msedge 写入）', async () => {
+  const base = { url: 'https://example.com' }
+  ok(buildCrawl4aiRequest({ ...base, chromeChannel: 'auto' }).chrome_channel === undefined, 'auto 不传字段（Python 侧探测）')
+  ok(buildCrawl4aiRequest({ ...base, chromeChannel: 'chrome' }).chrome_channel === 'chrome', 'chrome 透传')
+  ok(buildCrawl4aiRequest({ ...base, chromeChannel: 'msedge' }).chrome_channel === 'msedge', 'msedge 透传')
+  const policy = resolveCrawlPolicy({ crawl: { chromeChannel: 'msedge' } })
+  ok(policy.chromeChannel === 'msedge', 'policy 读取配置')
+  ok(resolveCrawlPolicy({}).chromeChannel === 'auto', '未配置默认 auto')
+})
+
+await test('阅读器兜底：挑战页改走 r.jina.ai（可关闭）', async () => {
+  const seen = []
+  const fetchStub = async (target) => {
+    seen.push(target)
+    if (String(target).startsWith('https://r.jina.ai/')) return { success: true, markdown: 'READER BODY', title: 'reader' }
+    return { success: false, code: 'challenge', error: 'HTTP 403' }
+  }
+  const base = { engine: 'fetch', _lookup: pubLookup, _avail: async () => ({ ok: false }), _fetch: fetchStub }
+  const r = await crawlUrl('https://a.com/x', base)
+  ok(r.success && r.via === 'reader', 'reader 兜底接管')
+  ok(seen.some((x) => String(x).startsWith('https://r.jina.ai/https://a.com/x')), 'reader URL 指向原地址')
+  const r2 = await crawlUrl('https://a.com/x', { ...base, readerFallback: false })
+  ok(!r2.success && r2.code === 'challenge', '关闭 readerFallback 后保持原失败')
 })
 
 console.log(`\n========================================`)

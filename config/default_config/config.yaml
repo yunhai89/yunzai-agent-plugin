@@ -162,8 +162,14 @@ agent:
                             # 同 diagram 的本机 Kroki）| sandbox=显式改在会话沙箱内跑（需 agent.sandbox.mode=e2b
                             # 且模板预装 crawl4ai；沙箱未就绪即降级纯 HTTP fetch，不改跑宿主 crawl4ai）
       stealth: true         # 浏览器路径反检测（playwright-stealth + 模拟用户行为）；显式传 stealth:false 可单次关闭
+      chromeChannel: auto   # 浏览器渠道：auto=优先自带 Chromium，缺失时自动复用系统 Chrome/Edge（免下载数百 MB）；
+                            # chrome/msedge=强制用系统浏览器；chromium=强制用 Playwright 自带 Chromium
       retryBlocked: true    # 被反爬拦截（403/CF 挑战等）时自动用 undetected+stealth 强化再试一轮（最坏耗时翻倍）
       allowPrivateHosts: false  # 允许抓取本机/内网/元数据地址（防 SSRF，默认禁）；确需抓内网页面再开
+      sharedHosts:          # 允许域名解析到 CGNAT(100.64/10) 仍抓取的主机（防 SSRF 的精确豁免）：
+        - github.com        # 本机 DNS/GitHub 加速器常把 GitHub 全系映射到 100.65.x，按「内网」一刀切会误杀；
+        - api.github.com    # 字面 IP 与云元数据地址（100.100.100.200 等）始终拦截。数组按后缀匹配，
+        - githubusercontent.com  # 换用其他加速器时把其域名加进来即可（如 ghproxy.example.com）
       # proxy 复用 agent.proxy（浏览器路径与 fetch 一致；逐次生效）
       sessionPersist: true  # 按站点持久化 cookie（含 cf_clearance 等清关凭证，按下面 sessionTtlHours 复用，默认 12h）：抓取不再是「每次都是新访客」；
                             # 存于 data/crawl/sessions.json（0600，cookie 值不进日志，可在该目录删除）

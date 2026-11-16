@@ -45,8 +45,10 @@ kb:
     engine: crawl4ai      # crawl4ai（默认真浏览器）| fetch（纯 HTTP+cheerio）
     autoInstall: true     # 缺少 crawl4ai/Chromium 时后台安装到插件目录（约 300-500MB）
     stealth: true         # 浏览器路径反检测（playwright-stealth + 模拟用户行为），默认开
+    chromeChannel: auto   # auto=自带 Chromium 缺失时自动复用系统 Chrome/Edge；chrome/msedge=强制系统浏览器
     retryBlocked: true    # 被反爬拦截（403/CF 挑战等）时自动 undetected+stealth 强化再试一轮
     allowPrivateHosts: false  # 允许抓取本机/内网/元数据地址（防 SSRF，默认禁）
+    sharedHosts: [github.com, api.github.com, githubusercontent.com]  # 允许解析到 CGNAT 的主机（本地加速器场景）
     sessionPersist: true      # 按站点持久化 cookie（清关凭证 12h 内复用；data/crawl/sessions.json，0600）
     sessionTtlHours: 12       # 会话有效期（小时）
     sessionProfile: false     # 持久浏览器 profile（user_data_dir，显式 opt-in；开启后浏览器全局串行）
@@ -56,6 +58,10 @@ kb:
 ```
 
 - **代理**：`agent.proxy` 同时作用于浏览器渲染与降级 fetch（配了代理则浏览器也走代理）；目标为本地/内网地址时始终直连。
+- **CGNAT 加速器豁免（`sharedHosts`）**：部分网络的本机 DNS/GitHub 加速器会把公网域名解析到 `100.64.0.0/10`（运营商级 NAT），SSRF 门禁若按「私网」一刀切会误杀整条 GitHub 链路。`sharedHosts` 只豁免「域名命中列表且解析结果除 CGNAT 外无其他内网地址」的情况；字面 IP 与 `100.100.100.200` 等元数据地址始终拦截。默认覆盖 GitHub 全系，换用其他加速器时把其域名（支持子域后缀）加进数组。
+- **无需下载浏览器（`chromeChannel`）**：默认 `auto`，优先用 Playwright 自带 Chromium；未装或下载失败时自动改用系统已装的 Chrome/Edge（`channel` 启动，不落盘、不下载），受限网络/离线部署可省 200MB+ 下载。也可显式设 `chrome` / `msedge` 强制复用系统浏览器，或用 `chromium` 保证环境隔离。
+- **阅读器兜底（`readerFallback`）**：浏览器与 fetch 都被 Cloudflare/403 判挑战时，最后尝试 `https://r.jina.ai/<url>` 服务端代取正文（Jina Reader，公开服务，需本机可达）。命中后结果标 `via: "reader"`；失败静默保留原错误。强制抓取器（`engine: "fetch"`）同样适用。
+- **静态资源直取**：`.md/.txt/.json/.xml/.csv`、GitHub raw/API、jsDelivr/unpkg 等明确无需 JS 的 URL 会先走 HTTP fetch（快且不会被 crawl4ai 的「小页面正文过短」误判成反爬），失败再进浏览器阶梯；GitHub `blob/raw` 页面自动换成 raw 原文地址，raw 主源失败时依次尝试 jsDelivr / githack 镜像。
 - **降级 fetch 的加固**：自动字符集（GBK/Big5 老站不乱码）、Cookie Jar（跳转携带会话）、反爬挑战页/JS 空壳识别（不把「Just a moment」「加载中」当正文）、Retry-After 退避重试。
 - **高级能力**（仅 crawl4ai 生效）：`wait_for` 等渲染完成、`js_code` 滚动/点击触发懒加载、`extract` CSS schema 结构化抽取、`links` 链接清单、`scroll` 虚拟滚动；降级纯 HTTP 时结果带 `degraded:true + skipped:[...]`（诚实标注）。**`js_code` 与 `wait_for: js:...` 会执行任意页面脚本，仅主人可用**；普通成员使用会被确定性拒绝（其余抓取能力不受影响）。
 - **PDF**：URL/content-type 识别为 PDF（或 crawl4ai 返回 `%PDF-` 原始字节）时，自动用 `pdfjs-dist` 提取文本，返回 `via: "pdf"` + `pdf.pages`；不会把 `%PDF-1.5` / `FlateDecode` 流当正文。扫描版/加密 PDF 无法提取文本时返回 `pdf_no_text` / `pdf_extract_failed` 明确提示。

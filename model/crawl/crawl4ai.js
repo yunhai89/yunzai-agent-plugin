@@ -130,7 +130,7 @@ export async function runCrawl4ai(url, {
   flatShadowDom = false, virtualScroll = null,
   undetected = false, proxy = null, waitUntil = null, headless = null,
   scanFullPage = false, maxScrollSteps = null, extraArgs = null,
-  userDataDir = null, storageState = null, sessionCapture = false,
+  userDataDir = null, storageState = null, sessionCapture = false, chromeChannel = null,
 } = {}) {
   const py = python || venvPython()
   const sc = script || CRAWL4AI_SCRIPT
@@ -212,7 +212,7 @@ export async function runCrawl4ai(url, {
         url, timeout,
         maxChars, waitFor, jsCode, jsBeforeWait, delayMs, cssSelector, extract, links,
         stealth, undetected, proxy, waitUntil, headless, scanFullPage, maxScrollSteps,
-        extraArgs, flatShadowDom, virtualScroll, userDataDir, storageState, sessionCapture,
+        extraArgs, flatShadowDom, virtualScroll, userDataDir, storageState, sessionCapture, chromeChannel,
       })
       proc.stdin.write(JSON.stringify(req) + '\n')
       proc.stdin.end()
@@ -232,7 +232,7 @@ export function buildCrawl4aiRequest({
   cssSelector = null, extract = null, links = false,
   stealth = false, undetected = false, proxy = null, waitUntil = null, headless = null,
   scanFullPage = false, maxScrollSteps = null, extraArgs = null, flatShadowDom = false, virtualScroll = null,
-  userDataDir = null, storageState = null, sessionCapture = false,
+  userDataDir = null, storageState = null, sessionCapture = false, chromeChannel = null,
 } = {}) {
   const req = { url, timeout_s: Math.round(timeout / 1000), max_chars: maxChars }
   if (waitFor) req.wait_for = String(waitFor).trim()
@@ -258,6 +258,8 @@ export function buildCrawl4aiRequest({
   const cookies = storageState && Array.isArray(storageState.cookies) ? storageState.cookies : null
   if (cookies && cookies.length) req.storage_state = { cookies, origins: Array.isArray(storageState.origins) ? storageState.origins : [] }
   if (sessionCapture) req.session_capture = true
+  // 浏览器渠道：chrome/msedge=复用系统浏览器（免下载 Chromium）；auto/空=Python 侧自动探测
+  if (chromeChannel && chromeChannel !== 'auto') req.chrome_channel = String(chromeChannel)
   return req
 }
 
@@ -393,14 +395,21 @@ export async function runCrawl4aiInSandbox(box, url, opts = {}) {
 const PROBE_CODE = 'from importlib.metadata import version; print(version("crawl4ai"))'
 // 只取 Playwright 期望的可执行文件路径并检查存在性（不启动浏览器，避免每次探测都拉进程）。
 const BROWSER_PROBE_CODE = [
-  'import json, os',
+  'import json, os, shutil',
   'from playwright.sync_api import sync_playwright',
   'with sync_playwright() as p:',
   '    try:',
   '        path = p.chromium.executable_path',
   '    except Exception:',
   '        path = ""',
-  'print(json.dumps({"path": path, "exists": bool(path and os.path.isfile(path))}))',
+  'exists = bool(path and os.path.isfile(path))',
+  'channel = ""',
+  'if not exists:',
+  '    for name in ("google-chrome", "google-chrome-stable", "microsoft-edge", "msedge"):',
+  '        if shutil.which(name):',
+  '            channel = "msedge" if "edge" in name else "chrome"',
+  '            break',
+  'print(json.dumps({"path": path, "exists": exists or bool(channel), "channel": channel}))',
 ].join('\n')
 
 let probeCache = { key: null, at: 0, result: null }
@@ -449,7 +458,7 @@ async function probeBrowser(py) {
   const parsed = parseProtocolLine(r.out)
   if (!parsed) return { ok: false, reason: 'browser_probe_failed', error: '浏览器探测无 JSON 输出' }
   if (!parsed.exists) return { ok: false, reason: 'browser_missing', browser: String(parsed.path || '') }
-  return { ok: true, browser: String(parsed.path || '') }
+  return { ok: true, browser: String(parsed.path || ''), channel: String(parsed.channel || '') }
 }
 
 /**
@@ -495,7 +504,7 @@ export async function isCrawl4aiAvailable({ python = null, probeArg = null, ttl 
             : 'Playwright 浏览器探测失败；可发 #抓取环境 安装/修复',
         }
       } else {
-        result = { ok: true, version, python: py, browser: browser.browser, browsersDir: env.PLAYWRIGHT_BROWSERS_PATH || '' }
+        result = { ok: true, version, python: py, browser: browser.browser, channel: browser.channel || '', browsersDir: env.PLAYWRIGHT_BROWSERS_PATH || '' }
       }
     }
   }

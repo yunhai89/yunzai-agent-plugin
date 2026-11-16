@@ -122,6 +122,21 @@ function isPrivateV6Bytes(b) {
   return false
 }
 
+/**
+ * CGNAT 共享地址（100.64.0.0/10）：常见于运营商大内网与本机 GitHub 加速器。
+ * 它属于「不可信内网」但不是 RFC1918 私有网；云元数据 100.100.100.200 明确排除。
+ */
+export function isSharedCgnat(ip) {
+  const s = normalizeHost(ip)
+  if (!net.isIPv4(s)) return false
+  const v = ipv4ToInt(s)
+  if (v == null) return false
+  const a = (v >>> 24) & 0xff
+  const b = (v >>> 16) & 0xff
+  if (a !== 100 || b < 64 || b > 127) return false
+  return s !== '100.100.100.200'
+}
+
 /** IPv4/IPv6 是否属于不可出网的地址段。非 IP 一律当作不可信（true）。 */
 export function isPrivateIp(ip) {
   const s = normalizeHost(ip)
@@ -161,6 +176,16 @@ export function parseLooseIPv4(host) {
   return `${(v >>> 24) & 0xff}.${(v >>> 16) & 0xff}.${(v >>> 8) & 0xff}.${v & 0xff}`
 }
 
+/** 主机是否命中显式共享地址豁免列表（精确或子域；忽略尾点与大小写） */
+function hostMatchesShared(host, sharedHosts) {
+  const h = normalizeHost(host)
+  if (!h) return false
+  return (Array.isArray(sharedHosts) ? sharedHosts : []).some((entry) => {
+    const n = normalizeHost(entry)
+    return !!n && (h === n || h.endsWith(`.${n}`))
+  })
+}
+
 /** 主机名是否为本地/元数据黑名单（含子域；忽略尾点与大小写） */
 export function hostIsBlocked(host, extra = []) {
   const h = normalizeHost(host)
@@ -192,7 +217,7 @@ function withTimeout(promise, ms, onTimeout) {
  * @param {object} [opts] { blockedHosts, lookup, timeoutMs, signal }
  * @returns {Promise<{ ok:boolean, url?:string, reason?:string }>}
  */
-export async function assertUrlAllowed(rawUrl, { blockedHosts = [], lookup = dns.lookup, timeoutMs = 5000, signal = null, allowPrivateHosts = false } = {}) {
+export async function assertUrlAllowed(rawUrl, { blockedHosts = [], lookup = dns.lookup, timeoutMs = 5000, signal = null, allowPrivateHosts = false, sharedHosts = [] } = {}) {
   let u
   try { u = new URL(String(rawUrl || '')) } catch { return { ok: false, reason: 'URL 非法' } }
   if (!/^https?:$/.test(u.protocol)) return { ok: false, reason: '仅允许 http/https 协议' }
@@ -219,16 +244,27 @@ export async function assertUrlAllowed(rawUrl, { blockedHosts = [], lookup = dns
     return { ok: true, url: u.href }
   }
   let addrs
-  try {
-    addrs = await withTimeout(lookup(host, { all: true }), timeoutMs, `域名解析超时：${host}`)
-  } catch (e) {
-    if (signal?.aborted) return { ok: false, reason: '已取消' }
-    return { ok: false, reason: `域名解析失败：${host}（${e?.message || e}）` }
+  // 解析重试一次：本机 DNS 在弱网/加速器下偶发超时（用户侧常见），单次失败就判死会误伤整页抓取。
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      addrs = await withTimeout(lookup(host, { all: true }), timeoutMs, `域名解析超时：${host}`)
+      break
+    } catch (e) {
+      if (signal?.aborted) return { ok: false, reason: '已取消' }
+      const retryable = /超时|EAI_AGAIN|ETIMEOUT|ENOTFOUND/.test(String(e?.message || e || ''))
+      if (!retryable || attempt === 1) return { ok: false, reason: `域名解析失败：${host}（${e?.message || e}）` }
+      await new Promise((r) => setTimeout(r, 150))
+    }
   }
   if (signal?.aborted) return { ok: false, reason: '已取消' }
   const list = (Array.isArray(addrs) ? addrs : [addrs]).filter(Boolean)
   if (!list.length) return { ok: false, reason: `域名无解析结果：${host}` }
-  if (list.some((a) => isPrivateIp(a?.address))) return { ok: false, reason: `域名解析到内网地址：${host}` }
+  // 显式共享地址豁免：仅当域名命中 sharedHosts 且解析结果里除 CGNAT 共享段外没有其他内网地址时放行。
+  // 场景：本机 DNS/GitHub 加速器把公网域名映射到 100.64/10（运营商级 NAT），字面 IP 与元数据地址仍被拦。
+  const sharedOk = hostMatchesShared(host, sharedHosts)
+    && list.every((a) => !isPrivateIp(a?.address) || isSharedCgnat(a?.address))
+    && list.some((a) => isSharedCgnat(a?.address))
+  if (!sharedOk && list.some((a) => isPrivateIp(a?.address))) return { ok: false, reason: `域名解析到内网地址：${host}` }
   return { ok: true, url: u.href }
 }
 
