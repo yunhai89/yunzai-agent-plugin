@@ -3,10 +3,11 @@ node_modules/
 .DS_Store
 
 
-# 文档（根目录 README.md / 开发指南.md 保留入库，其余 .md 忽略；skills/ 下的运行时技能文件是插件必需，放行）
+# 文档（根目录 README.md / 开发指南.md / SECURITY.md 保留入库，其余 .md 忽略；skills/ 下的运行时技能文件是插件必需，放行）
 *.md
 !/README.md
 !/开发指南.md
+!/SECURITY.md
 !skills/*.md
 !skills/**/*.md
 # 审计报告/修复记录：本地保留，不入库
