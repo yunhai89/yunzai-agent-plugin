@@ -64,6 +64,10 @@ export function listAccounts(agentCfg = {}) {
   const arr = Array.isArray(qq.accounts) ? qq.accounts : []
   const out = []
   const seen = new Set()
+  // 同一 AppID 的密钥以旧版扁平字段为准（与 apps/qqbot.js 的归一化保持一致）：
+  // 老面板只露出扁平 AppSecret，用户改了它而 accounts[] 还是旧 key 时不能继续用旧值。
+  const flatId = str(qq.appId)
+  const flatSecret = str(qq.appSecret, 400)
   for (const a of arr) {
     if (!a || typeof a !== 'object') continue
     const appId = str(a.appId ?? a.appid)
@@ -71,9 +75,9 @@ export function listAccounts(agentCfg = {}) {
     seen.add(appId)
     out.push({
       appId,
-      appSecret: str(a.appSecret ?? a.secret ?? a.clientSecret, 400),
+      appSecret: flatSecret && appId === flatId ? flatSecret : str(a.appSecret ?? a.secret ?? a.clientSecret, 400),
       name: str(a.name) || appId,
-      sandbox: bool(a.sandbox),
+      sandbox: a.sandbox == null ? bool(qq.sandbox) : bool(a.sandbox),
       intents: normIntents(a.intents, 0),
       markdown: normMarkdown(a.markdown, 'auto'),
       preferMarkdownText: bool(a.preferMarkdownText),
@@ -100,10 +104,14 @@ export function normalizeAccountsConfig(agentCfg = {}) {
   let dirty = false
   const flat = flatAccount(qq)
   if (flat) {
-    const exists = qq.accounts.some((a) => a && str(a.appId ?? a.appid) === flat.appId)
+    const exists = qq.accounts.find((a) => a && str(a.appId ?? a.appid) === flat.appId)
     if (!exists) {
       const { source, ...entry } = flat
       qq.accounts.push(entry)
+      dirty = true
+    } else if (flat.appSecret && str(exists.appSecret ?? exists.secret ?? exists.clientSecret) !== flat.appSecret) {
+      // 同一 AppID 运行时以扁平密钥为准：归一落盘时把新密钥带进账号行，避免「删掉扁平字段=回退旧密钥」
+      exists.appSecret = flat.appSecret
       dirty = true
     }
     for (const k of ['appId', 'appSecret', 'name', 'sandbox', 'intents', 'markdown', 'preferMarkdownText', 'apiBase', 'tokenUrl']) {

@@ -54,11 +54,17 @@ export function normalizeAccounts(cfg = {}) {
   const list = Array.isArray(qq.accounts) && qq.accounts.length
     ? qq.accounts
     : (qq.appId || qq.appSecret ? [{ appId: qq.appId, appSecret: qq.appSecret }] : [])
+  // 旧版扁平字段（appId/appSecret）在 accounts[] 非空时不再提供账号身份，但**同一 AppID** 的密钥
+  // 以扁平字段为准：老面板只露出扁平 AppSecret，用户改了它、账号列表里还是旧 key 就会鉴权失败
+  // （同一 AppID 只能有一套有效密钥）。没有对应账号的扁平字段仍被忽略。
+  const flatAppId = String(qq.appId ?? '').trim()
+  const flatAppSecret = String(qq.appSecret ?? '').trim()
   const out = []
   for (const a of list) {
     if (!a || typeof a !== 'object') continue
     const appId = String(a.appId ?? a.appid ?? '').trim()
-    const appSecret = String(a.appSecret ?? a.secret ?? a.clientSecret ?? '').trim()
+    const ownSecret = String(a.appSecret ?? a.secret ?? a.clientSecret ?? '').trim()
+    const appSecret = flatAppSecret && appId === flatAppId ? flatAppSecret : ownSecret
     if (!appId || !appSecret) {
       Log.warn('[qqbot] 账号缺少 appId/appSecret，已跳过（AppID + AppSecret 两段即可，不需要机器人 QQ 号/Token）')
       continue
@@ -67,7 +73,8 @@ export function normalizeAccounts(cfg = {}) {
       appId,
       appSecret,
       name: String(a.name || '').trim() || appId,
-      sandbox: a.sandbox === true,
+      // 单个账号未单独设置时继承全局沙箱开关（账号级显式 false 仍可覆盖）
+      sandbox: a.sandbox == null ? qq.sandbox === true : a.sandbox === true,
       // intents=0（默认配置）表示「用默认订阅」，不能原样传给网关（IDENTIFY intents=0 会被平台以 4013 拒绝）
       intents: (Number(a.intents) > 0 ? Number(a.intents) : null)
         ?? (Number(qq.intents) > 0 ? Number(qq.intents) : DEFAULT_INTENTS),

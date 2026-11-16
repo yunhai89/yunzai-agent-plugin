@@ -122,6 +122,24 @@
       const form = reactive({})
       let origSnapshot = {}
       const dirty = ref(false)
+      // 旧版扁平 appId/appSecret → accounts[] 的迁移提示（同一 AppID 以旧字段的 AppSecret 为准）
+      const qqFlatNotice = ref('')
+      // 账号行归一：清掉旧别名（appid/secret/clientSecret）；可选项缺省时保持缺省，
+      // 让下方「账号默认参数」继续对该账号生效（账号级显式值才覆盖全局）。
+      const qqAccountRow = (a = {}) => {
+        const row = { ...a }
+        row.appId = String(a.appId ?? a.appid ?? '').trim()
+        row.appSecret = String(a.appSecret ?? a.secret ?? a.clientSecret ?? '').trim()
+        row.name = String(a.name || '').trim()
+        delete row.appid
+        delete row.secret
+        delete row.clientSecret
+        if (a.sandbox != null) row.sandbox = a.sandbox === true
+        if (a.intents != null) row.intents = Number(a.intents) > 0 ? Number(a.intents) : 0
+        if (a.markdown != null) row.markdown = a.markdown === 'true' || a.markdown === 'false' ? a.markdown : 'auto'
+        if (a.preferMarkdownText != null) row.preferMarkdownText = a.preferMarkdownText === true
+        return row
+      }
       // loadConfig 失败时置为错误文案：此时 syncForm 未执行、form 仍是空对象，
       // 继续渲染表单会在各处解引用 undefined 抛错（整页空白），改为渲染页面级错误态（M-051 失败分支）
       const loadError = ref('')
@@ -189,6 +207,37 @@
         if (form.qqBot.sandbox == null) form.qqBot.sandbox = false
         if (form.qqBot.apiBase == null) form.qqBot.apiBase = ''
         if (form.qqBot.tokenUrl == null) form.qqBot.tokenUrl = ''
+        // QQ 官方机器人账号表单化：旧版扁平 appId/appSecret 在这里并入 accounts[]，面板不再维护两份密钥。
+        // 同一 AppID 以旧字段里的 AppSecret 为准（用户改了 AppSecret 但账号列表还是旧 key 时自动修正）。
+        qqFlatNotice.value = ''
+        const qqFlatId = String(form.qqBot.appId || '').trim()
+        const qqFlatSecret = String(form.qqBot.appSecret || '').trim()
+        form.qqBot.accounts = (Array.isArray(form.qqBot.accounts) ? form.qqBot.accounts : [])
+          .filter((a) => a && typeof a === 'object')
+          .map((a) => {
+            const row = qqAccountRow(a)
+            if (!row.appSecret && qqFlatSecret && row.appId === qqFlatId) row.appSecret = qqFlatSecret
+            return row
+          })
+          .filter((a) => a.appId || a.appSecret || a.name)
+        if (!form.qqBot.accounts.length && qqFlatId && qqFlatSecret) {
+          form.qqBot.accounts = [{
+            appId: qqFlatId,
+            appSecret: qqFlatSecret,
+            name: String(form.qqBot.name || '').trim(),
+          }]
+          qqFlatNotice.value = '已把旧版 AppID / AppSecret 并入下方账号列表；点底部「保存并热加载」后统一写入 accounts，旧字段随之清空。'
+        } else if (form.qqBot.accounts.length && qqFlatId) {
+          const same = form.qqBot.accounts.find((a) => a.appId === qqFlatId)
+          if (same) {
+            if (qqFlatSecret && same.appSecret !== qqFlatSecret) same.appSecret = qqFlatSecret
+            qqFlatNotice.value = qqFlatSecret
+              ? '账号列表里已有同一 AppID，已用旧版 AppSecret 覆盖；保存后统一为一份账号数据。'
+              : '账号列表里已有同一 AppID，旧版扁平字段会被清空；保存后统一为一份账号数据。'
+          } else {
+            qqFlatNotice.value = `检测到旧版扁平字段（AppID ${qqFlatId}）与账号列表同时存在：运行时只使用账号列表，保存后会清空旧字段。`
+          }
+        }
         if (!form.qqOfficial) form.qqOfficial = {}
         if (!form.qqOfficial.markdown) form.qqOfficial.markdown = {}
         if (form.qqOfficial.markdown.enable == null) form.qqOfficial.markdown.enable = true
@@ -467,11 +516,46 @@
         return out
       }
 
+      /* 保存前收口 QQ 机器人账号：trim/补默认值，并拒绝空 AppID、空 AppSecret 与重复 AppID。
+         账号列表是多账号的唯一来源（旧版扁平字段在 syncForm 里已并入并清空）。 */
+      const normalizeQqAccounts = () => {
+        if (!Array.isArray(form.qqBot?.accounts)) return
+        form.qqBot.accounts = form.qqBot.accounts
+          .filter((a) => a && typeof a === 'object')
+          .map((a) => qqAccountRow(a))
+          .filter((a) => a.appId || a.appSecret || a.name)
+      }
+      const qqAccountsError = () => {
+        const rows = Array.isArray(form.qqBot?.accounts) ? form.qqBot.accounts : []
+        const seen = new Set()
+        for (let i = 0; i < rows.length; i++) {
+          const appId = String(rows[i]?.appId || '').trim()
+          if (!appId) return `QQ 机器人账号第 ${i + 1} 行缺少 AppID`
+          if (!/^\d{4,}$/.test(appId)) return `QQ 机器人账号 AppID 应为纯数字：${appId}`
+          if (!String(rows[i]?.appSecret || '').trim()) return `QQ 机器人账号 ${appId} 缺少 AppSecret`
+          if (seen.has(appId)) return `QQ 机器人账号 AppID 重复：${appId}`
+          seen.add(appId)
+        }
+        return ''
+      }
+
       const save = async () => {
         mcpServersFromUi()
         if (mcpMissingUrl.value.length) {
           toast(`MCP 服务缺 url：${mcpMissingUrl.value.join('、')}（http 型必须填 url 才能保存）`, 'error')
           return
+        }
+        normalizeQqAccounts()
+        // 关闭状态下账号不参与运行：允许先保存半成品，只在真正启用时强校验
+        if (form.qqBot.enable === true) {
+          const qqErr = qqAccountsError()
+          if (qqErr) { toast(qqErr, 'warn'); return }
+        }
+        // 账号列表非空时运行时只看 accounts[]：保存时顺带清掉旧版扁平身份字段，config 里最终只剩一份账号数据。
+        // 不在 syncForm 里清是为了避免「一打开配置页就显示未保存修改」；迁移只在真正保存时落盘。
+        if (form.qqBot.accounts.length) {
+          form.qqBot.appId = ''
+          form.qqBot.appSecret = ''
         }
         const changes = buildChanges(origSnapshot, JSON.parse(JSON.stringify(form)))
         // D7：debug 是顶层键（GET 返回在 agent 同级）：从 agent 子树 diff 中剔除，作为 changes.debug 单独提交（PUT 写根）
@@ -775,8 +859,12 @@
         window.addEventListener('resize', onViewportChange)
         try {
           await window.store.loadConfig()
-          if (M.config) { syncForm(JSON.parse(JSON.stringify(M.config))); formReady.value = true }
-          else loadError.value = '未取到配置数据（/api/config 返回为空）'
+          if (M.config) {
+            syncForm(JSON.parse(JSON.stringify(M.config)))
+            formReady.value = true
+            // 旧版扁平字段已自动并入账号列表：提示用户保存落盘（按钮在底部保存条，dirty 才显示）
+            if (qqFlatNotice.value) dirty.value = true
+          } else loadError.value = '未取到配置数据（/api/config 返回为空）'
           window.store.loadTools().catch(() => {}) // 工具列表（失败不阻塞配置加载）
           window.store.loadPersonas().catch(() => {}) // 默认人设下拉（失败不阻塞）
         } catch (e) { loadError.value = e?.message || String(e); toast(e.message, 'error') }
@@ -791,6 +879,14 @@
       /* 回退模型列表(baseURL/apiKey 明文) */
       const addFallback = () => form.fallbackModels.push({ model: '', baseURL: '', apiKey: '', protocol: 'openai' })
       const delFallback = (i) => form.fallbackModels.splice(i, 1)
+
+      /* QQ 官方机器人账号：表单增删（保存时统一 trim/校验，见 normalizeQqAccounts / qqAccountsError） */
+      const addQqAccount = () => {
+        const qq = form.qqBot || {}
+        // 不复制全局参数：缺省即继承「账号默认参数」，账号级再改才覆盖
+        form.qqBot.accounts = [...(qq.accounts || []), { appId: '', appSecret: '', name: '主号' }]
+      }
+      const delQqAccount = (i) => { form.qqBot.accounts = (form.qqBot.accounts || []).filter((_, j) => j !== i) }
 
       /* masters（QQ 号或 QQ 官方机器人 openid） */
       const masterInput = ref('')
@@ -1119,6 +1215,7 @@
       return {
         form, dirty, save, reset, sections, open, activeSec, jump, OPT, updateJson, adv, loadError, formReady, sandboxEgressWarn,
         qqStatus, qqStatusError, qqBusy, qqEnableChanged, qqFailed, qqPillClass, loadQQStatus, reloadQQBot, gotoQQBot,
+        qqFlatNotice, addQqAccount, delQqAccount,
         webUrl, webUrlLoading, loadWebUrl, copyWebUrl,
         addFallback, delFallback, masterInput, addMaster, delMaster,
         mcpServersToUi, delMcp, mcpModal, openNewMcp, confirmNewMcp,
@@ -1696,7 +1793,7 @@
               <div class="mut2" style="font-size:12px">
                 本插件自带一套 QQBot 适配器：只需 <b>AppID + AppSecret</b>（无需机器人 QQ 号与 Token）。
                 开启后请<b>停用 Yunzai-QQBot-Plugin 的同一机器人</b>，否则会重复收发消息。
-                <b>日常账号管理请用左侧「系统 → 机器人账号」页</b>（增删改/连接状态/排障）；这里是底层配置字段。
+                账号列表直接在本卡维护（多账号可选）；连接状态与逐账号排障也可用左侧「系统 → 机器人账号」页。
                 连接后也可用 <code>#qqbot状态</code> / <code>#qqbot重连</code> 排查。
               </div>
             </div>
@@ -1711,7 +1808,7 @@
               <div class="mut2" style="font-size:12px;line-height:1.75;margin-top:7px">
                 <template v-if="!qqStatus.adapterReady">当前 Web 服务未运行 QQBot 适配器（独立 Web 服务只读配置）：保存后重启 Yunzai 生效。</template>
                 <template v-else-if="!qqStatus.enable">配置开关已关闭；点「重连全部」或重启 Yunzai 后，正在连接的账号才会停止。</template>
-                <template v-else-if="!qqStatus.total">尚未配置账号：填 AppID + AppSecret 保存，或到「机器人账号」页添加。</template>
+                <template v-else-if="!qqStatus.total">尚未配置账号：在下方「机器人账号」里填 AppID + AppSecret 后保存。</template>
                 <template v-else-if="qqStatus.connected >= qqStatus.total">全部账号已连接。</template>
                 <template v-else>有账号未连接：看下方失败原因，或点「重连全部」重试；控制台也会打印 <code>[qqbot]</code> 失败详情。</template>
               </div>
@@ -1732,12 +1829,44 @@
             <cfg-row name="启用自实现适配器" desc="qqBot.enable：本插件直接连 QQ 官方网关（WebSocket）">
               <v-switch v-model="form.qqBot.enable"/>
             </cfg-row>
-            <cfg-row name="AppID" desc="QQ 开放平台 → 开发设置 → 机器人 AppID">
-              <input class="inp mono" style="width:220px" v-model="form.qqBot.appId" placeholder="如 102012345">
-            </cfg-row>
-            <cfg-row name="AppSecret" desc="QQ 开放平台 → 开发设置 → AppSecret（敏感：回复发送前脱敏）">
-              <input class="inp mono" type="password" style="width:300px" v-model="form.qqBot.appSecret" placeholder="AppSecret">
-            </cfg-row>
+            <div class="full">
+              <div class="row-b mb8">
+                <div>
+                  <div style="font-weight:800;font-size:13px">机器人账号 <span class="pill p-mute" style="margin-left:6px;vertical-align:1px">可选</span></div>
+                  <div class="mut2" style="font-size:12px;line-height:1.75;margin-top:2px">
+                    只用一个机器人时填一行即可；需要多个机器人时点「添加账号」。每个账号只需填一次 AppSecret，
+                    不再依赖旧版扁平字段，也不会出现「两处密钥不一致」。
+                  </div>
+                </div>
+                <button class="btn b-soft b-sm" @click="addQqAccount"><v-icon name="plus"/>添加账号</button>
+              </div>
+              <div v-if="qqFlatNotice" class="mut2" style="font-size:12px;line-height:1.75;padding:9px 11px;border:1px dashed var(--line);border-radius:9px;color:var(--honey);margin-bottom:8px;display:flex;gap:10px;align-items:flex-start;justify-content:space-between">
+                <span>{{ qqFlatNotice }}</span>
+                <button class="btn b-soft b-sm" style="flex:0 0 auto" @click="save">保存迁移</button>
+              </div>
+              <div v-if="!form.qqBot.accounts.length" class="mut2" style="font-size:12px;line-height:1.75;padding:12px;border:1px dashed var(--line);border-radius:10px">
+                还没有配置账号。点右上角「添加账号」填写 AppID 与 AppSecret；不需要多账号时保持一行即可。
+              </div>
+              <TransitionGroup v-else name="list" tag="div" style="display:flex;flex-direction:column;gap:8px;position:relative">
+                <div v-for="(a, i) in form.qqBot.accounts" :key="i" class="mem-row" style="align-items:flex-start;gap:10px;flex-wrap:wrap">
+                  <span class="pill p-line mono" style="min-width:58px;justify-content:center;margin-top:20px">{{ i === 0 ? '主账号' : '账号 ' + (i + 1) }}</span>
+                  <label style="display:flex;flex-direction:column;gap:3px">
+                    <span class="mut2" style="font-size:11px">AppID</span>
+                    <input class="inp mono" style="width:180px" v-model="a.appId" placeholder="纯数字">
+                  </label>
+                  <label style="display:flex;flex-direction:column;gap:3px">
+                    <span class="mut2" style="font-size:11px">AppSecret</span>
+                    <input class="inp mono" type="password" style="width:220px" v-model="a.appSecret" placeholder="AppSecret">
+                  </label>
+                  <label style="display:flex;flex-direction:column;gap:3px">
+                    <span class="mut2" style="font-size:11px">名称（可选）</span>
+                    <input class="inp" style="width:150px" v-model="a.name" placeholder="如 主号">
+                  </label>
+                  <button class="bic dg" style="margin-left:auto" @click="delQqAccount(i)"><v-icon name="trash"/></button>
+                </div>
+              </TransitionGroup>
+            </div>
+            <div class="cf-sub"><v-icon name="tool"/>账号默认参数（单个账号未单独设置时生效）</div>
             <cfg-row name="Markdown 能力" desc="auto=先试 Markdown、无权限自动降级纯文本并记忆 | true=总是 | false=纯文本">
               <select class="sel" style="width:170px" v-model="form.qqBot.markdown">
                 <option value="auto">auto（推荐）</option>
@@ -1753,9 +1882,6 @@
             </cfg-row>
             <cfg-row name="事件订阅位图(intents)" desc="0=默认只订群@+C2C（33554432）；按钮交互填 100663296、频道填 1073741825。填未开通的位会被 4013 拒绝（插件会自动降级），一般保持 0">
               <input type="number" class="inp" style="width:150px" min="0" v-model.number="form.qqBot.intents">
-            </cfg-row>
-            <cfg-row name="多账号(JSON)" desc="accounts：[{name,appId,appSecret,sandbox,intents,markdown}]；与上面扁平字段二选一">
-              <textarea class="inp mono" style="width:360px;min-height:54px" :value="JSON.stringify(form.qqBot.accounts || [])" @change="updateJson('qqBot.accounts', $event.target.value)"></textarea>
             </cfg-row>
             <cfg-row name="Markdown 直发" desc="官方机器人下回复用原生 Markdown 消息（不渲染图片）；平台拒绝时自动降级纯文本">
               <v-switch v-model="form.qqOfficial.markdown.enable"/>

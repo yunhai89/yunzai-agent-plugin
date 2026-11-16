@@ -86,6 +86,15 @@ console.log('\n[2] 账号配置归一化（AppID + AppSecret）')
   eq(normalizeAccounts({ agent: { qqBot: { intents: 0, accounts: [{ appId: 'A', appSecret: 'S' }] } } })[0].intents, 33554432, 'accounts[] + qq.intents=0 也回落默认')
   eq(normalizeAccounts({ agent: { qqBot: { intents: 100663296, accounts: [{ appId: 'A', appSecret: 'S' }] } } })[0].intents, 100663296, '显式 intents 保留（群@+C2C+交互）')
   eq(normalizeAccounts({ agent: { qqBot: { intents: 100663296, accounts: [{ appId: 'A', appSecret: 'S', intents: 1073741825 }] } } })[0].intents, 1073741825, '账号级 intents 覆盖全局')
+  eq(normalizeAccounts({ agent: { qqBot: { sandbox: true, accounts: [{ appId: 'A', appSecret: 'S' }] } } })[0].sandbox, true, '账号缺省 sandbox 回落全局')
+  eq(normalizeAccounts({ agent: { qqBot: { sandbox: true, accounts: [{ appId: 'A', appSecret: 'S', sandbox: false }] } } })[0].sandbox, false, '账号级 sandbox=false 覆盖全局')
+  // 回归：accounts[] 存在时旧版扁平 appId/appSecret 不提供账号身份，但同一 AppID 的 AppSecret 以扁平字段为准，
+  // 避免用户改了扁平字段、账号列表仍是旧密钥（0/1 连不上）的困惑。
+  const inherit = normalizeAccounts({ agent: { qqBot: { appId: 'A3', appSecret: 'FLAT', accounts: [{ appId: 'A3' }, { appId: 'A4', appSecret: 'OWN' }] } } })
+  eq(inherit.find((a) => a.appId === 'A3').appSecret, 'FLAT', '同 AppID 缺密钥回退扁平 AppSecret')
+  eq(inherit.find((a) => a.appId === 'A4').appSecret, 'OWN', '其他 AppID 不使用扁平 AppSecret')
+  const override = normalizeAccounts({ agent: { qqBot: { appId: 'A3', appSecret: 'NEW-FLAT', accounts: [{ appId: 'A3', appSecret: 'OLD-ROW' }] } } })
+  eq(override[0].appSecret, 'NEW-FLAT', '同 AppID 两处不一致：旧版扁平 AppSecret 优先')
 }
 
 console.log('\n[3] 连接：注册 Bot[id] + pickFriend/pickGroup/pickMember')

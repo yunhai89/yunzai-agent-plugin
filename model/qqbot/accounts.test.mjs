@@ -31,10 +31,19 @@ console.log('\n[1] 读取：accounts[] 与扁平单账号')
   eq(a2.length, 1, '扁平写法视为单账号')
   eq([a2[0].appId, a2[0].sandbox, a2[0].intents, a2[0].source], ['2001', true, 1073741825, 'flat'], '扁平字段带出')
 
+  const sandboxFallback = listAccounts({ qqBot: { sandbox: true, accounts: [{ appId: '2101', appSecret: 's' }] } })
+  eq(sandboxFallback[0].sandbox, true, '账号缺省 sandbox 回落全局')
+
   eq(listAccounts({}), [], '空配置返回空列表')
   eq(listAccounts({ qqBot: { accounts: [{ appId: '1001' }, { appId: '1001' }, { appId: '' }] } }).length, 1, '重复 appId 去重、空 appId 跳过')
-  // 已有 accounts 时扁平字段被忽略（单一真源）
+  // 已有 accounts 时扁平字段不再提供账号身份（单一真源）；但同一 AppID 的密钥允许回退，
+  // 这样「面板再改一次 AppSecret」不会再出现两处不一致导致鉴权失败。
   eq(listAccounts({ qqBot: { appId: '9999', appSecret: 'x', accounts: [{ appId: '1001', appSecret: 's' }] } }).map((a) => a.appId), ['1001'], 'accounts 存在时扁平字段不参与')
+  const a3 = listAccounts({ qqBot: { appId: '1001', appSecret: 'flat-secret', accounts: [{ appId: '1001' }, { appId: '1002', appSecret: 'own' }] } })
+  eq(a3.find((a) => a.appId === '1001').appSecret, 'flat-secret', '同 AppID 缺密钥回退扁平 AppSecret')
+  eq(a3.find((a) => a.appId === '1002').appSecret, 'own', '其他 AppID 不受扁平字段影响')
+  const a4 = listAccounts({ qqBot: { appId: '1001', appSecret: 'new-flat', accounts: [{ appId: '1001', appSecret: 'old-row' }] } })
+  eq(a4[0].appSecret, 'new-flat', '同 AppID 两处不一致：旧版扁平 AppSecret 优先（老面板只露出这个输入框）')
 }
 
 console.log('\n[2] 写前归一（扁平 → accounts[]）')
@@ -46,6 +55,10 @@ console.log('\n[2] 写前归一（扁平 → accounts[]）')
   ok(!('appId' in agent.qqBot) && !('appSecret' in agent.qqBot), '扁平字段已清除')
   eq(normalizeAccountsConfig(agent), false, '再次归一幂等（返回 false）')
   eq(normalizeAccountsConfig({ qqBot: { accounts: [] } }), false, '无扁平字段时不需要迁移')
+  const coexist = { qqBot: { appId: '3002', appSecret: 'new-flat', accounts: [{ appId: '3002', appSecret: 'old-row' }] } }
+  eq(normalizeAccountsConfig(coexist), true, '同 AppID 扁平字段与列表并存也需要归一')
+  eq(coexist.qqBot.accounts[0].appSecret, 'new-flat', '归一采用旧版扁平密钥，避免回退旧值')
+  ok(!('appSecret' in coexist.qqBot), '归一后扁平密钥字段清除')
 }
 
 console.log('\n[3] 新增 / 更新 / 删除')

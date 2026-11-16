@@ -75,8 +75,9 @@
 | `qqOfficial.keyboard.enable` | `true` | 注册 `send_keyboard` 工具（Markdown + inline keyboard，≤5×5，单轮 ≤3 张） |
 | `qqOfficial.progress` | `false` | 官方协议下是否发「思考中…」等进度（默认关，官方主动推送有频控） |
 | `qqOfficial.narrate` | `false` | 官方协议下是否中途播报（默认关） |
-| `qqBot.enable` / `qqBot.appId` / `qqBot.appSecret` | `false` / 空 / 空 | **自实现 QQBot 适配器**：只需 AppID + AppSecret 直连官方网关（不需要机器人 QQ 号/Token）。与 Yunzai-QQBot-Plugin 二选一 |
-| `qqBot.accounts` | `[]` | 多账号：`[{name,appId,appSecret,sandbox,intents,markdown}]`（与扁平字段二选一） |
+| `qqBot.enable` | `false` | **自实现 QQBot 适配器**总开关：开启后按账号列表直连官方网关（不需要机器人 QQ 号/Token）。与 Yunzai-QQBot-Plugin 二选一 |
+| `qqBot.accounts` | `[]` | 机器人账号（多账号可选）：`[{name,appId,appSecret,sandbox,intents,markdown,preferMarkdownText}]`；单账号只填一行即可。Web 面板已改为表单编辑，不再手填 JSON |
+| `qqBot.appId` / `qqBot.appSecret` | 空 | 旧版扁平单账号字段；仍可读：`accounts[]` 里**同一 AppID** 的 AppSecret 以这里的值为准（老面板只露出扁平字段，改它即可修正账号列表里的旧密钥）。Web 面板首次打开会把它们并入 `accounts[]` 并在保存时清空，避免两处密钥不一致 |
 | `qqBot.markdown` | `auto` | `auto`=先试 Markdown、无权限自动降级纯文本并记忆；`true`/`false` 强制 |
 | `qqBot.preferMarkdownText` | `false` | 纯文本回复也走 Markdown 消息 |
 | `qqBot.sandbox` | `false` | 连开放平台沙箱环境 |
