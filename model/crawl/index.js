@@ -448,13 +448,13 @@ export async function crawlWithFetch(url, { timeout = 30, fetcher, retries = 3, 
         }
         const { title, text } = htmlToText(html)
         if (looksLikeChallenge({ status, html, title })) {
-          return { success: false, code: 'challenge', status, finalUrl, title, error: '命中反爬挑战页（Cloudflare 等）', hint: '目标站点使用 JS 挑战/风控：需真浏览器渲染（crawl4ai 默认引擎，确认已跑 scripts/install-crawl4ai.sh）；仍失败可在 agent.proxy 配置出口代理' }
+          return { success: false, code: 'challenge', status, finalUrl, title, error: '命中反爬挑战页（Cloudflare 等）', hint: '目标站点使用 JS 挑战/风控：需真浏览器渲染（让主人发 #抓取环境 安装 crawl4ai + Chromium）；仍失败可在 agent.proxy 配置出口代理' }
         }
         if (!text || text.length < 20) {
           if (looksLikeJsShell({ text, html, title })) {
-            return { success: false, code: 'js_required', status, finalUrl, title, error: '页面正文由 JS 动态渲染（fetch 只能拿到空壳）', hint: '需真浏览器渲染：跑 scripts/install-crawl4ai.sh 安装 crawl4ai（web_crawl 默认引擎会自动使用）；或对该页传 js_code/wait_for' }
+            return { success: false, code: 'js_required', status, finalUrl, title, error: '页面正文由 JS 动态渲染（fetch 只能拿到空壳）', hint: '需真浏览器渲染：让主人发 #抓取环境 安装（自动装 crawl4ai + Chromium）；或对该页传 js_code/wait_for' }
           }
-          return { success: false, code: 'empty', status, finalUrl, title, error: '页面无有效正文（可能是 JS 动态渲染页）', hint: '该页需真浏览器渲染；安装 crawl4ai（scripts/install-crawl4ai.sh）后重试' }
+          return { success: false, code: 'empty', status, finalUrl, title, error: '页面无有效正文（可能是 JS 动态渲染页）', hint: '该页需真浏览器渲染；让主人发 #抓取环境 安装 crawl4ai + Chromium 后重试' }
         }
         return { success: true, markdown: text, title, via: 'fetch', status, finalUrl, ...(truncated ? { truncated: true } : {}) }
       }
@@ -793,12 +793,16 @@ export async function crawlUrl(url, opts = {}) {
         }
       } else {
         // 打印探测失败原因 + 实际解释器路径：多个插件副本时能直接看出「venv 装到了另一个目录」
-        const why = probe?.reason || 'venv 未安装'
+        const why = probe?.reason === 'browser_missing'
+          ? 'crawl4ai 已装但 Chromium 缺失'
+          : probe?.reason === 'browser_probe_failed'
+            ? 'Playwright 浏览器探测失败'
+            : (probe?.reason || 'venv 未安装')
         const py = probe?.python ? `；解释器 ${probe.python}` : ''
-        // 修复提示按执行面给出：沙箱档的宿主安装脚本对它无效（模板需预装 crawl4ai），本地档才指向安装脚本
+        // 修复提示按执行面给出：沙箱档的宿主安装脚本对它无效（模板需预装 crawl4ai），本地档才指向安装命令
         const fix = probe?.sandbox
           ? (probe.hint || '把 crawl4ai 装进 agent.sandbox.template 指向的 E2B 模板')
-          : '跑 scripts/install-crawl4ai.sh 启用真浏览器渲染'
+          : '发 #抓取环境 安装（插件会自动装 crawl4ai + Chromium）'
         Log.warn(`[crawl] crawl4ai 不可用（${why}${py}；${fix}），走 fetch`)
       }
     }

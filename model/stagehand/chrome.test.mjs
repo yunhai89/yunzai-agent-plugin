@@ -47,14 +47,14 @@ console.log('\n[2] 环境变量（PUPPETEER_EXECUTABLE_PATH / CHROME_PATH）')
   const p = fakeExe('env/chromium')
   eq(await resolveChromeExecutable({}, { env: { CHROME_PATH: p }, home }), { path: p, source: 'env:CHROME_PATH' }, 'CHROME_PATH 生效')
   eq(await resolveChromeExecutable({}, { env: { PUPPETEER_EXECUTABLE_PATH: p }, home }), { path: p, source: 'env:PUPPETEER_EXECUTABLE_PATH' }, 'PUPPETEER_EXECUTABLE_PATH 生效且优先级更高')
-  eq(await resolveChromeExecutable({}, { env: { CHROME_PATH: path.join(tmp, 'missing') }, home, puppeteerLoader: async () => '' }), null, '环境变量指向不存在的文件 → 跳过')
+  eq(await resolveChromeExecutable({}, { env: { CHROME_PATH: path.join(tmp, 'missing') }, home, puppeteerLoader: async () => '', systemCandidates: [] }), null, '环境变量指向不存在的文件 → 跳过')
 }
 
 console.log('\n[3] Puppeteer 自带 Chromium（Yunzai 常见路径）')
 {
   const p = fakeExe('puppeteer/chrome')
   eq(await resolveChromeExecutable({}, { env: {}, home, puppeteerLoader: async () => p }), { path: p, source: 'puppeteer' }, 'puppeteer.executablePath() 命中')
-  eq(await resolveChromeExecutable({}, { env: {}, home, puppeteerLoader: async () => { throw new Error('not installed') } }), null, 'puppeteer 未安装不影响（继续探测）')
+  eq(await resolveChromeExecutable({}, { env: {}, home, puppeteerLoader: async () => { throw new Error('not installed') }, systemCandidates: [] }), null, 'puppeteer 未安装不影响（继续探测）')
 }
 
 console.log('\n[4] 缓存目录扫描')

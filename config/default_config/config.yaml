@@ -155,7 +155,9 @@ agent:
     crawlEnable: true       # 网页抓取开关（web_crawl 工具 + URL 入库/刷新；关则不注册 web_crawl）
     crawl:
       engine: crawl4ai      # 网页抓取引擎：crawl4ai（默认。真浏览器渲染，SPA/JS 动态页可抓；
-                            # 需先跑 scripts/install-crawl4ai.sh，未安装自动降级 fetch）| fetch（纯 HTTP+cheerio，零依赖）
+                            # 缺少运行时会后台自动安装，未就绪/失败自动降级 fetch）| fetch（纯 HTTP+cheerio，零依赖）
+      autoInstall: true     # 启动时检测到缺 crawl4ai/Chromium 就后台安装到插件目录（约 300-500MB；
+                            # 失败冷却 6 小时，可发 #抓取环境 安装/修复；false=完全不自动安装）
       execution: local      # 抓取执行面：local（默认）=宿主 venv crawl4ai（本地引擎，与 sandbox.mode 无关，
                             # 同 diagram 的本机 Kroki）| sandbox=显式改在会话沙箱内跑（需 agent.sandbox.mode=e2b
                             # 且模板预装 crawl4ai；沙箱未就绪即降级纯 HTTP fetch，不改跑宿主 crawl4ai）

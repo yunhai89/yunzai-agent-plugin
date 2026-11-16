@@ -12,6 +12,7 @@
 | `PUPPETEER_EXECUTABLE_PATH` | 指定渲染用 Chromium/Chrome 可执行文件（容器/自定义安装时用） |
 | `GEMINI_API_KEY` | Gemini 协议未配 apiKey 时的兜底 Key |
 | `CRAWL4AI_VENV` / `CRAWL4AI_PYSCRIPT` | 自建 crawl4ai 虚拟环境路径 / 抓取脚本路径（默认自动探测） |
+| `CRAWL4AI_BROWSERS_DIR` | Playwright Chromium 安装目录（默认插件内 `.crawl4ai-browsers/`；与 `PLAYWRIGHT_BROWSERS_PATH` 二选一，后者优先） |
 | `E2B_API_KEY` / `E2B_API_URL` / `E2B_DOMAIN` / `E2B_SANDBOX_URL` | E2B 沙箱凭据与自托管端点（优先级高于 `agent.sandbox.*`） |
 | `AGENTS_CONFIG` | 指定插件配置文件路径（真实模型冒烟/模拟器用它读实机配置） |
 | `REAL_LLM_API_KEY` / `REAL_LLM_BASE_URL` / `REAL_LLM_MODEL` / `REAL_LLM_PROTOCOL` / `REAL_LLM_PRESET` | 真实模型冒烟（`stress/real/*`）的凭据与模型覆盖；也可用 `AGENTS_CONFIG=<config.yaml>` 复用插件配置。**未设则打印 `SKIP_FILE:` 跳过** |

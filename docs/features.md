@@ -10,7 +10,7 @@
 - **前缀缓存友好**：上下文 token 双水位压缩 + 工具数组恒定 + 稳定 system 前缀，长对话命中率可达 90%+（见 [记忆体系与上下文缓存](memory-and-context.md)）。
 - **文件即真相的记忆**：`MEMORY.md` / `USER.md` 人可读可编辑 + `memory_search` 主动召回 + 用户画像 + 知识库 RAG，跨会话不失忆、不串档。
 - **安全纵深**：工具 RBAC + 主人审批 + 注入防御（不可信内容边界）+ 高危执行面隔离（E2B microVM），高危动作不裸奔。
-- **三种配置入口、一套真源**：Web 配置中心（全量）/ 锅巴面板（383 字段常用+安全项）/ `config.yaml`；配置保存只写差异、升级新默认值自动生效。
+- **三种配置入口、一套真源**：Web 配置中心（全量）/ 锅巴面板（384 字段常用+安全项）/ `config.yaml`；配置保存只写差异、升级新默认值自动生效。
 - **热加载**：改配置即生效，重建时取消在途任务、回收资源。
 - **QQ 官方机器人就绪**：自实现适配器（AppID+AppSecret）+ 官方协议能力（Markdown / keyboard / 被动回复），并提供 `/uid`、`/groupid` 排障指令。
 - **🧬 工具进化**：LLM 生成 → AST 静态门 → 隔离验证 → 主人审批 → 版本化上线/淘汰，工具库可持续变强。
@@ -39,7 +39,7 @@
 | 工具开发 SDK | `tools/*.js` 自动加载、`tool.config.js` 声明式配置（含主页/字段 schema） | ✅ |
 | 终端执行 | E2B 沙箱（Firecracker microVM）；all-users；出口全放通/白名单可收紧；fail-closed | ⚠️ 可选高危 |
 | 浏览器自动化 | Stagehand：goto / observe / extract / act；本地 or Browserbase 云 | 🧪 |
-| 网页抓取 | `web_crawl`：crawl4ai 真浏览器（默认）或纯 HTTP 降级，反爬升级 | ✅ |
+| 网页抓取 | `web_crawl`：crawl4ai 真浏览器（默认，自动装浏览器）或纯 HTTP 降级，反爬升级 | ✅ |
 | 文档与媒体 | PDF/Word/Excel 解析、图片/音频/视频处理、yt-dlp 下载 | ✅ |
 
 ### 记忆与人设
@@ -84,7 +84,7 @@
 | 协议端 | OneBot/ICQQ（NapCat 等）；QQ 官方机器人（自实现适配器 / Yunzai-QQBot-Plugin）；QQ 频道 | ✅ |
 | QQ 官方机器人 | 只需 AppID+AppSecret；Markdown 直发、inline keyboard、被动回复窗口；`/uid`、`/groupid` | ✅ |
 | Web 管理面板 | 22 个页面：概览/配置中心/机器人账号/记忆/召回/画像/人设/技能/知识库/会话/日志/定时/账本/审批/进化/工具/群世界/伪人/自状态/表情包/TTS/外置工具 | ✅ |
-| 锅巴面板 | 383 字段 / 52 分组：常用项 + 安全/行为总开关 + 各子系统常用调参 | ✅ |
+| 锅巴面板 | 384 字段 / 52 分组：常用项 + 安全/行为总开关 + 各子系统常用调参 | ✅ |
 | 配置热加载 | 保存配置自动重建运行时（provider/model/tools/skills/mcp） | ✅ |
 
 ### 安全与可观测

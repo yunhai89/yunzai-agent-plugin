@@ -103,6 +103,7 @@ const SECTIONS = [
       { cmd: '#agent版本', desc: '查看当前插件版本号' },
       { cmd: '#agent更新日志', desc: '查看近期版本更新日志' },
       { cmd: '#agent重载', desc: '热重载配置（免重启）' },
+      { cmd: '#抓取环境', desc: '查看 crawl4ai/Chromium 抓取环境（#抓取环境 安装 / 修复 可重试）' },
       { cmd: '#agent状态', desc: '查看插件运行状态（触发模式/模型/调试日志）' },
       { cmd: '#agent登录', desc: '获取 Web 管理面板地址（带 token，24h 有效；主人私聊发送）' },
       { cmd: '#伪人状态', desc: '主人：查看伪人模式运行状态（白名单群/活跃运行时）' },

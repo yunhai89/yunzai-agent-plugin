@@ -36,6 +36,11 @@ const IS_WIN = process.platform === 'win32'
 
 export const CRAWL4AI_VENV_DIR = process.env.CRAWL4AI_VENV || path.join(PLUGIN_ROOT, '.crawl4ai-venv')
 export const CRAWL4AI_SCRIPT = process.env.CRAWL4AI_PYSCRIPT || path.join(PLUGIN_ROOT, 'python', 'crawl4ai_fetch.py')
+// 浏览器默认装到插件目录（而不是用户全局缓存）：容器/多副本部署时随插件走，删除插件即清理。
+// 已显式设置 PLAYWRIGHT_BROWSERS_PATH 时尊重用户选择；旧用户全局缓存里的浏览器仍可继续使用。
+export const CRAWL4AI_BROWSERS_DIR = process.env.CRAWL4AI_BROWSERS_DIR
+  || process.env.PLAYWRIGHT_BROWSERS_PATH
+  || path.join(PLUGIN_ROOT, '.crawl4ai-browsers')
 export const CRAWL4AI_TIMEOUTS = {
   defaultMs: 90_000,     // 单页抓取总预算（含浏览器启动；crawlTimeout 可覆盖）
   probeTtlMs: 300_000,   // 可用性探测缓存 5 分钟（探测=spawn 一次 import 检查）
@@ -44,7 +49,28 @@ export const CRAWL4AI_TIMEOUTS = {
   termGraceMs: 250,      // SIGTERM → SIGKILL 宽限
 }
 
-const venvPython = () => path.join(CRAWL4AI_VENV_DIR, IS_WIN ? 'Scripts' : 'bin', IS_WIN ? 'python.exe' : 'python3')
+export const crawl4aiPython = () => path.join(CRAWL4AI_VENV_DIR, IS_WIN ? 'Scripts' : 'bin', IS_WIN ? 'python.exe' : 'python3')
+const venvPython = crawl4aiPython
+
+/** 插件目录下是否已有 Playwright Chromium（用于决定是否注入项目内 browsers 路径）。 */
+function hasProjectBrowser(dir) {
+  try {
+    return fs.readdirSync(dir).some((name) => /^chromium[-_]/.test(name))
+  } catch { return false }
+}
+
+/**
+ * crawl4ai 子进程环境：新安装默认把浏览器放插件目录；老用户已有全局缓存时继续用全局，
+ * 避免升级插件后重新下载几百 MB。显式 PLAYWRIGHT_BROWSERS_PATH / CRAWL4AI_BROWSERS_DIR 优先。
+ */
+export function crawl4aiEnv() {
+  const explicit = String(process.env.CRAWL4AI_BROWSERS_DIR || '').trim()
+  const pwPath = String(process.env.PLAYWRIGHT_BROWSERS_PATH || '').trim()
+  if (pwPath) return process.env
+  const dir = explicit || path.join(PLUGIN_ROOT, '.crawl4ai-browsers')
+  if (explicit || hasProjectBrowser(dir)) return { ...process.env, PLAYWRIGHT_BROWSERS_PATH: dir }
+  return process.env
+}
 
 /** Linux：按 PPID 链快照 pid 的全部后代（组杀前调用——父死后会重挂 PID1，扫不到了） */
 function snapshotDescendants(rootPid) {
@@ -120,7 +146,10 @@ export async function runCrawl4ai(url, {
     // 前置存在性检查：解释器/脚本缺失直接结构化 spawn_failed（不进入「子进程启动后秒退」
     // 的 crashed 歧义——node/python 都存在但脚本缺失时 exit 1 无法与真崩溃区分）
     if (!fs.existsSync(sc)) return { success: false, via: 'crawl4ai', code: 'spawn_failed', error: `脚本不存在：${sc}` }
-    proc = spawn(py, [sc], { stdio: ['pipe', 'pipe', 'pipe'], detached: !IS_WIN }) // argv + shell 默认 false
+    proc = spawn(py, [sc], {
+      stdio: ['pipe', 'pipe', 'pipe'], detached: !IS_WIN, // argv + shell 默认 false
+      env: crawl4aiEnv(),
+    })
   } catch (e) {
     return { success: false, via: 'crawl4ai', code: 'spawn_failed', error: e?.message || String(e) }
   }
@@ -362,59 +391,114 @@ export async function runCrawl4aiInSandbox(box, url, opts = {}) {
 
 // importlib.metadata 拿发行版号（某些版本 crawl4ai.__version__ 是 module 而非字符串）
 const PROBE_CODE = 'from importlib.metadata import version; print(version("crawl4ai"))'
+// 只取 Playwright 期望的可执行文件路径并检查存在性（不启动浏览器，避免每次探测都拉进程）。
+const BROWSER_PROBE_CODE = [
+  'import json, os',
+  'from playwright.sync_api import sync_playwright',
+  'with sync_playwright() as p:',
+  '    try:',
+  '        path = p.chromium.executable_path',
+  '    except Exception:',
+  '        path = ""',
+  'print(json.dumps({"path": path, "exists": bool(path and os.path.isfile(path))}))',
+].join('\n')
 
 let probeCache = { key: null, at: 0, result: null }
 
 /** 清空可用性探测缓存（安装 crawl4ai 后 / 运行时重建时调用，立即重新探测）。 */
 export function resetCrawl4aiProbe() { probeCache = { key: null, at: 0, result: null } }
 
+/** 一次性 Python 探测子进程（stdout 收集 + 硬超时；spawn 错误不被漏接）。 */
+function runPythonProbe(py, argv, { timeoutMs = CRAWL4AI_TIMEOUTS.probeRunMs } = {}) {
+  return new Promise((resolve) => {
+    let out = ''
+    let err = ''
+    let settled = false
+    let timer = null
+    let proc
+    const settle = (r) => {
+      if (settled) return false
+      settled = true
+      if (timer) clearTimeout(timer)
+      resolve({ out, error: err, python: py, ...r })
+      return true
+    }
+    try {
+      proc = spawn(py, argv, { stdio: ['ignore', 'pipe', 'pipe'], env: crawl4aiEnv() })
+    } catch (e) {
+      return resolve({ ok: false, reason: 'spawn_failed', error: e?.message || String(e), python: py })
+    }
+    proc.stdout?.on('data', (d) => { out += d })
+    proc.stderr?.on('data', (d) => { err = (err + d).slice(-4000) })
+    proc.on('error', (e) => settle({ ok: false, reason: 'spawn_failed', error: e?.message || String(e) }))
+    proc.on('close', (code) => {
+      settle(code === 0 ? { ok: true } : { ok: false, reason: `exit=${code}` })
+    })
+    if (proc.pid == null) return // 缺 pid：等待上面的 error 事件结算
+    timer = setTimeout(() => {
+      if (!settle({ ok: false, reason: 'probe_timeout' })) return
+      try { proc.kill('SIGKILL') } catch { /* 已退出 */ }
+    }, timeoutMs)
+  })
+}
+
+/** 浏览器探测：Playwright 期望的 Chromium 是否存在（crawl4ai 只装 Python 包但没装浏览器时最常见）。 */
+async function probeBrowser(py) {
+  const r = await runPythonProbe(py, ['-c', BROWSER_PROBE_CODE])
+  if (!r.ok) return { ok: false, reason: r.reason === 'exit=1' ? 'browser_probe_failed' : r.reason, error: r.error }
+  const parsed = parseProtocolLine(r.out)
+  if (!parsed) return { ok: false, reason: 'browser_probe_failed', error: '浏览器探测无 JSON 输出' }
+  if (!parsed.exists) return { ok: false, reason: 'browser_missing', browser: String(parsed.path || '') }
+  return { ok: true, browser: String(parsed.path || '') }
+}
+
 /**
- * 可用性探测（带 TTL 缓存）：venv python -c "import crawl4ai" 是否成功。
+ * 可用性探测（带 TTL 缓存）：venv python 能否 import crawl4ai，且 Playwright Chromium 是否真的存在。
  * 版本串仅诊断用；判活看退出码（垃圾版本串仍算可用——降级判定不该被输出格式绑架）。
  * 命中缓存 TTL：可用结果按 probeTtlMs（5min），不可用结果按 probeNegativeTtlMs（短，便于安装后尽快恢复）。
  * 结果对象含 python（实际探测的解释器路径）：装到别的插件副本目录时，日志能直接看出路径不符。
+ * probeArg 为测试注入（跳过浏览器探测），生产环境不传。
  */
 export async function isCrawl4aiAvailable({ python = null, probeArg = null, ttl = null } = {}) {
   const py = python || venvPython()
-  const key = `${py}|${JSON.stringify(probeArg)}`
+  const env = crawl4aiEnv()
+  const key = `${py}|${JSON.stringify(probeArg)}|${env.PLAYWRIGHT_BROWSERS_PATH || ''}`
   const now = Date.now()
   const ttlMs = ttl ?? CRAWL4AI_TIMEOUTS.probeTtlMs
   const cached = probeCache.result
   const effTtl = ttlMs <= 0 ? 0 : (cached?.ok ? ttlMs : Math.min(ttlMs, CRAWL4AI_TIMEOUTS.probeNegativeTtlMs))
   if (effTtl > 0 && probeCache.key === key && now - probeCache.at < effTtl && cached) return cached
-  const result = await new Promise((resolve) => {
-    let out = ''
-    let settled = false
-    let timer = null
-    let proc
-    try {
-      proc = spawn(py, probeArg ?? ['-c', PROBE_CODE], { stdio: ['ignore', 'pipe', 'pipe'] })
-    } catch (e) {
-      return resolve({ ok: false, reason: 'spawn_failed', error: e?.message || String(e), python: py })
+
+  const importResult = await runPythonProbe(py, probeArg ?? ['-c', PROBE_CODE])
+  let result
+  if (!importResult.ok) {
+    result = {
+      ok: false, reason: importResult.reason || 'probe_failed',
+      error: String(importResult.error || '').slice(-1000) || undefined,
+      hint: '未安装 crawl4ai？插件会自动尝试安装，也可发 #抓取环境 安装',
+      python: py,
     }
-    // 先挂监听再判断 pid：解释器缺失时 spawn 仍返回 ChildProcess（pid 为 undefined），
-    // ENOENT/EACCES 经异步 'error' 事件上报——提前 return 会让它无监听器而打崩宿主。
-    const settle = (r) => {
-      if (settled) return false
-      settled = true
-      if (timer) clearTimeout(timer)
-      resolve(r)
-      return true
+  } else {
+    const version = (String(importResult.out).trim().split('\n').pop() || 'unknown').slice(0, 40)
+    // 测试注入的 python 桩没有 Playwright：保持原有「能 import 即可用」语义，避免单测依赖真实浏览器。
+    if (probeArg) {
+      result = { ok: true, version, python: py }
+    } else {
+      const browser = await probeBrowser(py)
+      if (!browser.ok) {
+        result = {
+          ok: false, reason: browser.reason, version, python: py,
+          ...(browser.browser ? { browser: browser.browser } : {}),
+          ...(browser.error ? { error: String(browser.error).slice(-1000) } : {}),
+          hint: browser.reason === 'browser_missing'
+            ? 'crawl4ai 已安装，但缺少 Playwright Chromium；插件会自动尝试安装，也可发 #抓取环境 安装'
+            : 'Playwright 浏览器探测失败；可发 #抓取环境 安装/修复',
+        }
+      } else {
+        result = { ok: true, version, python: py, browser: browser.browser, browsersDir: env.PLAYWRIGHT_BROWSERS_PATH || '' }
+      }
     }
-    proc.stdout?.on('data', (d) => { out += d })
-    proc.stderr?.on('data', () => { /* 并发 drain：探测通常无 stderr，但不能让 pipe 满堵 */ })
-    proc.on('error', (e) => settle({ ok: false, reason: 'spawn_failed', error: e?.message || String(e), python: py }))
-    proc.on('exit', (code) => {
-      if (!settle(code === 0
-        ? { ok: true, version: (String(out).trim().split('\n').pop() || 'unknown').slice(0, 40), python: py }
-        : { ok: false, reason: `exit=${code}`, hint: '未安装？跑 scripts/install-crawl4ai.sh', python: py })) return
-    })
-    if (proc.pid == null) return // 缺 pid：等待上面的 error 事件结算
-    timer = setTimeout(() => {
-      if (!settle({ ok: false, reason: 'probe_timeout', python: py })) return
-      try { proc.kill('SIGKILL') } catch { /* 已退出 */ }
-    }, CRAWL4AI_TIMEOUTS.probeRunMs)
-  })
+  }
   probeCache = { key, at: now, result }
   return result
 }

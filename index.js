@@ -65,4 +65,13 @@ Log.panel(`agents-plugin v${Config.version}`, [
   ['数据目录', Config.path.data],
 ])
 
+// crawl4ai 开箱即用：缺 crawl4ai/Chromium 时后台补装（默认开启，失败自动降级 fetch）。
+// 放在 apps 加载后执行，不阻塞插件注册；配置关闭/引擎为 fetch/执行面为 sandbox 时自动跳过。
+try {
+  const { maybeAutoInstallCrawl4ai } = await import('./model/crawl/setup.js')
+  maybeAutoInstallCrawl4ai().catch((e) => Log.warn('[crawl] 抓取环境自动安装检查失败', e?.message || e))
+} catch (e) {
+  Log.warn('[crawl] 抓取环境自动安装模块加载失败', e?.message || e)
+}
+
 export { apps }

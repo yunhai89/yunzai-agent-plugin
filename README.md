@@ -10,7 +10,7 @@
 
 一个插件，从「能回话」到「能干活、能记住、能进化」的完整闭环。
 
-<img src="https://img.shields.io/badge/version-v1.50.0-blueviolet" alt="Version">
+<img src="https://img.shields.io/badge/version-v1.51.0-blueviolet" alt="Version">
 <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 <img src="https://img.shields.io/badge/platform-Yunzai-9cf" alt="Yunzai Plugin">
 <img src="https://img.shields.io/badge/AI-Agent-7c3aed" alt="AI Agent">
@@ -71,6 +71,7 @@ cd ./plugins/agents-plugin && pnpm install   # markdown 渲染依赖（用 npm �
 
 > 其余依赖随 Yunzai 提供（`ws` / `sharp` / `puppeteer` 等）。`#agent更新` 检测到 `package.json` 变动会自动 `pnpm install`。
 > 重启 Yunzai 后，插件会在**自己的** `plugins/agents-plugin/config/config.yaml` 生成配置（不在 Yunzai 根；旧的 `Yunzai/config/agents-plugin.yaml` 会自动迁移）。
+> **网页抓取开箱即用**：首次启动会自动检测并后台安装 crawl4ai + Chromium（约 300–500MB，装到插件目录；需要系统有 `python3` ≥3.10）；安装期间抓取自动降级纯 HTTP，完成后无需重启。发 **`#抓取环境`** 查看进度或修复；失败不影响插件其他功能。
 
 ### 1.5 首次启动：先拿到面板地址（无需协议端）
 

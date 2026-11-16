@@ -4,17 +4,37 @@
 
 ## 🕸️ 网页抓取（web_crawl / crawl4ai）
 
-> `web_crawl` 常驻工具（query 类，全员可用）与知识库 URL 入库/刷新共用同一抓取链路。默认走 [crawl4ai](https://docs.crawl4ai.com) 真浏览器渲染（Playwright Chromium）：SPA/JS 动态页、同态渲染页都能拿到渲染后正文；未安装或失败自动降级纯 HTTP + cheerio（静态兜底）。
+> `web_crawl` 常驻工具（query 类，全员可用）与知识库 URL 入库/刷新共用同一抓取链路。默认走 [crawl4ai](https://docs.crawl4ai.com) 真浏览器渲染（Playwright Chromium）：SPA/JS 动态页、同态渲染页都能拿到渲染后正文；未就绪或失败自动降级纯 HTTP + cheerio（静态兜底）。
 
-**安装真浏览器渲染（可选，强烈建议）**：
+**开箱即用（默认开启）**：插件启动时会检测 crawl4ai 和 Chromium，缺什么就在后台补什么，不需要手动跑脚本。
 
-```sh
-sh plugins/agents-plugin/scripts/install-crawl4ai.sh   # 独立 venv + Playwright Chromium（约 300~500MB）
-# 国内镜像加速示例：
-PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple sh scripts/install-crawl4ai.sh
+- 缺 venv/crawl4ai → 安装完整运行时；已有 crawl4ai 只缺 Chromium → 只补浏览器。需要系统有 `python3` ≥3.10（缺 Python/venv 时安装会失败并降级 fetch）。
+- 默认装到**插件目录**：`.crawl4ai-venv/` + `.crawl4ai-browsers/`（约 300~500MB，随插件走，删插件即清理）。
+- 安装期间 `web_crawl` 仍可用（先走纯 HTTP）；完成后自动生效，无需重启。
+- 失败不会阻塞启动，会继续降级 fetch；默认 6 小时内不自动重试，避免无网络环境反复下载。
+- 关闭自动安装：`agent.kb.crawl.autoInstall: false`。
+- Windows 下自动安装器不运行（脚本依赖 POSIX `sh`）；建议用 WSL/容器，或手动安装后通过 `CRAWL4AI_VENV` / `CRAWL4AI_BROWSERS_DIR` 指向现成目录。
+
+**查看 / 手动修复**（主人）：
+
+```text
+#抓取环境         查看 crawl4ai / Chromium / 解释器路径 / 失败原因
+#抓取环境 安装     首次安装（或补装 Chromium）
+#抓取环境 修复     忽略失败冷却，立即重试
 ```
 
-安装后 `web_crawl` 默认走浏览器；`config.yaml → agent.kb.crawl.engine: fetch` 可强制纯 HTTP。多个插件副本时注意 venv 装在**正在运行的那一份**目录下（日志会打印实际解释器路径）。
+**离线 / 自定义镜像手动安装**：
+
+```sh
+sh plugins/agents-plugin/scripts/install-crawl4ai.sh   # 独立 venv + 插件目录内 Chromium
+# 国内镜像加速示例：
+PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple sh scripts/install-crawl4ai.sh
+PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright sh scripts/install-crawl4ai.sh
+# 只补浏览器：
+CRAWL4AI_BROWSER_ONLY=1 sh scripts/install-crawl4ai.sh
+```
+
+安装后 `web_crawl` 默认走浏览器；`config.yaml → agent.kb.crawl.engine: fetch` 可强制纯 HTTP。多个插件副本时注意运行时装在**正在运行的那一份**目录下（`#抓取环境` 会打印实际解释器/浏览器路径）。已显式设置 `PLAYWRIGHT_BROWSERS_PATH` / `CRAWL4AI_BROWSERS_DIR` 时优先使用该目录，旧版装在全局缓存里的浏览器仍可继续使用。
 
 **反爬链**（`agent.kb.crawl`）：
 
@@ -22,6 +42,7 @@ PIP_INDEX_URL=https://pypi.tuna.tsinghua.edu.cn/simple sh scripts/install-crawl4
 kb:
   crawl:
     engine: crawl4ai      # crawl4ai（默认真浏览器）| fetch（纯 HTTP+cheerio）
+    autoInstall: true     # 缺少 crawl4ai/Chromium 时后台安装到插件目录（约 300-500MB）
     stealth: true         # 浏览器路径反检测（playwright-stealth + 模拟用户行为），默认开
     retryBlocked: true    # 被反爬拦截（403/CF 挑战等）时自动 undetected+stealth 强化再试一轮
     allowPrivateHosts: false  # 允许抓取本机/内网/元数据地址（防 SSRF，默认禁）

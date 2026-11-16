@@ -200,6 +200,30 @@ process.stdout.write('0.9.2\\n')
   delete process.env.PROBE_MODE
 })
 
+await test('可用性探测：Chromium 缺失判不可用（避免装完 Python 包仍白起浏览器）', async () => {
+  const stub = path.join(TMP, 'probe-browser.cjs')
+  fs.writeFileSync(stub, `#!/usr/bin/env node
+const code = process.argv.slice(2).join('\\n')
+if (code.includes('sync_playwright')) {
+  const exists = process.env.BROWSER_EXISTS === '1'
+  process.stdout.write(JSON.stringify({ path: '/tmp/fake-chrome', exists }) + '\\n')
+} else {
+  process.stdout.write('0.9.2\\n')
+}
+`)
+  fs.chmodSync(stub, 0o755)
+  resetCrawl4aiProbe()
+  process.env.BROWSER_EXISTS = '0'
+  const missing = await isCrawl4aiAvailable({ python: stub, ttl: 0 })
+  ok(!missing.ok && missing.reason === 'browser_missing', `缺浏览器 → browser_missing（实际 ${missing.reason}）`)
+  eq2(missing.version, '0.9.2', '仍带 crawl4ai 版本（诊断用）')
+  process.env.BROWSER_EXISTS = '1'
+  resetCrawl4aiProbe()
+  const ready = await isCrawl4aiAvailable({ python: stub, ttl: 0 })
+  ok(ready.ok && ready.browser === '/tmp/fake-chrome', `浏览器存在 → 可用（实际 ${JSON.stringify(ready)}）`)
+  delete process.env.BROWSER_EXISTS
+})
+
 await test('路由：crawl4ai 成功 → 不走 fetch；失败/不可用 → 降级 fetch；engine=fetch → 不启子进程', async () => {
   const calls = { c4ai: 0, fetch: 0 }
   const c4aiOk = async () => { calls.c4ai++; return { success: true, markdown: 'C4AI 正文', title: 'C4AI', via: 'crawl4ai' } }

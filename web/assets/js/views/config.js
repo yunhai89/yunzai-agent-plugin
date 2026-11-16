@@ -264,6 +264,7 @@
         if (form.kb.cuvs.rerank == null) form.kb.cuvs.rerank = 4
         if (!form.kb.crawl) form.kb.crawl = {}
         if (form.kb.crawl.engine == null) form.kb.crawl.engine = 'crawl4ai'
+        if (form.kb.crawl.autoInstall == null) form.kb.crawl.autoInstall = true
         if (form.kb.crawl.execution == null) form.kb.crawl.execution = 'local'
         if (form.kb.crawl.stealth == null) form.kb.crawl.stealth = true
         if (form.kb.crawl.retryBlocked == null) form.kb.crawl.retryBlocked = true
@@ -1945,8 +1946,12 @@
             <cfg-row full name="视觉模型" desc="已移至 模型配置（功能分配）（模型 ID / 接口 / Key）">
               <span class="mut2 mono" style="font-size:12px">{{ form.vision?.model || '(留空=复用主模型)' }}{{ form.vision?.baseURL ? ' @ ' + form.vision.baseURL : '' }}</span>
             </cfg-row>
-            <cfg-row name="网页抓取引擎" desc="crawl4ai 真浏览器渲染(未装自动降级 fetch)">
+            <cfg-row name="网页抓取引擎" desc="crawl4ai 真浏览器渲染(缺少运行时自动安装，未就绪降级 fetch)">
               <select class="sel" style="width:150px" v-model="form.kb.crawl.engine"><option v-for="o in OPT.crawlEngine" :value="o[0]">{{ o[1] }}</option></select>
+            </cfg-row>
+
+            <cfg-row name="自动安装抓取浏览器" desc="缺少 crawl4ai/Chromium 时后台装到插件目录（约 300-500MB）；关闭后可发 #抓取环境 安装">
+              <v-switch v-model="form.kb.crawl.autoInstall"/>
             </cfg-row>
 
             <cfg-row name="抓取执行面" desc="execution：local=宿主 crawl4ai 本地引擎(默认，不受沙箱模式影响)；sandbox=只在 E2B 会话沙箱内跑(需 mode=e2b+模板预装)">

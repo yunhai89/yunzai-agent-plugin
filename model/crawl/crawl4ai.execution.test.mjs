@@ -35,7 +35,13 @@ if (process.platform === 'win32') {
     const fakePython = path.join(venvDir, 'bin', 'python3')
     fs.writeFileSync(fakePython, [
       '#!/bin/sh',
-      'if [ "$1" = "-c" ]; then echo "9.9.9"; exit 0; fi',
+      'if [ "$1" = "-c" ]; then',
+      '  case "$2" in',
+      '    *sync_playwright*) echo \'{"path":"/tmp/fake-chrome","exists":true}\' ;;',
+      '    *) echo "9.9.9" ;;',
+      '  esac',
+      '  exit 0',
+      'fi',
       'echo "HOST" >> "$CRAWL_MARK"',
       'cat > /dev/null',
       `printf '%s\\n' '{"ok":true,"url":"http://93.184.216.34/","title":"宿主桩","markdown":"HOST-MARKDOWN","status_code":200}'`,

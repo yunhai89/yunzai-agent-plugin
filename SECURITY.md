@@ -41,6 +41,7 @@ https://github.com/yunhai89/yunzai-agent-plugin/security/advisories/new
 - 除非确实需要，保持 `agent.sandbox.mode: off`。开启后使用专用 E2B 账号/Key，并设置并发、单会话命令数、超时与网络白名单，避免配额和账单失控。
 - 保持 `agent.privateChat: false`，只把可信账号加入 `agent.masters`；不要给不可信群开启自动免审批（`masterSkipConfirm`）或高危工具。
 - 把群消息、引用、网页、MCP 输出、第三方工具/技能都视为不可信输入；安装外置工具或 MCP 服务端前审查其代码与权限。
+- 抓取运行时（crawl4ai + Chromium）默认会在启动时自动从 PyPI / Playwright CDN 下载并以运行 Yunzai 的用户身份执行；供应链敏感环境可设 `agent.kb.crawl.autoInstall: false`，改为审查后手动安装。
 - 怀疑密钥泄露时，及时轮换 LLM API Key、QQ 官方 AppSecret、E2B Key，并检查 `config/config.yaml`、日志和提交历史中是否残留敏感信息。
 
 更完整的内部安全边界与实现说明见 [`docs/security.md`](docs/security.md)。

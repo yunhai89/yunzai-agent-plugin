@@ -62,6 +62,7 @@ import { thinkingLogFields as fmtThinkingLogFields } from '../model/llm/thinking
 import { KnowledgeStore, makeKbSearchTool } from '../model/agent/knowledge.js'
 import { detectGpu } from '../model/agent/vector-backends.js'
 import { webCrawlTool, resetCrawl4aiProbe } from '../model/crawl/index.js' // web_crawl：抓取网页正文（常驻）
+import { getCrawlSetupStatus, startCrawl4aiInstall, formatCrawlSetupStatus } from '../model/crawl/setup.js' // 抓取环境自检/自动安装
 import { CompactionArchive } from '../model/agent/compact/archive.js' // 无损压缩：原文内容寻址归档
 import { makeContextRecallTool } from '../model/agent/compact/recall.js' // context_recall：取回归档原文
 import { groupInfoTools, groupManageTools, groupHistoryTools, groupNoticeTools, groupFileTools, aiVoiceTools, forwardTools } from '../model/group/index.js'
@@ -2030,6 +2031,7 @@ export class Chat extends plugin {
         { reg: '^#待确认$', fnc: 'pending' },
         { reg: '^#mcp$', fnc: 'mcpStatus', permission: 'master' },
         { reg: '^#沙箱诊断(?:\\s+(\\S+))?$', fnc: 'sandboxDiag', permission: 'master' },
+        { reg: '^#抓取环境(?:\\s+(\\S+))?$', fnc: 'crawlSetup', permission: 'master' },
         { reg: '^#添加[Mm][Cc][Pp]', fnc: 'addMcp', permission: 'master' },
         { reg: '^#agent重载$', fnc: 'agentsReload', permission: 'master' },
         { reg: '^#进化工具\\s+([\\s\\S]+)', fnc: 'toolEvoEvolve', permission: 'master' },
@@ -3587,6 +3589,36 @@ export class Chat extends plugin {
     } catch (e) {
       await this.e.reply(`沙箱诊断失败：${e?.message || e}`)
     }
+    return true
+  }
+
+  // —— 网页抓取环境（crawl4ai + Chromium，master）——
+  async crawlSetup() {
+    const arg = String(this.e.msg.match(/^#抓取环境(?:\s+(\S+))?$/)?.[1] || '').trim()
+    const status = await getCrawlSetupStatus()
+    if (arg === '安装' || arg === '修复') {
+      if (status.engine === 'fetch') {
+        await this.e.reply('当前抓取引擎是 fetch（纯 HTTP，不需要浏览器）。\n如需抓 SPA/JS 动态页，先把 agent.kb.crawl.engine 改为 crawl4ai。')
+        return true
+      }
+      if (status.execution === 'sandbox') {
+        await this.e.reply('当前抓取执行面是 sandbox：crawl4ai 必须预装在 agent.sandbox.template 指向的 E2B 模板内，本机安装不会生效。\n如需宿主浏览器，请把 agent.kb.crawl.execution 改回 local。')
+        return true
+      }
+      if (status.ready) { await this.e.reply('✅ 抓取环境已可用，无需安装。'); return true }
+      if (status.installing) { await this.e.reply('⏳ 抓取环境正在安装中，请稍后发 #抓取环境 查看结果。'); return true }
+      const r = await startCrawl4aiInstall({ mode: 'auto', force: arg === '修复', probeResult: status })
+      if (r.ready) { await this.e.reply('✅ 抓取环境已可用，无需安装。'); return true }
+      if (r.already) { await this.e.reply('⏳ 抓取环境正在安装中，请稍后发 #抓取环境 查看结果。'); return true }
+      if (r.error) { await this.e.reply(`❌ 无法启动安装：${r.error}`); return true }
+      await this.e.reply(`⏳ 已开始后台${r.mode === 'browser' ? '补装 Chromium' : '安装 crawl4ai + Chromium'}（约 300-500MB）。\n完成后发 #抓取环境 查看；失败会自动降级纯 HTTP。\n日志：${r.log}`)
+      return true
+    }
+    if (arg && arg !== '状态') {
+      await this.e.reply('用法：#抓取环境（查看状态）· #抓取环境 安装（首次安装）· #抓取环境 修复（忽略失败冷却重试）')
+      return true
+    }
+    await this.e.reply(formatCrawlSetupStatus(status))
     return true
   }
 

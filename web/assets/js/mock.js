@@ -178,6 +178,7 @@
       crawlEnable: true,
       crawl: {
         engine: "crawl4ai",
+        autoInstall: true,
         execution: "local",
         stealth: true,
         retryBlocked: true,
