@@ -6,6 +6,7 @@
 
 | 版本 | 内容 |
 | --- | --- |
+| **v1.51.1** | 浏览器自动化复用抓取环境：Stagehand 本地模式自动探测插件内 `.crawl4ai-browsers/`（`#抓取环境` 安装的 Chromium），探测顺序为 `executablePath` → `CHROME_PATH` / `PUPPETEER_EXECUTABLE_PATH` → 插件内 crawl4ai 浏览器（`CRAWL4AI_BROWSERS_DIR` 可覆盖）→ Puppeteer 自带/缓存 → Playwright 缓存 → 系统路径；日志会标注 `source=crawl4ai`，无需为 Stagehand 再装一份浏览器。 |
 | **v1.51.0** | 网页抓取开箱即用：启动时自动检测并后台安装 crawl4ai + Playwright Chromium（默认装到插件目录 `.crawl4ai-browsers/`；已有 crawl4ai 只缺浏览器时只补浏览器；失败 6 小时冷却并继续降级 fetch）；新增 `agent.kb.crawl.autoInstall`（默认开）与主人命令 `#抓取环境 [安装/修复]`；安装脚本默认使用项目内浏览器目录，并支持 `CRAWL4AI_BROWSER_ONLY=1` 只补浏览器。 |
 | **v1.50.0** | 工具攻击面收敛：`ToolRegistry.register` 拒绝同名覆盖并保留内置工具及其审批/沙箱 meta（工具进化上线/回滚改用显式 `replace()`）；`defineTool` 与 MCP 工具未声明 `category` 时默认 `system`（仅主人），第三方能力不再默认全员可调用；`web_crawl` 的 `js_code` / `wait_for: js:` 仅主人可用；`send_file` 远程 URL 增加 SSRF 门禁。官方机器人权限修复：统一从 `member.role`/`sender.role`/`author.member_role`/`sender.permissions` 识别群角色；`list_group_files`/`get_group_file` 改为只读 `query`，官方机器人设为群管后可正常为普通成员列/读群文件。新增工具失败能力替代：失败结果携带 `_failure`/`_alternatives`/`_next`，搜索源不可用时按 `net.search`/`net.fetch`/`net.browse` 等能力推荐 `web_crawl`/`web_extract`/浏览器等备选，`tool_search` 也支持按“联网/网页/浏览器”能力检索。 |
 | **v1.49.1** | 工具发现配置清理：确认 tools schema 已全量常驻（缓存优先），删除 `agent.toolDiscovery.*`（enable/method/alwaysOn/topK/minScore/stableList）以及 Jev 工具选择相关用户配置；Web/锅巴/默认 YAML/mock/项目介绍同步移除。`tool_search` 仅保留为目录速查，提示词改为「全量常驻、可直接调用」。 |

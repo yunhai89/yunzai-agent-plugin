@@ -1830,7 +1830,7 @@
               <input type="number" class="inp" style="width:130px" min="1" max="65535" v-model.number="form.webApi.port">
             </cfg-row>
             <cfg-row name="对外地址(可选)" desc="publicUrl：留空自动探测公网/LAN IP；填 http://1.2.3.4:6098 覆盖（本地地址固定 127.0.0.1）">
-              <input class="inp mono" style="width:250px" v-model="form.webApi.publicUrl" placeholder="留空=自动探测">
+              <input class="inp mono" style="width:250px" v-model="form.webApi.publicUrl" placeholder="留空=自动探测（含 #抓取环境 浏览器）">
             </cfg-row>
             <cfg-row name="启动时打印访问地址" desc="printTokenOnStart：启动日志打印带 token 的默认地址并写 data/web/console-url.txt。首次部署还没有协议端（发不了 #agent登录）时靠它进面板">
               <v-switch v-model="form.webApi.printTokenOnStart"/>
@@ -2262,7 +2262,7 @@
                 <input type="number" class="inp" style="width:110px" min="1" v-model.number="form.stagehand.maxCallsPerDay">
               </cfg-row>
               <cfg-row name="chrome 路径(本地,可选)" desc="空=默认/CHROME_PATH；可填复用已装 chrome">
-                <input class="inp mono" style="width:200px" v-model="form.stagehand.executablePath" placeholder="留空=自动探测">
+                <input class="inp mono" style="width:200px" v-model="form.stagehand.executablePath" placeholder="留空=自动探测（含 #抓取环境 浏览器）">
               </cfg-row>
               <cfg-row name="Browserbase apiKey" desc="云模式必填（bb_live_...）">
                 <input class="inp mono" style="width:200px" v-model="form.stagehand.browserbaseApiKey" placeholder="bb_live_...">

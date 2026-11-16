@@ -13,6 +13,7 @@
 - 安装期间 `web_crawl` 仍可用（先走纯 HTTP）；完成后自动生效，无需重启。
 - 失败不会阻塞启动，会继续降级 fetch；默认 6 小时内不自动重试，避免无网络环境反复下载。
 - 关闭自动安装：`agent.kb.crawl.autoInstall: false`。
+- **Stagehand 复用**：`agent.stagehand.enable=true` 且本地模式时，会自动探测并使用这里安装的 Chromium（日志 `source=crawl4ai`），不需要再装一份浏览器。
 - Windows 下自动安装器不运行（脚本依赖 POSIX `sh`）；建议用 WSL/容器，或手动安装后通过 `CRAWL4AI_VENV` / `CRAWL4AI_BROWSERS_DIR` 指向现成目录。
 
 **查看 / 手动修复**（主人）：

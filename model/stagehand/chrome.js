@@ -18,6 +18,11 @@
 import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+
+// 插件内 crawl4ai 自动安装的 Playwright 浏览器（与 web_crawl 共用，避免 Stagehand 再装一份）。
+const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..')
+const LOCAL_BROWSERS_DIR = path.join(PLUGIN_ROOT, '.crawl4ai-browsers')
 
 /** 常见系统安装路径（Linux/macOS/Windows） */
 const SYSTEM_CANDIDATES = [
@@ -161,9 +166,30 @@ async function cacheCandidates(home, env = {}) {
 }
 
 /**
+ * 插件内 crawl4ai 自动安装的 Chromium（与 web_crawl 共用）。
+ * 显式 CRAWL4AI_BROWSERS_DIR 优先；测试可通过 opts.localCrawl4aiDir 注入临时目录。
+ */
+async function localBrowserCandidates(env = {}, opts = {}) {
+  const roots = []
+  // 测试注入时覆盖默认插件目录，避免开发机已安装的浏览器影响用例。
+  if (opts.localCrawl4aiDir !== undefined) {
+    if (opts.localCrawl4aiDir) roots.push(opts.localCrawl4aiDir)
+  } else {
+    roots.push(LOCAL_BROWSERS_DIR)
+  }
+  const envDir = String(env.CRAWL4AI_BROWSERS_DIR || '').trim()
+  if (envDir) roots.push(envDir)
+  const out = []
+  for (const root of roots) {
+    for (const revDir of await listDirs(root, /^chromium-/)) out.push(...playwrightLayout(revDir))
+  }
+  return out
+}
+
+/**
  * 解析可用的 Chrome/Chromium 可执行文件。
  * @param {object} cfg agent.stagehand 配置
- * @param {object} [opts] 测试注入：{ env, home, puppeteerLoader, systemCandidates }
+ * @param {object} [opts] 测试注入：{ env, home, puppeteerLoader, systemCandidates, localCrawl4aiDir }
  * @returns {Promise<{path:string, source:string}|null>}
  */
 export async function resolveChromeExecutable(cfg = {}, opts = {}) {
@@ -181,16 +207,21 @@ export async function resolveChromeExecutable(cfg = {}, opts = {}) {
     if (v && await isFile(v)) return { path: v, source: `env:${key}` }
   }
 
-  // 3) Puppeteer 自带 Chromium（Yunzai 场景最常见）
+  // 3) 插件内 crawl4ai 自动安装的 Chromium（#抓取环境 装好后 Stagehand 直接复用）
+  for (const p of await localBrowserCandidates(env, opts)) {
+    if (await isFile(p)) return { path: p, source: 'crawl4ai' }
+  }
+
+  // 4) Puppeteer 自带 Chromium（Yunzai 场景最常见）
   const pp = await puppeteerExecutable(opts.puppeteerLoader)
   if (pp && await isFile(pp)) return { path: pp, source: 'puppeteer' }
 
-  // 4) Puppeteer / Playwright 缓存
+  // 5) Puppeteer / Playwright 缓存
   for (const p of await cacheCandidates(home, env)) {
     if (await isFile(p)) return { path: p, source: 'cache' }
   }
 
-  // 5) 常见系统安装路径
+  // 6) 常见系统安装路径
   for (const p of (opts.systemCandidates || SYSTEM_CANDIDATES)) {
     if (await isFile(p)) return { path: p, source: 'system' }
   }
@@ -203,8 +234,8 @@ export function missingChromeMessage(configuredPath = '') {
     '未找到可用的 Chrome/Chromium（Stagehand 本地模式需要）',
     configuredPath
       ? `· 配置的 agent.stagehand.executablePath 不存在或不可执行：${configuredPath}`
-      : '· 依次探测：executablePath → CHROME_PATH/PUPPETEER_EXECUTABLE_PATH → Puppeteer 自带 Chromium → ~/.cache/puppeteer、~/.cache/ms-playwright → 系统常见路径',
-    '· 安装示例：apt install -y chromium（Debian/Ubuntu）｜yum install -y chromium（CentOS）',
+      : '· 依次探测：executablePath → CHROME_PATH/PUPPETEER_EXECUTABLE_PATH → 插件内 crawl4ai Chromium（.crawl4ai-browsers）→ Puppeteer 自带 Chromium → ~/.cache/puppeteer、~/.cache/ms-playwright → 系统常见路径',
+    '· 安装示例：发 #抓取环境 安装（与网页抓取共用浏览器），或 apt install -y chromium（Debian/Ubuntu）｜yum install -y chromium（CentOS）',
     '· 或执行：npx puppeteer browsers install chrome（装到当前用户缓存，本插件会自动发现）',
     '· 或显式配置：agent.stagehand.executablePath（如 /usr/bin/chromium），或设置环境变量 CHROME_PATH',
     '· 不想用本地浏览器：agent.stagehand.mode: cloud + browserbaseApiKey（Browserbase 云端）',
