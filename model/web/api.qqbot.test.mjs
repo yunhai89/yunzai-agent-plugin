@@ -24,6 +24,7 @@ function eq(a, b, m) { const A = JSON.stringify(a), B = JSON.stringify(b); ok(A 
 
 // ── 桩适配器：记录调用，status() 返回配置里的账号状态 ─────────────────
 const calls = []
+const failures = []
 const fakeAdapter = {
   status() {
     return (Config.get().agent?.qqBot?.accounts || []).map((a) => ({
@@ -37,6 +38,7 @@ const fakeAdapter = {
       reconnectAttempts: 0,
     }))
   },
+  failures() { return failures.slice() },
   async connect(account) { calls.push(['connect', account.appId]) },
   disconnect(appId) { calls.push(['disconnect', appId]) },
   stopAll() { calls.push(['stopAll']) },
@@ -150,7 +152,22 @@ try {
     eq([st.body.data.ready, st.body.data.accounts.length], [true, 2], '原始状态接口')
   }
 
-  console.log('\n[6] 扁平配置 → 写操作迁移为 accounts[]')
+  console.log('\n[6] 启动期连接失败：状态带 lastError/errorReason')
+  {
+    failures.length = 0
+    setQQBot({ enable: true, accounts: [{ appId: '1003', appSecret: 'BAD', name: '坏号' }] })
+    failures.push({ appId: '1003', name: '坏号', reason: 'start_failed', message: 'token 401：appid/appsecret 不匹配', at: Date.now() })
+    let r = await get('/api/qqbot')
+    let a = r.body.data.accounts[0]
+    eq([a.status.lastError, a.status.errorReason], ['token 401：appid/appsecret 不匹配', 'start_failed'], '失败原因透传到账号状态')
+    eq(r.body.data.connected, 0, '失败账号不计入已连接')
+    failures.length = 0
+    r = await get('/api/qqbot')
+    a = r.body.data.accounts[0]
+    eq(a.status.lastError, undefined, '失败记录清空后不再显示')
+  }
+
+  console.log('\n[7] 扁平配置 → 写操作迁移为 accounts[]')
   {
     setQQBot({ enable: true, appId: '3001', appSecret: 'FLAT_SECRET', name: '扁平号' })
     let r = await get('/api/qqbot')
@@ -162,7 +179,7 @@ try {
     eq(Config.get().agent.qqBot.accounts.find((a) => a.appId === '3001').appSecret, 'FLAT_SECRET', '迁移保留原密钥')
   }
 
-  console.log('\n[7] DELETE 删除账号')
+  console.log('\n[8] DELETE 删除账号')
   {
     calls.length = 0
     let r = await del('/api/qqbot/accounts/3002')

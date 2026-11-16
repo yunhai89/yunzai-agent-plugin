@@ -64,6 +64,30 @@ async function qqbotStatusMap() {
   if (!adapter) return map
   try {
     for (const s of adapter.status?.() || []) map[String(s.appId)] = s
+    // status() 只含仍在 clients 里的账号：启动期 token/网关失败的账号已被删除，
+    // 这里补上最近一次失败原因，Web 面板才能解释「已连接 0/N」而不是只显示未连接。
+    for (const f of adapter.failures?.() || []) {
+      const id = String(f.appId)
+      const cur = map[id]
+      if (cur) {
+        if (!(cur.connected || cur.state === 'ready')) {
+          cur.lastError = f.message
+          cur.errorReason = f.reason
+          cur.errorAt = f.at
+        }
+      } else {
+        map[id] = {
+          appId: id,
+          name: f.name || id,
+          connected: false,
+          connectedAt: null,
+          state: 'failed',
+          reason: f.reason || 'start_failed',
+          lastError: f.message,
+          errorAt: f.at,
+        }
+      }
+    }
   } catch { /* 适配器状态异常不影响账号列表 */ }
   return map
 }

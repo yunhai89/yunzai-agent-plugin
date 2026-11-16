@@ -141,6 +141,26 @@ console.log('\n[3] 连接：注册 Bot[id] + pickFriend/pickGroup/pickMember')
   adapter.stopAll()
 }
 
+console.log('\n[3.1] 启动期失败：errors/failures 记录原因（Web 面板 0/N 的解释来源）')
+{
+  __setConfig({ agent: { qqBot: { enable: true, accounts: [{ appId: 'BAD1', appSecret: 'S', name: '坏号' }, { appId: 'OK1', appSecret: 'S', name: '好号' }] } } })
+  const adapter = createQQBotAdapter({
+    clientFactory: (account) => {
+      const c = new FakeClient(account)
+      if (account.appId === 'BAD1') c.start = async function () { throw new Error('token 401：appid/appsecret 不匹配') }
+      return c
+    },
+  })
+  await adapter.load()
+  eq(adapter.clients.size, 1, '启动失败账号不残留在 clients')
+  eq(adapter.failures().map((f) => [f.appId, f.reason]), [['BAD1', 'start_failed']], 'failures 记录失败 appId 与原因')
+  ok(/appsecret 不匹配/.test(adapter.failures()[0].message), 'failures 保留原始错误信息')
+  eq(adapter.status().map((s) => s.appId), ['OK1'], 'status 仍只列成功账号')
+  adapter.disconnect('BAD1')
+  eq(adapter.failures().length, 0, 'disconnect 清掉失败记录')
+  adapter.stopAll()
+}
+
 console.log('\n[4] 事件归一化：群 / 私聊 / 频道 / 按钮')
 {
   __setConfig({ agent: { qqBot: { enable: true, accounts: [{ appId: 'APP2', appSecret: 'SEC2', name: '二号' }] } } })

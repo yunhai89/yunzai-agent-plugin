@@ -4,10 +4,10 @@
 
   const STATUS_CN = {
     ready: '已连接', open: '已连接', connecting: '连接中', connecting_retry: '重连中',
-    closed: '已关闭', stopped: '已停止', idle: '未连接', auth_failed: '鉴权失败',
+    closed: '已关闭', stopped: '已停止', idle: '未连接', auth_failed: '鉴权失败', failed: '连接失败',
   }
   const STATUS_CLASS = {
-    ready: 'p-green', open: 'p-green', connecting: 'p-honey', closed: 'p-rose', stopped: 'p-mute', idle: 'p-mute', auth_failed: 'p-rose',
+    ready: 'p-green', open: 'p-green', connecting: 'p-honey', closed: 'p-rose', stopped: 'p-mute', idle: 'p-mute', auth_failed: 'p-rose', failed: 'p-rose',
   }
 
   /* 行容器（与 humanize/groupworld/sticker 同：共享实现见 components.js UI.makeCfgRow） */
@@ -280,6 +280,9 @@
             <div v-if="a.status && a.status.lastClose && a.status.lastClose.code">
               最近断开：code {{ a.status.lastClose.code }}<span v-if="a.status.lastClose.reason">（{{ a.status.lastClose.reason }}）</span>
               <span v-if="a.status.reconnectAttempts"> · 重连次数 {{ a.status.reconnectAttempts }}</span>
+            </div>
+            <div v-if="a.status && a.status.lastError" style="color:var(--rose)">
+              最近错误：{{ a.status.lastError }}
             </div>
           </div>
 

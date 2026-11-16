@@ -118,10 +118,13 @@ export function createQQBotAdapter({ clientFactory = null, bot = null, config = 
     /** @type {Map<string, {guildId:string, at:number}>} `${appId}:${openid}` → 频道私信会话 */
     _dmCache: new Map(),
     _inflight: null,
+    /** @type {Map<string, {name:string, reason:string, message:string, at:number}>} appId → 最近一次连接失败（失败账号会从 clients 删除，Web 面板靠这里解释 0/N） */
+    errors: new Map(),
 
     /** 框架 Listener 阶段调用：读配置并连接所有账号 */
     async load() {
       const accounts = normalizeAccounts(getCfg())
+      adapter.errors.clear()
       if (!accounts.length) {
         log('debug', '[qqbot] 未配置 agent.qqBot 账号（enable=false 或缺少 appId/appSecret），适配器不启动')
         return
@@ -135,7 +138,15 @@ export function createQQBotAdapter({ clientFactory = null, bot = null, config = 
         }
         await new Promise((r) => setTimeout(r, 1000))
       }
-      log('mark', `[qqbot] 适配器就绪：${adapter.clients.size}/${accounts.length} 个账号`)
+      const connected = [...adapter.clients.values()].filter((e) => e.connectedAt).length
+      const failed = accounts
+        .map((a) => ({ name: a.name, err: adapter.errors.get(a.appId) }))
+        .filter((x) => x.err)
+      const first = failed[0]
+      const detail = first
+        ? `，${failed.length} 个失败：${first.name}${first.err.message ? `（${String(first.err.message).slice(0, 120)}）` : ''}`
+        : ''
+      log(first ? 'warn' : 'mark', `[qqbot] 适配器就绪：${connected}/${accounts.length} 个账号${detail}`)
     },
 
     /** 连接单个账号（可重入：已连接则先停旧） */
@@ -143,6 +154,7 @@ export function createQQBotAdapter({ clientFactory = null, bot = null, config = 
       const B = getBot()
       if (!B) throw new Error('Bot 全局不存在（需在 Yunzai 环境运行）')
       const appId = account.appId
+      adapter.errors.delete(appId)
       if (adapter.clients.has(appId)) adapter.disconnect(appId)
 
       const client = clientFactory
@@ -182,6 +194,12 @@ export function createQQBotAdapter({ clientFactory = null, bot = null, config = 
         // token 获取失败等启动期错误：清掉半初始化 client（否则 clients 表残留、状态查询误导）
         try { client.stop?.() } catch { /* noop */ }
         adapter.clients.delete(appId)
+        adapter.errors.set(appId, {
+          name: account.name,
+          reason: 'start_failed',
+          message: e?.message || String(e),
+          at: Date.now(),
+        })
         throw e
       }
       // 等 READY（最多 20s）；失败仍保留客户端由网关自行重连
@@ -196,14 +214,27 @@ export function createQQBotAdapter({ clientFactory = null, bot = null, config = 
       if (!entry.connectedAt) {
         const st = client.status?.() || {}
         if (st.reason === 'invalid_intents') {
+          adapter.errors.set(appId, {
+            name: account.name,
+            reason: 'invalid_intents',
+            message: st.hint || 'intents 不被平台接受',
+            at: Date.now(),
+          })
           log('error', '[qqbot] 连接失败：intents 不被平台接受，已停止重连', appId, st.hint || '')
         } else if (st.state === 'closed') {
+          adapter.errors.set(appId, {
+            name: account.name,
+            reason: st.reason || 'closed',
+            message: st.hint || st.reason || (st.lastClose?.code ? `网关关闭（code ${st.lastClose.code}）` : '连接已关闭'),
+            at: Date.now(),
+          })
           log('error', '[qqbot] 连接失败', appId, st.hint || st.reason || st.lastClose?.code || '')
         } else {
           log('warn', '[qqbot] 连接尚未就绪（网关会在后台继续重连）', appId)
         }
         return false
       }
+      adapter.errors.delete(appId)
       adapter._attachBot(appId, entry)
       return true
     },
@@ -211,6 +242,7 @@ export function createQQBotAdapter({ clientFactory = null, bot = null, config = 
     /** 断线/停用单个账号 */
     disconnect(appId) {
       const entry = adapter.clients.get(appId)
+      adapter.errors.delete(appId)
       if (!entry) return
       entry._aborted = true // connect() 的等待循环 / 迟到 READY 据此放弃挂载
       try { entry.client.stop?.() } catch { /* noop */ }
@@ -244,6 +276,17 @@ export function createQQBotAdapter({ clientFactory = null, bot = null, config = 
         })
       }
       return out
+    },
+
+    /** 最近一次连接失败（status() 只列仍在 clients 里的账号，启动期失败/已清理的账号靠这里解释） */
+    failures() {
+      return [...adapter.errors].map(([appId, e]) => ({
+        appId,
+        name: e.name || appId,
+        reason: e.reason || 'start_failed',
+        message: e.message || '',
+        at: e.at || 0,
+      }))
     },
 
     /** 把 client 挂进 Bot[id]，并提供兼容原生适配器的 pickFriend/pickGroup/pickMember 等 */

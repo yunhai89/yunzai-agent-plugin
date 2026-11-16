@@ -478,13 +478,60 @@
         delete changes['agent.debug']
         if ((origSnapshot?.debug === true) !== (form.debug === true)) changes.debug = form.debug === true
         if (!Object.keys(changes).length) { toast('无改动', 'warn'); return }
+        // QQBot 适配器不订阅配置热加载：改了 agent.qqBot.* 只写盘，正在跑的适配器不会自动重连，
+        // 别再笼统提示「已热加载」——直接把「接下来点哪里」告诉用户。
+        const qqChanged = Object.keys(changes).some((p) => p === 'agent.qqBot' || p.startsWith('agent.qqBot.'))
         try {
           await window.api.put('/config', { changes })
           await window.store.loadConfig()
           if (M.config) syncForm(JSON.parse(JSON.stringify(M.config)))
-          toast('已保存(已热加载)', 'success')
+          if (qqChanged) {
+            toast(qqStatus.value?.adapterReady
+              ? '已保存；点卡片内「重连全部」（或重启 Yunzai）后 QQBot 配置生效'
+              : '已保存；当前 Web 服务未运行 QQBot 适配器，重启 Yunzai 后生效', 'success')
+            loadQQStatus()
+          } else {
+            toast('已保存(已热加载)', 'success')
+          }
         } catch (e) { toast(e.message, 'error') }
       }
+
+      /* QQ 官方机器人运行状态：本卡只负责写 agent.qqBot.*，适配器是否在跑、账号是否连上要看 /qqbot。
+         之前没有任何反馈，用户只能去控制台看「[qqbot] 适配器就绪：0/1 个账号」。 */
+      const qqStatus = ref(null)
+      const qqStatusError = ref('')
+      const qqBusy = ref(false)
+      const qqEnableChanged = computed(() => (form.qqBot?.enable === true) !== (origSnapshot?.qqBot?.enable === true))
+      const loadQQStatus = async () => {
+        try {
+          qqStatus.value = await window.api.get('/qqbot')
+          qqStatusError.value = ''
+        } catch (e) { qqStatusError.value = e?.message || '状态读取失败' }
+      }
+      const reloadQQBot = async () => {
+        qqBusy.value = true
+        try {
+          await window.api.post('/qqbot/reload')
+          toast('已按当前配置重连 QQBot 账号', 'success')
+        } catch (e) { toast(e.message, 'error') }
+        finally {
+          qqBusy.value = false
+          setTimeout(loadQQStatus, 1200)
+        }
+      }
+      const gotoQQBot = () => { location.hash = '#/qqbot' }
+      const qqPillClass = computed(() => {
+        const s = qqStatus.value
+        if (!s || !s.adapterReady || !s.total) return 'p-mute'
+        if (s.connected >= s.total) return 'p-green'
+        if (s.connected > 0) return 'p-honey'
+        return 'p-rose'
+      })
+      const qqFailed = computed(() => (qqStatus.value?.accounts || [])
+        .filter((a) => a.status && !(a.status.connected || a.status.state === 'ready')
+          && (a.status.state === 'failed' || a.status.lastError))
+        .map((a) => ({ appId: a.appId, name: a.name, st: a.status })))
+
       const reset = () => {
         // 第 6 轮审计：不能只做 Object.assign —— 那会丢掉 MCP 的 UI 专用键（_type/_json/_url/_headersText）
         // 与各子对象兜底，随后保存时 mcpServersFromUi 会按缺失的 _type 走 http 分支，
@@ -733,6 +780,7 @@
           window.store.loadTools().catch(() => {}) // 工具列表（失败不阻塞配置加载）
           window.store.loadPersonas().catch(() => {}) // 默认人设下拉（失败不阻塞）
         } catch (e) { loadError.value = e?.message || String(e); toast(e.message, 'error') }
+        loadQQStatus() // QQ 官方机器人卡的系统状态（独立查询，失败静默）
       })
       onUnmounted(() => {
         window.removeEventListener('scroll', onScroll)
@@ -1070,6 +1118,7 @@
 
       return {
         form, dirty, save, reset, sections, open, activeSec, jump, OPT, updateJson, adv, loadError, formReady, sandboxEgressWarn,
+        qqStatus, qqStatusError, qqBusy, qqEnableChanged, qqFailed, qqPillClass, loadQQStatus, reloadQQBot, gotoQQBot,
         webUrl, webUrlLoading, loadWebUrl, copyWebUrl,
         addFallback, delFallback, masterInput, addMaster, delMaster,
         mcpServersToUi, delMcp, mcpModal, openNewMcp, confirmNewMcp,
@@ -1651,6 +1700,35 @@
                 连接后也可用 <code>#qqbot状态</code> / <code>#qqbot重连</code> 排查。
               </div>
             </div>
+            <!-- 运行状态反馈：本卡只管写字段，适配器是否运行/账号是否连上由 /qqbot 实时返回 -->
+            <div v-if="qqStatus" class="full qq-live" style="padding:10px 12px;border:1px dashed var(--line);border-radius:10px;margin:0 0 6px">
+              <div class="row g6 wrap">
+                <span class="pill" :class="qqStatus.adapterReady ? 'p-green' : 'p-mute'">适配器{{ qqStatus.adapterReady ? '已加载' : '未初始化' }}</span>
+                <span class="pill" :class="qqStatus.enable ? 'p-sky' : 'p-mute'">配置开关：{{ qqStatus.enable ? '开' : '关' }}</span>
+                <span class="pill" :class="qqPillClass">已连接 {{ qqStatus.connected }} / {{ qqStatus.total }}</span>
+                <span v-if="qqEnableChanged" class="pill p-honey">开关已修改，保存后生效</span>
+              </div>
+              <div class="mut2" style="font-size:12px;line-height:1.75;margin-top:7px">
+                <template v-if="!qqStatus.adapterReady">当前 Web 服务未运行 QQBot 适配器（独立 Web 服务只读配置）：保存后重启 Yunzai 生效。</template>
+                <template v-else-if="!qqStatus.enable">配置开关已关闭；点「重连全部」或重启 Yunzai 后，正在连接的账号才会停止。</template>
+                <template v-else-if="!qqStatus.total">尚未配置账号：填 AppID + AppSecret 保存，或到「机器人账号」页添加。</template>
+                <template v-else-if="qqStatus.connected >= qqStatus.total">全部账号已连接。</template>
+                <template v-else>有账号未连接：看下方失败原因，或点「重连全部」重试；控制台也会打印 <code>[qqbot]</code> 失败详情。</template>
+              </div>
+              <div v-for="f in qqFailed" :key="f.appId" class="mut2" style="font-size:12px;line-height:1.7;color:var(--rose)">
+                · {{ f.name }}（{{ f.appId }}）：{{ f.st.lastError || f.st.reason || '连接失败' }}
+              </div>
+              <div class="row g6 wrap" style="margin-top:8px">
+                <button v-if="qqStatus.adapterReady && qqStatus.total && (qqStatus.enable || qqStatus.connected > 0)" class="btn b-line b-sm" :disabled="qqBusy" @click="reloadQQBot"><v-icon name="refresh"/>{{ qqBusy ? '重连中…' : '重连全部' }}</button>
+                <button class="btn b-line b-sm" @click="gotoQQBot"><v-icon name="bot"/>账号与排障</button>
+                <button class="btn b-line b-sm" :disabled="qqBusy" @click="loadQQStatus"><v-icon name="refresh"/>刷新状态</button>
+              </div>
+            </div>
+            <div v-else-if="qqStatusError" class="full mut2" style="font-size:12px;padding:0 2px 6px">
+              运行状态读取失败：{{ qqStatusError }}
+              <button class="btn b-line b-sm" style="margin-left:8px" @click="loadQQStatus">重试</button>
+            </div>
+            <div v-else class="full mut2" style="font-size:12px;padding:0 2px 6px">正在读取 QQBot 运行状态…</div>
             <cfg-row name="启用自实现适配器" desc="qqBot.enable：本插件直接连 QQ 官方网关（WebSocket）">
               <v-switch v-model="form.qqBot.enable"/>
             </cfg-row>
