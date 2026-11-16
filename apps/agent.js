@@ -2089,7 +2089,10 @@ export class Chat extends plugin {
         // —— QQ 官方机器人协议排障：ID 与上下文 ——
         // 官方机器人返回的是 openid（<self_id>:<openid> / qg_...），不是 QQ 号/群号；
         // 这两个指令打印「可直接粘贴进配置」的原始 ID，避免按 QQ 号配置后静默不生效。
-        // TRSS 默认把行首 `/` 转成 `#`（config.bot["/→#"]=true），两种写法都要认
+        // TRSS 默认把行首 `/` 转成 `#`（config.bot["/→#"]=true），两种写法都要认。
+        // 与喵喵/原神插件的 #uid（priority 300）重名：官方协议下由 accept 抢先接管，
+        // 普通协议让给喵喵；#uidinfo 是本插件的无冲突别名。
+        { reg: '^\\s*[#/]\\s*uidinfo\\s*$', fnc: 'showUid' },
         { reg: '^\\s*[#/]\\s*uid\\s*$', fnc: 'showUid' },
         { reg: '^\\s*[#/]\\s*groupid\\s*$', fnc: 'showGroupId' },
         // —— 在线自进化：审阅 / 采纳 / 拒绝 / 回滚（主人）——
@@ -3326,6 +3329,24 @@ export class Chat extends plugin {
     // 群聊反馈本身也可能失败：显式 catch 并落日志，不静默
     try { await this.e.reply(lines.join('\n')) } catch (e) { Log.error('[reportBug] 群聊反馈发送失败', e?.message || e) }
     return true
+  }
+
+  // —— 命令优先级兜底 ——
+  /**
+   * accept 在所有插件规则之前执行，用来解决 `/uid` 被喵喵/原神插件的 #uid
+   * （priority 300，先于本插件 9999）抢先处理的问题：官方机器人下必须由本插件
+   * 打印 openid；普通协议则交回喵喵，避免抢它的指令。
+   *
+   * 官方协议判断不依赖命令前缀（TRSS 默认把行首 `/` 转成 `#`），只认适配器/ID 形态。
+   */
+  async accept() {
+    const msg = String(this.e?.msg || '').trim()
+    if (!/^[#/]\s*uid\s*$/i.test(msg)) return
+    let official = false
+    try { official = !!describeQQContext(this.e).official } catch { /* 取不到上下文时不拦，交给普通规则 */ }
+    if (!official) return
+    await this.showUid()
+    return 'return'
   }
 
   // —— QQ 官方机器人：ID / 上下文诊断 ——

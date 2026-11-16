@@ -160,6 +160,26 @@ console.log('\n[4] /uid 与 /groupid')
   ok(out.includes('U_OPENID') && out.includes('QQ 官方机器人'), '/uid 标注去前缀 ID 与协议类型')
   ok(out.includes('scopeId'), '/uid 给出 scopeId')
 
+  // 与喵喵/原神插件的 #uid（priority 300）重名：官方协议必须在 accept 阶段抢回，避免被对方吞掉
+  const acc = officialGroupEvent({ msg: '#uid' })
+  const accBot = new Chat({})
+  accBot.e = acc.evt
+  const accRet = await accBot.accept()
+  ok(accRet === 'return', '官方协议 #uid 由 accept 接管并终止后续插件')
+  ok(String(textsOf(acc.calls).pop() || '').includes(`${SELF}:U_OPENID`), 'accept 接管后仍打印完整 user_id')
+
+  // 非官方协议不拦：#uid 应让给喵喵插件（此处只验证本插件不回复）
+  const plainCalls = []
+  const plainBot = new Chat({})
+  plainBot.e = {
+    self_id: SELF, adapter_id: 'ICQQ', adapter_name: 'ICQQ', isGroup: true,
+    group_id: '123456', user_id: '987654321', msg: '#uid', sender: { nickname: '测试' },
+    reply: async (...args) => { plainCalls.push(args); return { message_id: ['x'], data: [{}], error: [] } },
+  }
+  const plainRet = await plainBot.accept()
+  ok(plainRet !== 'return', '非官方协议 #uid 不拦截（交回喵喵插件）')
+  ok(plainCalls.length === 0, '非官方协议 #uid 不产生回复')
+
   const g = officialGroupEvent({ msg: '/groupid' })
   const bot2 = new Chat({})
   bot2.e = g.evt
