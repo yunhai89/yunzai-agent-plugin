@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import plugin from '../../../lib/plugins/plugin.js'
+import { isEventMaster } from '../model/qqofficial/guard.js'
 
 let uping = false
 
@@ -40,7 +41,7 @@ export class AgentsUpdate extends plugin {
   }
 
   async update() {
-    if (!this.e.isMaster) {
+    if (!isEventMaster(this.e)) {
       await this.reply('仅主人可用此指令')
       return false
     }
@@ -128,7 +129,7 @@ export class AgentsUpdate extends plugin {
   }
 
   async pluginVersion() {
-    if (!this.e.isMaster) return false
+    if (!isEventMaster(this.e)) return false
     const branch = (await this.getBranch()) || '?'
     const head = await this.getCommitId()
     const time = await this.getTime()
@@ -137,7 +138,7 @@ export class AgentsUpdate extends plugin {
   }
 
   async updateLog() {
-    if (!this.e.isMaster) return false
+    if (!isEventMaster(this.e)) return false
     const branch = await this.getBranch()
     const entries = await this.getLogEntries()
     if (!entries.length) { await this.reply('暂无更新日志'); return true }

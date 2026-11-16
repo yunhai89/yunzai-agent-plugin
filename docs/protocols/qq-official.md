@@ -140,10 +140,12 @@ scopeId：g1024-G_OPENID_u1024-U_OPENID
 ### 主人配置（官方机器人必看）
 
 框架的 `permission: 'master'` 用 `e.user_id` 比对主人列表，而官方 `user_id` 是 `1024:U_OPENID` 这种形态，**填 QQ 号永远匹配不上**，表现为所有主人指令回「暂无权限」。
-本插件已把规则级 master 校验下沉到插件内，两种方式任选：
+本插件已把主人判定统一下沉到插件内（规则级 master 与直读 `e.isMaster` 的指令，如 `#更新`、`#研究`、`#审批`、`#表情包状态` 等），两种方式任选：
 
 1. **插件内（推荐）**：把 `/uid` 的「完整 user_id」或「去前缀 ID」加入 `agent.masters`（Web 配置中心 / 锅巴 panel / yaml 均可；Web「主人列表」输入框已支持直接粘贴 `807AC…` 这类 openid）。官方机器人下 `agent.masters` 同时用于审批通知与主人权限。
-2. **框架层**：把同样的值加入 Yunzai 的 `config/config.yaml` → `master`（按 `self_id` 分组的列表）。
+   - 匹配大小写不敏感、忽略首尾空白；`1024:807AC…`、`807AC…`、`qg_807AC…` 三种写法都能命中。
+   - 改完保存即热加载，无需重启框架。
+2. **框架层**：框架按 `master[self_id]` 列表比对 `String(e.user_id)`，因此必须填**完整 user_id**（`1024:807AC…` 或 `qg_807AC…`），裸 openid 不会命中。
 
 ### Markdown 直发（默认开）
 

@@ -19,6 +19,7 @@ import { DeepResearch, buildResearchHtml, safeFilename, splitMessage } from '../
 import { createSearchManager } from '../model/search/index.js'
 import { renderPdf, renderHd, screenshot } from './render.js'
 import { getRuntime } from './agent.js'
+import { isEventMaster } from '../model/qqofficial/guard.js'
 
 const MAX_SEG = 1800 // 单段文本字符上限（QQ 消息长度安全阈值）
 
@@ -47,7 +48,7 @@ export class Research extends plugin {
   async research() {
     const cfg = Config.get().agent || {}
     const perm = cfg.research?.permission || 'master'
-    if (perm === 'master' && !this.e.isMaster) {
+    if (perm === 'master' && !isEventMaster(this.e)) {
       await this.e.reply('深度研究默认仅主人可用（配置 agent.research.permission: all 可放开）')
       return true
     }

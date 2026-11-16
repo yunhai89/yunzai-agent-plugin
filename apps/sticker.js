@@ -1,5 +1,6 @@
 import plugin from '../../../lib/plugins/plugin.js'
 import { getStickerManager } from '../model/sticker/manager.js'
+import { isEventMaster } from '../model/qqofficial/guard.js'
 
 /**
  * 表情包管理指令（仅主人）。
@@ -25,13 +26,13 @@ export class StickerCmd extends plugin {
   }
 
   async status() {
-    if (!this.e.isMaster) return false
+    if (!isEventMaster(this.e)) return false
     await this.reply(getStickerManager().status())
     return true
   }
 
   async enable() {
-    if (!this.e.isMaster) return false
+    if (!isEventMaster(this.e)) return false
     const m = getStickerManager()
     m.setEnable(true)
     await this.reply(m.enabled() ? '✅ 表情包已开启' : '✅ 表情包已开启（库为空：开启自动发现 sticker.autoDiscover + 配置 agent.vision.model 后，群内表情会自动入库）')
@@ -39,7 +40,7 @@ export class StickerCmd extends plugin {
   }
 
   async disable() {
-    if (!this.e.isMaster) return false
+    if (!isEventMaster(this.e)) return false
     getStickerManager().setEnable(false)
     await this.reply('✅ 表情包已关闭（模型不再附带表情包）')
     return true

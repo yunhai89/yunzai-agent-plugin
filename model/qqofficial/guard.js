@@ -27,14 +27,32 @@ export function isOfficialMaster(e, cfg = null) {
   const adapter = detectAdapter(e)
   if (!adapter.official) return false
   const agentCfg = (cfg?.agent ? cfg.agent : cfg) || Config.get()?.agent || {}
-  const masters = Array.isArray(agentCfg?.masters) ? agentCfg.masters.map((m) => String(m).trim()).filter(Boolean) : []
+  // 容错：masters 正常是数组；手改 yaml 写成字符串（"807AC…"/"123,456"）时也按分隔符拆开，
+  // 避免「明明填了却被当成空列表」。
+  const rawMasters = agentCfg?.masters
+  const masters = (Array.isArray(rawMasters)
+    ? rawMasters
+    : typeof rawMasters === 'string' ? rawMasters.split(/[\s,，、]+/) : [])
+    .map((m) => String(m).trim()).filter(Boolean)
   if (!masters.length) return false
   const full = String(e?.user_id ?? '')
   let raw = full
   const selfId = String(e?.self_id || e?.bot?.uin || '')
   if (selfId && raw.startsWith(`${selfId}:`)) raw = raw.slice(selfId.length + 1)
   if (raw.startsWith('qg_')) raw = raw.slice(3)
-  return (full && masters.includes(full)) || (raw && masters.includes(raw))
+  // 大小写不敏感：openid 是十六进制字符串，面板/手填常见大小写混用；QQ 号不受影响。
+  const norm = (x) => String(x).toLowerCase()
+  const set = new Set(masters.map(norm))
+  return (full && set.has(norm(full))) || (raw && set.has(norm(raw)))
+}
+
+/**
+ * 统一的「事件级主人判定」：官方机器人下看 agent.masters（支持完整/去前缀 openid），
+ * 其余协议仍等同框架 e.isMaster。供各 app 的 `if (!this.e.isMaster)` 直接替换，
+ * 否则官方机器人下即使配了 masters，直读 e.isMaster 的指令仍会被拒。
+ */
+export function isEventMaster(e, cfg = null) {
+  return isOfficialMaster(e, cfg)
 }
 
 /** 拒绝提示（带可操作指引；官方机器人用户按 /uid 值补配置即可） */

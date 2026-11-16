@@ -87,7 +87,7 @@ import {
   buildMarkdownMessage, splitMarkdown, markdownToPlain, hasMarkdownSegment,
 } from '../model/qqofficial/index.js'
 import { makeSendKeyboardTool, flushPendingCards } from '../model/qqofficial/tool.js'
-import { installMasterGate } from '../model/qqofficial/guard.js'
+import { installMasterGate, isEventMaster } from '../model/qqofficial/guard.js'
 import { redactSecrets, redactSafeCut } from '../model/agent/redact.js'
 import { randomUUID } from 'node:crypto'
 import devLog from '../utils/DevLog.js'
@@ -1746,21 +1746,17 @@ function ownsScheduleRecord(rec, ctx) {
  * （支持完整 `<self_id>:<openid>` 与去前缀 openid 两种写法；/uid 会打印可直接粘贴的值）。
  * 仅在官方适配器下兜底，避免改变 OneBot 场景 masters 的既有语义（只收审批通知）。
  */
-function isCtxMaster(e, qqAdapter, cfg) {
-  if (e?.isMaster) return true
-  if (!qqAdapter?.official) return false
-  const masters = Array.isArray(cfg?.masters) ? cfg.masters.map((m) => String(m).trim()).filter(Boolean) : []
-  if (!masters.length) return false
-  const full = String(e?.user_id ?? '')
-  const raw = qqRawUserId(e)
-  return (full && masters.includes(full)) || (raw && masters.includes(raw))
+function isCtxMaster(e, cfg) {
+  // 统一走 guard.isEventMaster：官方机器人按 agent.masters（完整/去前缀、大小写不敏感），
+  // 其它协议等价 e.isMaster；避免这里与规则级 gate 两套判定口径漂移。
+  return isEventMaster(e, cfg)
 }
 
 function ctxOf(e) {
   const cfgNow = Config.get().agent || {}
   const qqAdapter = detectQQAdapter(e)
   const userId = String(e.user_id ?? '')
-  const isMaster = isCtxMaster(e, qqAdapter, cfgNow)
+  const isMaster = isCtxMaster(e, cfgNow)
   // 群角色：OneBot 在 sender.role/member.role，官方适配器可能在 author.member_role/
   // sender.permissions；统一归一，避免官方机器人场景永远被当成 member。
   const role = groupRoleOf(e)
@@ -2194,10 +2190,10 @@ export class Chat extends plugin {
         _chatPermWarned = true
         Log.warn(`[chatPermission] 未知取值「${raw}」，按 master 处理（合法值：master/admin/owner/all）`)
       }
-      return !!this.e?.isMaster
+      return isEventMaster(this.e)
     }
     if (perm === 'all') return true
-    if (this.e?.isMaster) return true
+    if (isEventMaster(this.e)) return true
     const role = groupRoleOf(this.e)
     const isOwner = role === 'owner'
     const isAdmin = role === 'admin'
@@ -3362,7 +3358,7 @@ export class Chat extends plugin {
       `去前缀：${info.rawUserId || '(空)'}`,
       `适配器：${info.adapterId || info.adapterName || '未知'}${info.official ? '（QQ 官方机器人）' : '（非官方协议）'}`,
       `上下文：${info.contextLabel}`,
-      `是否主人：${isCtxMaster(this.e, detectQQAdapter(this.e), Config.get().agent || {}) ? '是' : '否'}`,
+      `是否主人：${isCtxMaster(this.e, Config.get().agent || {}) ? '是' : '否'}`,
       `scopeId：${info.scopeId}`,
       '',
       '配置位置：',
@@ -3661,7 +3657,7 @@ export class Chat extends plugin {
   // 注：terminal 已沙箱化、stagehand act 不单独审批，均不走审批（无 #确认 / 无自包含审批队列）。
   async approve() {
     const id = this.e.msg.match(/\d+/)?.[0]
-    if (!this.e.isMaster) return this.e.reply('无权限：仅主人可审批'), true
+    if (!isEventMaster(this.e)) return this.e.reply('无权限：仅主人可审批'), true
     const rt = await getRuntime()
     if (rt.confirm.resolve(id, true)) return this.e.reply(`已批准 #${id}`), true
     await this.e.reply(`未找到待审 #${id}`)
@@ -3670,7 +3666,7 @@ export class Chat extends plugin {
 
   async reject() {
     const id = this.e.msg.match(/\d+/)?.[0]
-    if (!this.e.isMaster) return this.e.reply('无权限：仅主人可审批'), true
+    if (!isEventMaster(this.e)) return this.e.reply('无权限：仅主人可审批'), true
     const rt = await getRuntime()
     if (rt.confirm.resolve(id, false)) return this.e.reply(`已拒绝 #${id}`), true
     await this.e.reply(`未找到待审 #${id}`)
@@ -3678,7 +3674,7 @@ export class Chat extends plugin {
   }
 
   async pending() {
-    if (!this.e.isMaster) return this.e.reply('无权限：仅主人可查看'), true
+    if (!isEventMaster(this.e)) return this.e.reply('无权限：仅主人可查看'), true
     const rt = await getRuntime()
     const list = rt.confirm.list()
     if (!list.length) return this.e.reply('当前无待审批'), true
