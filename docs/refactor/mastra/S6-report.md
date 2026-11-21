@@ -3,6 +3,8 @@
 > 对应 [07 开发计划](07-development-plan.md) 的 **S6 / PR5a**。
 > 状态：**完成**。历史唯一真源仍是 SessionStore；Mastra Memory 未启用、无双写。
 > 后续 Phase 2（PR5b）不在本次范围。
+>
+> ⚠️ S6 完成只代表 Memory Phase 1 落地；`dev` 整体仍是**极早期初步开发**，S5 观察期与 S7–S11 未完成，实际效果**远不如 `master`**，不要用于生产。
 
 ---
 

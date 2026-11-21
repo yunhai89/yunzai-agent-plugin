@@ -37,6 +37,8 @@
 
 ## 重构审计（Mastra）
 
+> ⚠️ `dev` 分支的 Mastra 重构处于**极早期初步开发**：S0–S4、S6 已完成，S5 观察期与 S7–S11 未完成；可以部署运行，但效果**远不如 `master`**，不要用于生产。
+
 - [Mastra 重构文档索引](refactor/mastra/README.md) —— 审计基线、目标架构、PR 计划、迁移 Runbook、测试验收、ADR
 - [现状源码审计](refactor/mastra/00-code-audit.md) —— 调用链、功能/数据清单、技术债、证据索引
 - [目标架构](refactor/mastra/01-target-architecture.md) —— Runtime Facade、Agent/Workflow/Tool/Memory/Storage 接线

@@ -2,7 +2,9 @@
 
 > 目标：证明 Mastra 路径在**行为、权限、数据、恢复、隔离、性能**上不退化，而不是只证明“能跑”。
 >
-> 基线：commit `9323c5d`；`pnpm test` = 147 通过 / 0 失败 / 12 跳过 / 159 文件 / 7,230 断言；`pnpm lint` = 0 errors / 50 warnings。
+> 基线：审计提交 `9323c5d`（147 通过 / 0 失败 / 12 跳过 / 159 文件 / 7,230 断言）。**当前 `dev` 进展到 S6**：`pnpm test` = 173 通过 / 0 失败 / 12 跳过 / 185 文件 / 7,982 断言；`pnpm lint` = 0 errors / 50 warnings。
+>
+> ⚠️ 测试全绿只代表离线契约与适配层通过，**不代表 Mastra 灰度已达到 `master` 的产品效果**；S5 观察期与 S7–S11 未完成，生产仍应使用 `master` / legacy。
 >
 > 所有新增测试必须能在**无网络/无 API Key**下运行；真实 Provider 用例无 Key 时 `SKIP_FILE:` 退出 0。
 
@@ -303,7 +305,7 @@ export function scriptedModel(steps) {
 
 | ID | 验收项 | 通过标准 | 证据 |
 |---|---|---|---|
-| A1 | 现有测试 | 147/0/12 保持；新增全绿 | CI 日志 |
+| A1 | 现有测试 | 审计基线 147/0/12 与当前 S6 基线 173/0/12 均保持；新增全绿 | CI 日志 |
 | A2 | Parity | P1–P14 全过；allowlist 有原因 | `parity-report.json` |
 | A3 | 工具 | 名称/参数/结果/权限/审批/账本一致 | 单测 + E2E |
 | A4 | Agent | 终止/超时/空输出/finalizer 一致 | 场景报告 |

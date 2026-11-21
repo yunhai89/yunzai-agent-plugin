@@ -96,7 +96,9 @@
 | `guardSensitivity` | `medium` | 防御灵敏度：`low`(0.95)/`medium`(0.7)/`high`(0.5) |
 | `redactSecrets` | `true` | 外发文本统一脱敏（回复/中途播报/错误提示/续跑），屏蔽 API Key / token 等敏感信息；`false`=全部不脱敏（慎用） |
 
-### `agent.runtime` / `agent.mastra` —— Mastra 过渡开关（PR1）
+### `agent.runtime` / `agent.mastra` —— Mastra 过渡开关（dev，极早期）
+
+> ⚠️ `dev` 分支的 Mastra 内核仍是**极早期初步开发**：可以部署运行，但效果**远不如 `master`**。默认 `engine: legacy`，不要在生产切到 `engine: mastra`。
 
 默认 `runtime.engine: legacy`，不加载 Mastra、不创建数据库，行为与旧版一致。
 
@@ -105,7 +107,7 @@ agent:
   runtime:
     engine: legacy          # legacy | mastra
     fallbackToLegacy: true  # mastra 初始化失败回退；false=启动失败
-    gray: { users: [], groups: [], percent: 0 }  # PR4 灰度，PR1 不读取
+    gray: { users: [], groups: [], percent: 0 }  # Mastra 聊天灰度
   mastra:
     storage:
       driver: libsql
@@ -116,7 +118,7 @@ agent:
     approval: { mode: legacy, timeoutMs: 300000 }  # bridge=持久化审批 + suspend/resume
 ```
 
-PR1 下即使 `engine: mastra`，聊天仍走 legacy（只创建骨架，用于验证依赖、Storage 生命周期和 Identity）；PR4 才切聊天流量。Postgres 需设置 `MASTRA_DATABASE_URL`，缺失时按 `fallbackToLegacy` 决定回退或启动失败。
+当前 `engine: mastra` 只对 `gray.users` / `gray.groups` / `gray.percent` 命中的会话启用 Mastra 聊天；未命中或初始化失败仍回退 legacy。历史唯一真源仍是 `SessionStore`，Mastra Memory 未启用、无双写（ADR-004 Phase 1）。Postgres 需设置 `MASTRA_DATABASE_URL`，缺失时按 `fallbackToLegacy` 决定回退或启动失败。
 
 ### `agent.policy` —— RBAC 策略
 

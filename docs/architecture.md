@@ -1,6 +1,8 @@
 # 架构与目录
 
 > 本文是主 README 的拆分文档。返回 [README](../README.md)。
+>
+> ⚠️ 本文描述的是 `master` / `engine: legacy` 的现有架构。`dev` 分支的 Mastra 重构（极早期）见 [Mastra 重构文档](refactor/mastra/README.md)；默认仍是 legacy，Mastra 仅灰度。
 
 ## 🏗️ 架构与目录
 

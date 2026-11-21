@@ -26,6 +26,21 @@
 
 ---
 
+## ⚠️ 当前分支：`dev`（极早期初步开发）
+
+> **这是实验分支，不是稳定版。日常使用请回到 `master`。**
+>
+> `dev` 正在把 Agent 内核整体重写为 **Mastra + Vercel AI SDK**，目前完成 S0–S4、S6（运行时骨架、模型/工具适配、灰度聊天、审批、Memory Phase 1）；S5 功能已完成但 72h 观察待执行，S7–S11 尚未开始。
+>
+> - ✅ **可以安装、启动、部署运行**：默认仍是 `engine: legacy`，真实聊天走旧内核；Mastra 仅通过 `mastra.gray` 按用户/群灰度。
+> - ⚠️ **效果远不如 `master`**：Mastra 灰度链路的能力覆盖、稳定性、长会话、异常恢复和外围功能 parity 都未达标，当前只适合参与重构验证。
+> - 🚫 **不要用于生产**：版本、配置和数据格式都可能随时变化；升级前务必备份 `data/` 与 `config/config.yaml`。
+> - 📚 重构进度、边界和验收标准见 [Mastra 重构文档](docs/refactor/mastra/README.md)。
+>
+> `master` 仍是唯一维护线：功能、修复和发布都以 `master` 为准。
+
+---
+
 ## 这是什么
 
 一个跑在 Yunzai / Miao-Yunzai 里的 AI Agent 插件：把大模型对话、工具调用、长期记忆、人设、多模态、MCP、群管、沙箱和 Web 管理面板做成一套完整运行时。
