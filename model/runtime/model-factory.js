@@ -19,6 +19,7 @@ import { generateText } from 'ai'
 import { presets as openaiPresets } from '../openai/presets.js'
 import { presets as anthropicPresets } from '../anthropic/presets.js'
 import { resolveThinkingStyle, clampThinkingBudget } from '../llm/thinking.js'
+import { createLegacyProviderModel } from './legacy-provider-model.js'
 import { RuntimeConfigError, normalizeRuntimeError } from './errors.js'
 
 const DEFAULTS = {
@@ -47,6 +48,7 @@ function makeRef({ provider = {}, entry = {}, fallback = {}, flat = null, model 
     headers: { ...(cfg.headers || {}), ...(provider.headers || {}), ...(fallback.headers || {}) },
     sessionHeader: str(provider.sessionHeader || cfg.sessionHeader || ''),
     ...(fallback.id ? { fallbackId: fallback.id } : {}),
+    ...(cfg.legacyProvider ? { legacyProvider: cfg.legacyProvider } : {}),
   }
 }
 
@@ -181,6 +183,7 @@ export function resolveModelSettings(ref = {}, { thinkingOptions: _thinkingOptio
 
 /** 协议/预设支持矩阵：PR2 明确 legacy-only，避免静默换 API 面 */
 export function modelSupport(ref = {}) {
+  if (ref.legacyProvider) return { legacyOnly: false, reason: null }
   const protocol = str(ref.protocol || 'openai')
   const preset = str(ref.preset || '')
   if (protocol === 'gemini' || protocol === 'google' || preset === 'gemini') {
@@ -198,6 +201,7 @@ export function modelSupport(ref = {}) {
 /** 创建单个 AI SDK LanguageModel；未知/legacy-only 协议抛错 */
 export function createLanguageModel(ref, { fetchImpl = null, sessionId = '', logger: _logger = null } = {}) {
   if (!ref || !ref.model) throw new RuntimeConfigError('缺少 model')
+  if (ref.legacyProvider) return createLegacyProviderModel({ provider: ref.legacyProvider, model: ref.model })
   if (!ref.apiKey) throw new RuntimeConfigError(`模型 ${ref.model} 缺少 apiKey`)
   const support = modelSupport(ref)
   if (support.legacyOnly) {

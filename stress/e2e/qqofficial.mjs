@@ -42,6 +42,7 @@ cfgMod.__setConfig({
     qqOfficial: { markdown: { enable: true, maxChars: 3500 }, keyboard: { enable: true }, progress: false, narrate: false },
     masters: [`${SELF}:U_MASTER`],
     devLog: { dir: path.join(TMP, 'devlog') },
+    mastra: { useProviderModel: true },
   },
 })
 

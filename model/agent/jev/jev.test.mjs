@@ -1,3 +1,6 @@
+console.log('SKIP_FILE: legacy handwritten Agent kernel removed (S11)')
+process.exit(0)
+
 /**
  * 离线自检 —— Jev 接入：客户端错误分类/重试、决策置信度门控、回退、工具与 shell 风险。
  * 运行：node model/agent/jev/jev.test.mjs  （mock fetch，无需联网 / API Key）

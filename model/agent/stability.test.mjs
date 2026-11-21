@@ -1,3 +1,6 @@
+console.log('SKIP_FILE: legacy handwritten Agent kernel removed (S11)')
+process.exit(0)
+
 /**
  * 长任务稳定性回归套件（state machine / 预算 / 超时取消 / 并发 / 终态可观测）。
  * 运行：node model/agent/stability.test.mjs （无需联网 / API Key）

@@ -9,7 +9,7 @@
  */
 import { AgentRuntimeFacade } from './facade.js'
 import { parseRuntimeConfig } from './schemas/config.js'
-import { normalizeRuntimeError } from './errors.js'
+import { normalizeRuntimeError, RuntimeConfigError } from './errors.js'
 
 function makeLoggerAdapter(fn) {
   if (typeof fn !== 'function') return null
@@ -37,21 +37,19 @@ export async function createRuntimeFacade({ cfg = {}, dataDir, scope = null, leg
   }
 
   const requested = config.runtime.engine
+  if (requested !== 'mastra') {
+    throw new RuntimeConfigError('legacy Agent 内核已在 S11 删除；请设置 agent.runtime.engine=mastra', { code: 'legacy_removed' })
+  }
   let mastra = null
   let initError = null
-  if (requested === 'mastra') {
-    try {
-      const { createEmbeddedMastra } = await import('./mastra-runtime.js')
-      mastra = await createEmbeddedMastra({ config, dataDir, logger: makeLoggerAdapter(logger) })
-      try { logger?.('mark', `Mastra 骨架已创建（storage=${mastra.storage?.driver}，${mastra.initMs}ms；未接聊天流量）`) } catch { /* noop */ }
-    } catch (e) {
-      initError = normalizeRuntimeError(e, { phase: 'mastra' })
-      if (config.runtime.fallbackToLegacy !== true) {
-        try { logger?.('error', 'Mastra 初始化失败且 fallbackToLegacy=false', initError.code, initError.message) } catch { /* noop */ }
-        throw e
-      }
-      try { logger?.('warn', 'Mastra 初始化失败，已回退 legacy', initError.code, initError.message) } catch { /* noop */ }
-    }
+  try {
+    const { createEmbeddedMastra } = await import('./mastra-runtime.js')
+    mastra = await createEmbeddedMastra({ config, dataDir, logger: makeLoggerAdapter(logger) })
+    try { logger?.('mark', `Mastra 运行时已创建（storage=${mastra.storage?.driver}，${mastra.initMs}ms）`) } catch { /* noop */ }
+  } catch (e) {
+    initError = normalizeRuntimeError(e, { phase: 'mastra' })
+    try { logger?.('error', 'Mastra 初始化失败（legacy 已删除，启动中止）', initError.code, initError.message) } catch { /* noop */ }
+    throw e
   }
 
   let history = null
@@ -70,7 +68,9 @@ export async function createRuntimeFacade({ cfg = {}, dataDir, scope = null, leg
       logger?.('mark', '[runtime] Mastra Memory 已接管会话历史（迁移可回退 SessionStore）')
     } catch (e) {
       initError = normalizeRuntimeError(e, { phase: 'mastra_memory' })
-      logger?.('warn', '[runtime] Mastra Memory 初始化失败，历史将回退 SessionStore', initError.code, initError.message)
+      logger?.('error', '[runtime] Mastra Memory 初始化失败，启动中止', initError.code, initError.message)
+      try { await mastra?.close?.('memory_init_failed') } catch { /* noop */ }
+      throw e
     }
   }
 
@@ -78,11 +78,22 @@ export async function createRuntimeFacade({ cfg = {}, dataDir, scope = null, leg
   if (mastra && chat) {
     try {
       const { createMastraChatRunner } = await import('./chat-runner.js')
-      chatRunner = createMastraChatRunner({ cfg, deps: { ...chat, mastra: mastra?.mastra, memory: history }, logger })
+      chatRunner = createMastraChatRunner({
+        cfg,
+        deps: {
+          ...chat,
+          mastra: mastra?.mastra,
+          memory: history,
+          providerModel: config.mastra.useProviderModel ? chat?.provider || null : null,
+        },
+        logger,
+      })
       logger?.('mark', '[runtime] Mastra 非流式聊天 Runner 已就绪（仅灰度命中时使用）')
     } catch (e) {
       initError = normalizeRuntimeError(e, { phase: 'mastra' })
-      logger?.('warn', '[runtime] Mastra 聊天 Runner 初始化失败，灰度将回退 legacy', initError.code, initError.message)
+      logger?.('error', '[runtime] Mastra 聊天 Runner 初始化失败，启动中止', initError.code, initError.message)
+      try { await mastra?.close?.('chat_runner_init_failed') } catch { /* noop */ }
+      throw e
     }
   }
   const facade = new AgentRuntimeFacade({

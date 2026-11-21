@@ -96,7 +96,7 @@ console.log('\n[Agent.run 结果字段]')
     logger: () => {},
   })
   const res = await agent.run('hi')
-  eq(Object.keys(res).sort(), ['content', 'messages', 'stopReason', 'taskId', 'turns', 'usage'], '结果字段集合稳定')
+  eq(Object.keys(res).sort(), ['content', 'engine', 'messages', 'stopReason', 'taskId', 'toolCalls', 'turns', 'usage'], '结果字段集合稳定')
   eq(res.content, '最终回复', 'content 为最终回复')
   eq(res.stopReason, 'stop', 'stopReason=stop')
   eq(res.turns, 1, 'turns=1')

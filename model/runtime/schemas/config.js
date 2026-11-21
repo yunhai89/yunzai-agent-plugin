@@ -15,8 +15,8 @@ export const STORAGE_DRIVERS = ['libsql', 'postgres']
 export const MEMORY_MODES = ['sessionstore', 'mastra']
 
 export const DEFAULT_RUNTIME_CONFIG = Object.freeze({
-  engine: 'legacy',
-  fallbackToLegacy: true,
+  engine: 'mastra',
+  fallbackToLegacy: false,
   gray: Object.freeze({ users: Object.freeze([]), groups: Object.freeze([]), percent: 0 }),
 })
 
@@ -39,7 +39,7 @@ export const DEFAULT_MASTRA_CONFIG = Object.freeze({
     dimensions: 1536,
   }),
   memory: Object.freeze({
-    mode: 'sessionstore',
+    mode: 'mastra',
     semanticRecall: false,
     onDemandMigration: true,
   }),
@@ -51,6 +51,7 @@ export const DEFAULT_MASTRA_CONFIG = Object.freeze({
     mode: 'legacy',
     timeoutMs: 300_000,
   }),
+  useProviderModel: false,
   closeTimeoutMs: 15_000,
 })
 
@@ -63,8 +64,8 @@ const indexName = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/)
 const percent = z.number().min(0).max(100)
 
 const runtimeStrict = z.object({
-  engine: engine.default('legacy'),
-  fallbackToLegacy: z.boolean().default(true),
+  engine: engine.default('mastra'),
+  fallbackToLegacy: z.boolean().default(false),
   gray: z.object({
     users: z.array(z.string()).default([]),
     groups: z.array(z.string()).default([]),
@@ -92,7 +93,7 @@ const vectorStrict = z.object({
 }).passthrough()
 
 const memoryStrict = z.object({
-  mode: z.enum(MEMORY_MODES).default('sessionstore'),
+  mode: z.enum(MEMORY_MODES).default('mastra'),
   semanticRecall: z.boolean().default(false),
   onDemandMigration: z.boolean().default(true),
 }).passthrough()
@@ -113,6 +114,7 @@ const mastraStrict = z.object({
   memory: memoryStrict.default({}),
   identity: identityStrict.default({}),
   approval: approvalStrict.default({}),
+  useProviderModel: z.boolean().default(false),
   closeTimeoutMs: z.number().int().min(1_000).max(300_000).default(15_000),
 }).passthrough()
 
@@ -120,8 +122,8 @@ const strictSchema = z.object({ runtime: runtimeStrict.default({}), mastra: mast
 
 // 宽松版：每个字段/对象在非法时回退安全默认，保证启动不被坏配置卡死。
 const runtimeLenient = z.object({
-  engine: engine.catch('legacy'),
-  fallbackToLegacy: z.boolean().catch(true),
+  engine: engine.catch('mastra'),
+  fallbackToLegacy: z.boolean().catch(false),
   gray: z.object({
     users: z.array(z.string()).catch([]),
     groups: z.array(z.string()).catch([]),
@@ -149,7 +151,7 @@ const vectorLenient = z.object({
 }).passthrough().catch(clone(DEFAULT_MASTRA_CONFIG.vector))
 
 const memoryLenient = z.object({
-  mode: z.enum(MEMORY_MODES).catch('sessionstore'),
+  mode: z.enum(MEMORY_MODES).catch('mastra'),
   semanticRecall: z.boolean().catch(false),
   onDemandMigration: z.boolean().catch(true),
 }).passthrough().catch(clone(DEFAULT_MASTRA_CONFIG.memory))
@@ -170,6 +172,7 @@ const mastraLenient = z.object({
   memory: memoryLenient,
   identity: identityLenient,
   approval: approvalLenient,
+  useProviderModel: z.boolean().catch(false),
   closeTimeoutMs: z.number().int().min(1_000).max(300_000).catch(15_000),
 }).passthrough().catch(clone(DEFAULT_MASTRA_CONFIG))
 

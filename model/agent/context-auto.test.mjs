@@ -1,3 +1,6 @@
+console.log('SKIP_FILE: legacy handwritten Agent kernel removed (S11)')
+process.exit(0)
+
 /**
  * 自动上下文预算的 Agent 集成回归（离线）。
  *

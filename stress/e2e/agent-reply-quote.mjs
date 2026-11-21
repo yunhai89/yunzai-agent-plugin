@@ -20,6 +20,7 @@ cfgMod.__setConfig({
     apiKey: 'sk-quote-test', model: 'test-model', stream: false, progress: false,
     reply: { mode: 'text', quote: true },
     devLog: { dir: path.join(TMP, 'devlog') },
+    mastra: { useProviderModel: true },
   },
 })
 

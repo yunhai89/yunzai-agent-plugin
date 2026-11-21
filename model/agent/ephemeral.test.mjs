@@ -1,3 +1,6 @@
+console.log('SKIP_FILE: legacy handwritten Agent kernel removed (S11)')
+process.exit(0)
+
 /**
  * 离线回归 —— ephemeral 临时任务模式的隔离语义（人设补齐复用主任务账本时用）。
  *

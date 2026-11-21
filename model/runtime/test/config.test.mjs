@@ -18,14 +18,14 @@ function eq(a, b, m) {
   ok(same, `${m}${same ? '' : `  (got ${JSON.stringify(a)}, want ${JSON.stringify(b)})`}`)
 }
 
-console.log('\n[旧配置缺省 = legacy]')
+console.log('\n[旧配置缺省 = mastra]')
 {
   const { value, repairs } = parseRuntimeConfig({})
-  eq(value.runtime.engine, 'legacy', '没有 runtime 键 → legacy')
-  eq(value.runtime.fallbackToLegacy, true, 'fallbackToLegacy 默认 true')
+  eq(value.runtime.engine, 'mastra', '没有 runtime 键 → mastra')
+  eq(value.runtime.fallbackToLegacy, false, 'fallbackToLegacy 默认 false')
   eq(value.mastra.storage.driver, 'libsql', 'storage 默认 libsql')
   eq(value.mastra.storage.libsqlFile, 'mastra/mastra.db', '默认文件名')
-  eq(value.mastra.memory.mode, 'sessionstore', 'Phase 1 默认 sessionstore')
+  eq(value.mastra.memory.mode, 'mastra', 'S11 默认 mastra')
   eq(value.mastra.memory.semanticRecall, false, 'Semantic Recall 默认关')
   eq(value.mastra.memory.onDemandMigration, true, 'S7 默认按需迁移开')
   eq(value.mastra.identity.adapter, 'onebot', 'identity adapter 默认 onebot')
@@ -40,13 +40,13 @@ console.log('\n[非法值 fail-closed]')
     mastra: { storage: { driver: 'sqlite', max: 0 }, memory: { mode: 'observational' }, closeTimeoutMs: 1 },
   }
   const { value, repairs } = parseRuntimeConfig(raw)
-  eq(value.runtime.engine, 'legacy', '非法 engine → legacy')
-  eq(value.runtime.fallbackToLegacy, true, '非法布尔 → true')
+  eq(value.runtime.engine, 'mastra', '非法 engine → mastra（唯一引擎）')
+  eq(value.runtime.fallbackToLegacy, false, '非法布尔 → false')
   eq(value.runtime.gray.percent, 0, 'percent 越界 → 0')
   eq(value.runtime.gray.users, [], 'users 非数组 → []')
   eq(value.mastra.storage.driver, 'libsql', '非法 storage driver → libsql')
   eq(value.mastra.storage.max, 10, 'max 非法 → 10')
-  eq(value.mastra.memory.mode, 'sessionstore', '非法 memory mode → sessionstore')
+  eq(value.mastra.memory.mode, 'mastra', '非法 memory mode → mastra')
   eq(value.mastra.identity.adapter, 'onebot', '非法 adapter → onebot')
   eq(value.mastra.closeTimeoutMs, 15000, 'closeTimeoutMs 过小 → 15000')
   ok(repairs.length >= 6, `repairs 记录了 ${repairs.length} 项`)
@@ -77,7 +77,7 @@ console.log('\n[原地归一 / dirty]')
   const logs = []
   const dirty = normalizeAgentRuntimeConfig(agent, { logger: { warn: (...a) => logs.push(a.join(' ')) } })
   eq(dirty, true, '发生修复 → dirty')
-  eq(agent.runtime.engine, 'legacy', '原地修正 engine')
+  eq(agent.runtime.engine, 'mastra', '原地修正 engine')
   ok(agent.mastra?.storage?.driver === 'libsql', '补全 mastra.storage')
   ok(logs.length > 0 && logs[0].includes('非法'), '记录修复日志')
 
@@ -101,8 +101,8 @@ console.log('\n[describe 不泄露 DSN]')
 
 console.log('\n[默认值冻结]')
 {
-  eq(DEFAULT_RUNTIME_CONFIG.engine, 'legacy', '默认 runtime legacy')
-  eq(DEFAULT_MASTRA_CONFIG.memory.mode, 'sessionstore', '默认 memory sessionstore')
+  eq(DEFAULT_RUNTIME_CONFIG.engine, 'mastra', '默认 runtime mastra')
+  eq(DEFAULT_MASTRA_CONFIG.memory.mode, 'mastra', '默认 memory mastra')
   let threw = false
   try { DEFAULT_RUNTIME_CONFIG.engine = 'mastra' } catch { threw = true }
   ok(threw || DEFAULT_RUNTIME_CONFIG.engine === 'legacy', '默认值不可被静默改写')

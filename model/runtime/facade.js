@@ -45,29 +45,14 @@ export class AgentRuntimeFacade {
     return !!this.mastra
   }
 
-  /** 实际可用的聊天引擎（是否命中灰度由 shouldUseMastra 决定） */
+  /** S11：全量 Mastra；没有 chatRunner 视为运行时不可用。 */
   get chatEngine() {
-    return this.requestedEngine === 'mastra' && typeof this.chatRunner?.runChat === 'function' ? 'mastra' : 'legacy'
+    return typeof this.chatRunner?.runChat === 'function' ? 'mastra' : 'unavailable'
   }
 
-  /** 灰度：显式用户/群，或稳定哈希百分比；空范围=mastra 引擎也不切流量 */
-  shouldUseMastra(ctx = null) {
-    if (this.chatEngine !== 'mastra' || !ctx) return false
-    const g = this.gray || {}
-    const uid = String(ctx.userId ?? ctx.scopeUserId ?? '')
-    const gid = String(ctx.groupId ?? '')
-    const users = Array.isArray(g.users) ? g.users.map(String) : []
-    const groups = Array.isArray(g.groups) ? g.groups.map(String) : []
-    if (uid && users.includes(uid)) return true
-    if (gid && groups.includes(gid)) return true
-    const pct = Math.max(0, Math.min(100, Number(g.percent) || 0))
-    if (pct > 0) {
-      let h = 2166136261
-      const key = `${uid}|${gid}`
-      for (let i = 0; i < key.length; i++) { h ^= key.charCodeAt(i); h = Math.imul(h, 16777619) >>> 0 }
-      return (h % 100) < pct
-    }
-    return false
+  /** 兼容旧调用方：S11 不再按用户/群灰度。 */
+  shouldUseMastra(_ctx = null) {
+    return this.chatEngine === 'mastra'
   }
 
   forRequest({ ctx = null, taskId = null, overrides = null } = {}) {
@@ -107,24 +92,17 @@ export class AgentRuntimeFacade {
         this.logger?.('mark', '[runtime] runChat', `engine=${this.requestedEngine}`, `chat=${this.chatEngine}`, `user=${opts.ctx?.userId || '-'}`, `gray=${this.shouldUseMastra(opts.ctx) ? 'yes' : 'no'}`)
       } catch { /* noop */ }
     }
-    if (this.shouldUseMastra(opts.ctx)) {
-      const result = await this.chatRunner.runChat(input, { ...opts, callbacks: opts.callbacks || { onToolStart: opts.onToolStart, onToolEnd: opts.onToolEnd, onMasterAutoApprove: opts.onMasterAutoApprove } })
-      if (result && !result.unsupported) return result
-      try { this.logger?.('warn', '[runtime] Mastra 灰度回退 legacy', result?.unsupported || 'unknown') } catch { /* noop */ }
+    if (this.chatEngine !== 'mastra') {
+      throw Object.assign(new Error('Mastra 聊天 Runner 未就绪（legacy 已删除）'), { code: 'mastra_not_ready' })
     }
-    if (opts.agentInst && typeof opts.agentInst.run === 'function') {
-      return opts.agentInst.run(input, opts)
+    const result = await this.chatRunner.runChat(input, {
+      ...opts,
+      callbacks: opts.callbacks || { onToolStart: opts.onToolStart, onToolEnd: opts.onToolEnd, onMasterAutoApprove: opts.onMasterAutoApprove },
+    })
+    if (result?.unsupported) {
+      throw Object.assign(new Error(`Mastra 不支持当前请求：${result.unsupported}`), { code: result.unsupported })
     }
-    if (this.requestedEngine === 'mastra' && !this._warnedNotWired) {
-      this._warnedNotWired = true
-      try { this.logger?.('warn', 'engine=mastra 但 chat runner 尚未接线/未命中灰度，走 legacy') } catch { /* noop */ }
-    }
-    if (typeof this.legacy?.runChat === 'function') return this.legacy.runChat(input, opts)
-    if (typeof this.legacy?.makeAgent === 'function') {
-      const agent = this.legacy.makeAgent(opts.overrides)
-      return agent.run(input, opts)
-    }
-    throw new Error('runtime facade 未配置 legacy runner')
+    return result
   }
 
   /**
@@ -218,8 +196,8 @@ export class AgentRuntimeFacade {
   }
 }
 
-/** 兼容工厂：旧调用方只需要一个 no-op 门面 */
-export function createLegacyFacade(opts = {}) {
-  return new AgentRuntimeFacade({ ...opts, engine: 'legacy', mastra: null })
+/** @deprecated legacy 内核已删除；保留名称只为让旧调用方得到明确错误。 */
+export function createLegacyFacade() {
+  throw new Error('legacy Agent 内核已在 S11 删除，请使用 createRuntimeFacade')
 }
 

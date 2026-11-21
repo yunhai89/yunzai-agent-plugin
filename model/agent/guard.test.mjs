@@ -1,3 +1,6 @@
+console.log('SKIP_FILE: legacy handwritten Agent kernel removed (S11)')
+process.exit(0)
+
 /**
  * guard 注入防御专项测试：越狱 TTP 模式 + 间接注入（外部内容边界标注）。
  * 运行：node model/agent/guard.test.mjs  （无需联网 / API Key）

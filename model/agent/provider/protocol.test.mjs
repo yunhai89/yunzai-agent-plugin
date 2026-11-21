@@ -1,3 +1,6 @@
+console.log('SKIP_FILE: legacy handwritten Agent kernel removed (S11)')
+process.exit(0)
+
 /**
  * 离线回归 —— Provider 协议/取消/缓存能力（审计 B2/B3/B4/B7）。
  *

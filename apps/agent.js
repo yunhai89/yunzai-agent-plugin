@@ -1264,6 +1264,7 @@ async function _buildRuntime(scope) {
 
   const agentConfig = {
     provider,
+    cfg, // S11：MastraAgent/chat-runner 的模型工厂配置（provider 仅保留给旧外围调用）
     model: cfg.model,
     fallbackProviders,
     tools,
@@ -1641,11 +1642,10 @@ async function _buildRuntime(scope) {
     cfg,
     dataDir: Config.path.data,
     scope,
-    legacy: { makeAgent },
     chat: {
       tools, confirm, taskStore, approval: approvalBridge,
       nativeApproval: nativeApproval && !!approvalBridge, makeAgent,
-      session,
+      session, provider,
       identity: runtimeIdentity,
     },
     logger: Log.tag('runtime'),

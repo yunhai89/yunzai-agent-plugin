@@ -1,3 +1,6 @@
+console.log('SKIP_FILE: legacy handwritten Agent kernel removed (S11)')
+process.exit(0)
+
 /**
  * Tool Evolution × Agent 真实入口正例（保留并扩展原离线检查）：
  * 生成→验证→采纳 stable→注册契约→Agent.run：第一轮 tool_search 激活工具，

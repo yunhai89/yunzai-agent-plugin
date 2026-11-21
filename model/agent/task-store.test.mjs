@@ -1,3 +1,6 @@
+console.log('SKIP_FILE: legacy handwritten Agent kernel removed (S11)')
+process.exit(0)
+
 /**
  * TaskStore 离线自检 —— P0-3 可恢复任务账本（阶段一）。
  * 运行：node model/agent/task-store.test.mjs

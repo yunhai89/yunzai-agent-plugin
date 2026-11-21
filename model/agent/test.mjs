@@ -1,3 +1,6 @@
+console.log('SKIP_FILE: legacy handwritten Agent kernel removed (S11)')
+process.exit(0)
+
 /**
  * 离线自检 —— mock provider 驱动完整 ReAct 循环 + provider 协议转换 + memory。
  * 运行：node model/agent/test.mjs  （无需联网 / API Key）

@@ -20,6 +20,7 @@ import { ToolNameMap } from './tool-name.js'
 import { legacyToMastraMessages, mastraMessagesToLegacy, hasUnsupportedLegacyShape, currentUserContent } from './message-adapter.js'
 import { normalizeAiSdkUsage, aiSdkFinishReason } from './observability.js'
 import { resolveProxyFetch } from './proxy-fetch.js'
+import { createLegacyProviderModel } from './legacy-provider-model.js'
 import { compactMessages } from '../agent/compact/index.js'
 import { getPromptCalibration } from '../llm/model-context.js'
 
@@ -40,6 +41,16 @@ export function createMastraChatRunner({ cfg = {}, deps = {}, logger = null, fet
   const factory = async () => {
     if (!factoryPromise) {
       factoryPromise = (async () => {
+        if (deps.providerModel) {
+          const model = createLegacyProviderModel({ provider: deps.providerModel, model: cfg.model })
+          return {
+            main: () => ({
+              model,
+              ref: { model: cfg.model, protocol: 'openai', preset: '', apiKey: 'provider-model', baseURL: '' },
+              legacyOnly: false,
+            }),
+          }
+        }
         const f = fetchImpl || await resolveProxyFetch(cfg.proxy, { logger })
         return createModelFactory({ cfg, fetchImpl: f, sessionId: 'yz-mastra-chat' })
       })()
@@ -239,6 +250,7 @@ export function createMastraChatRunner({ cfg = {}, deps = {}, logger = null, fet
       } catch (e) {
         logger?.('warn', '[runtime] Mastra 历史持久化失败', e?.message || e)
       }
+      agentInst.messages = finalMsgs.map((m) => ({ ...m }))
     }
     if (nativeApproval) pending.delete(runId)
     agentInst._userTexts = [rawText]
@@ -341,6 +353,7 @@ async function finalizeResume(out, e) {
         memory: e.memory, ctx: e.ctx,
       })
     } catch { /* noop */ }
+    if (e.agentInst) e.agentInst.messages = finalMsgs.map((m) => ({ ...m }))
   }
   if (e.taskStore && e.taskId) await e.taskStore.finish({ taskId: e.taskId, phase: 'completed', stopReason, completion: 'complete', usage }).catch(() => {})
   return { content, stopReason, usage, turns, taskId: e.runId, engine: 'mastra' }

@@ -189,7 +189,7 @@ export function mastraMessagesToLegacy(messages = [], { fromIndex = 0 } = {}) {
           id: c.id, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args ?? {}) },
         })),
       })
-      for (const r of pendingResults) out.push({ role: 'tool', tool_call_id: r.id, name: r.name, content: String(r.result ?? '') })
+      for (const r of pendingResults) out.push({ role: 'tool', tool_call_id: r.id, name: r.name, content: typeof r.result === 'string' ? r.result : JSON.stringify(r.result ?? '') })
       pendingCalls = []
       pendingResults = []
     }

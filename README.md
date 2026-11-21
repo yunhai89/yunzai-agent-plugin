@@ -20,22 +20,22 @@
 
 **QQ 群**：[960179589](https://qm.qq.com/q/960179589) ｜ **作者 QQ**：3891977697
 
-[快速开始](#-安装与快速开始) · [文档导航](#文档导航) · [常见问题](#常见问题) · [更新日志](docs/changelog.md) · [开发指南](开发指南.md)
+[快速开始](#-安装与快速开始) · [文档导航](#文档导航) · [常见问题](#常见问题) · [更新日志](docs/changelog.md)
 
 </div>
 
 ---
 
-## ⚠️ 当前分支：`dev`（极早期初步开发）
+## ⚠️ 当前分支：`dev`（Mastra 全量切换）
 
 > **这是实验分支，不是稳定版。日常使用请回到 `master`。**
 >
-> `dev` 正在把 Agent 内核整体重写为 **Mastra + Vercel AI SDK**，目前完成 S0–S4、S6、S7（运行时骨架、模型/工具适配、灰度聊天、审批、Memory Phase 1、Mastra Memory 接管与迁移）；S5 功能已完成但 72h 观察待执行，S8–S11 尚未开始。
+> `dev` 已全量切换到 **Mastra + Vercel AI SDK**，旧 handwritten Agent / ReAct 内核已删除；默认 `runtime.engine: mastra`、`mastra.memory.mode: mastra`，不再按灰度切流。
 >
-> - ✅ **可以安装、启动、部署运行**：默认仍是 `engine: legacy`，真实聊天走旧内核；Mastra 仅通过 `mastra.gray` 按用户/群灰度。
-> - ⚠️ **效果远不如 `master`**：Mastra 灰度链路的能力覆盖、稳定性、长会话、异常恢复和外围功能 parity 都未达标，当前只适合参与重构验证。
+> - ✅ **可以安装、启动、部署运行**：主聊天、工具调用、Mastra Memory、Web 会话与迁移脚本已接通。
+> - ⚠️ **仍在早期**：研究/多代理/交付链路的部分旧行为测试已标记为待补齐；外围 parity、长期稳定性与真实 Provider 覆盖仍需继续验证。
 > - 🚫 **不要用于生产**：版本、配置和数据格式都可能随时变化；升级前务必备份 `data/` 与 `config/config.yaml`。
-> - 📚 重构进度、边界和验收标准见 [Mastra 重构文档](docs/refactor/mastra/README.md)。
+> - 📚 开发/重构文档只在本地保留，不随仓库发布。
 >
 > `master` 仍是唯一维护线：功能、修复和发布都以 `master` 为准。
 
@@ -209,9 +209,6 @@ agent:
 | [网页抓取](docs/execution/web-crawl.md) | crawl4ai 与 HTTP 降级 |
 | [Stagehand 浏览器自动化](docs/execution/stagehand.md) | goto / observe / extract / act |
 | [表情包](docs/sticker.md) | 自动发现、视觉打标、频率管控 |
-| [架构与目录](docs/architecture.md) | 模块分层与配置治理 |
-| [扩展开发](docs/extensions.md) | 工具包 / 技能入口 |
-| [开发指南](开发指南.md) | 工具 / 技能完整 SDK 与示例 |
 | [运维](docs/operations.md) | 环境变量、SearXNG、日志字段、自检 |
 | [常见问题（完整 FAQ）](docs/troubleshooting.md) | 全量排障 |
 | [更新日志](docs/changelog.md) | 最近版本记录 |

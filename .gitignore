@@ -66,3 +66,10 @@ docs/deploy/.env
 
 # 历史审计与修复记录（本地保留，不入库）
 audit/
+
+# 开发/重构文档：本地保留，不随仓库发布（远程只保留用户/项目文档）
+docs/refactor/
+开发指南.md
+docs/architecture.md
+docs/extensions.md
+docs/planning/

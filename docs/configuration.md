@@ -96,18 +96,18 @@
 | `guardSensitivity` | `medium` | 防御灵敏度：`low`(0.95)/`medium`(0.7)/`high`(0.5) |
 | `redactSecrets` | `true` | 外发文本统一脱敏（回复/中途播报/错误提示/续跑），屏蔽 API Key / token 等敏感信息；`false`=全部不脱敏（慎用） |
 
-### `agent.runtime` / `agent.mastra` —— Mastra 过渡开关（dev，极早期）
+### `agent.runtime` / `agent.mastra` —— Mastra-only（S11）
 
-> ⚠️ `dev` 分支的 Mastra 内核仍是**极早期初步开发**：可以部署运行，但效果**远不如 `master`**。默认 `engine: legacy`，不要在生产切到 `engine: mastra`。
+> ⚠️ `dev` 已全量切换到 Mastra：`engine: legacy` 会启动失败，旧 Agent 内核已删除。可以部署运行，但研究/多代理等外围链路仍在补齐，效果**远不如 `master`**，不要用于生产。
 
-默认 `runtime.engine: legacy`，不加载 Mastra、不创建数据库，行为与旧版一致。
+默认 `runtime.engine: mastra`，启动时创建 LibSQL/Postgres、Mastra Memory 与聊天 Runner。
 
 ```yaml
 agent:
   runtime:
-    engine: legacy          # legacy | mastra
-    fallbackToLegacy: true  # mastra 初始化失败回退；false=启动失败
-    gray: { users: [], groups: [], percent: 0 }  # Mastra 聊天灰度
+    engine: mastra          # 仅 mastra；legacy 已删除
+    fallbackToLegacy: false # 无 legacy 可回退
+    gray: { users: [], groups: [], percent: 100 }  # 兼容字段；S11 全量，不再切流
   mastra:
     storage:
       driver: libsql
@@ -115,22 +115,23 @@ agent:
       connectionStringEnv: MASTRA_DATABASE_URL  # postgres DSN 只从 env 读
     vector: { enable: false, dimensions: 1536 }
     memory:
-      mode: sessionstore        # sessionstore=Phase 1（SessionStore 唯一写）| mastra=Phase 2（Mastra Memory 唯一写）
-      semanticRecall: false     # 默认关；Phase 2 也不启用
+      mode: mastra              # S11：Mastra Memory 唯一写
+      semanticRecall: false     # 默认关
       onDemandMigration: true   # 首次读写未迁移对话时自动从 SessionStore 导入（只写 Mastra）
     identity:
       botId: ""                 # 留空=从 ctx.selfId / 官方 ID 前缀推断
       adapter: onebot           # onebot | qqbot | qqguild
+    useProviderModel: false   # true=聊天改走旧 provider.chat（仅兼容/测试；默认 AI SDK ModelFactory）
     approval: { mode: legacy, timeoutMs: 300000 }  # bridge=持久化审批 + suspend/resume
 ```
 
-当前 `engine: mastra` 只对 `gray.users` / `gray.groups` / `gray.percent` 命中的会话启用 Mastra 聊天；未命中或初始化失败仍回退 legacy。
+S11 不再按 `gray` 切流：所有聊天都走 Mastra；Mastra 初始化失败会直接启动失败（`fallbackToLegacy: false`），不会回退旧 Agent。
 
 历史模式：
 
-- `memory.mode: sessionstore`（默认，Phase 1）：`SessionStore` 是唯一写，Mastra 只接收显式 messages。
-- `memory.mode: mastra`（Phase 2，S7）：Mastra Memory 是唯一写；`SessionStore` 只读/迁移源，**绝不双写**。`onDemandMigration=true` 时，首次读写某个未迁移对话会先导入到 Mastra thread 再继续；也可用 `scripts/migrate-mastra.mjs` 批量迁移/校验/回滚。
-- 迁移后如需回退：把 `memory.mode` 改回 `sessionstore` 并重启/热加载；legacy KV 与压缩归档保留，Mastra 数据不删除。切换后的新写入不会自动回填 legacy，需要按 [迁移 Runbook](refactor/mastra/04-data-migration-and-runbook.md) 导出/人工处理。
+- `memory.mode: mastra`：Mastra Memory 是唯一写；`SessionStore` 只读/迁移源，**绝不双写**。`onDemandMigration=true` 时，首次读写某个未迁移对话会先导入到 Mastra thread 再继续；也可用 `scripts/migrate-mastra.mjs` 批量迁移/校验/回滚。
+- `memory.mode: sessionstore` 仅保留为迁移只读兼容，不再作为正常聊天写入模式。
+- 迁移/回退细节见本地开发文档（不随仓库发布）。
 
 Postgres 需设置 `MASTRA_DATABASE_URL`，缺失时按 `fallbackToLegacy` 决定回退或启动失败。
 

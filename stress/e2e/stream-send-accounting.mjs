@@ -27,6 +27,7 @@ cfgMod.__setConfig({
     apiKey: 'sk-stream-test', model: 'test-model', progress: false,
     reply: { mode: 'text' },
     devLog: { dir: path.join(TMP, 'devlog') },
+    mastra: { useProviderModel: true },
   },
 })
 

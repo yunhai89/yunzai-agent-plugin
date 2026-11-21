@@ -124,9 +124,16 @@ function readUser() {
 /** 原样写入用户配置（原子：tmp+rename）。仅用于首次生成/迁移等需要完整内容的场景。 */
 function writeUserRaw(data) {
   try { fs.mkdirSync(userConfigDir, { recursive: true }) } catch { /* noop */ }
-  const tmp = `${userConfigPath}.tmp`
-  fs.writeFileSync(tmp, yaml.stringify(data))
-  fs.renameSync(tmp, userConfigPath)
+  // 并发写（watch 触发 reload → 归一化再次落盘）时固定 .tmp 会互相 rename 抢文件：
+  // 一方 rename 后另一方 rename 得到 ENOENT。用唯一临时名，最后 rename 仍是原子的。
+  const tmp = `${userConfigPath}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+  try {
+    fs.writeFileSync(tmp, yaml.stringify(data))
+    fs.renameSync(tmp, userConfigPath)
+  } catch (e) {
+    try { fs.rmSync(tmp, { force: true }) } catch { /* noop */ }
+    throw e
+  }
 }
 
 /**
