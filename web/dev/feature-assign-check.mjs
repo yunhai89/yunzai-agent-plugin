@@ -111,32 +111,23 @@ if (mainOnlyFeature) {
   ok(sel === 'm2', `mainOnly 功能已配同端点 mimo 模型 → 下拉回显注册条目（实际 ${JSON.stringify(sel)}）`)
 }
 
-// Jev 重构：不再单开配置卡片，改为「厂商 + 模型」注册；各模块卡片按需显示 jev 选项。
-// 说明：本 harness 不执行 onMounted→syncForm，故不校验 form 归一，只校验跨文件声明同步，防字段漂移。
-ok(!bindings.sections?.some((s) => s.id === 'jev'), '已移除独立「Jev 判断模型」分区')
-ok(bindings.sections?.some((s) => s.id === 'shell'), '配置中心已注册「Shell 命令安全」分区')
+// S11：旧 handwritten Agent 专属配置已从 Web/锅巴/默认 YAML 移除。
 const defYaml = read('../config/default_config/config.yaml')
-const jevBlock = defYaml.slice(defYaml.indexOf('  jev:'))
-ok(/^\s*jev:/m.test(defYaml), '默认配置含 agent.jev 块')
-ok(/^\s*providerId:/m.test(jevBlock), '默认配置 agent.jev.providerId')
-ok(/^\s*modelId:/m.test(jevBlock), '默认配置 agent.jev.modelId')
-for (const f of ['llmTool', 'terminalRisk']) {
-  ok(new RegExp(`^\\s+${f}: false`, 'm').test(jevBlock), `默认配置 agent.jev.decisions.${f}=false（opt-in）`)
-}
-ok(/^\s*enable: false/m.test(jevBlock), '默认配置 agent.jev.enable=false')
-ok(/^\s*allowDestructive: false/m.test(jevBlock), '默认配置 agent.jev.allowDestructive=false（破坏性默认拒绝）')
-ok(/^\s*shell:/m.test(defYaml), '默认配置含 agent.shell 块')
-ok(!/^\s*toolDiscovery:/m.test(defYaml), '默认配置不再包含 toolDiscovery（工具全量常驻）')
+ok(!/^\s*jev:/m.test(defYaml), '默认配置不再包含 agent.jev')
+ok(!/^\s*thinkingAuto:/m.test(defYaml), '默认配置不再包含 agent.thinkingAuto')
+ok(!/^\s*shell:/m.test(defYaml), '默认配置不再包含 agent.shell')
+ok(!/^\s*reflect:/m.test(defYaml), '默认配置不再包含 agent.reflect')
+ok(!/^\s*toolDiscovery:/m.test(defYaml), '默认配置不再包含 toolDiscovery')
 const guobaSrc = read('../guoba.support.js')
-for (const field of ['agent.jev.enable', 'agent.jev.providerId', 'agent.jev.modelId', 'agent.jev.model', 'agent.jev.decisions.llmTool', 'agent.jev.decisions.terminalRisk', 'agent.jev.allowDestructive', 'agent.jev.thresholds.terminalRiskFloor', 'agent.jev.thresholds.thinkingMinConfidence', 'agent.jev.thresholds.reflectFloor', 'agent.shell.intercept']) {
-  ok(guobaSrc.includes(`'${field}'`), `锅巴 schema 含字段 ${field}`)
+for (const field of ['agent.jev.', 'agent.thinkingAuto.', 'agent.shell.intercept', 'agent.reflect']) {
+  ok(!guobaSrc.includes(`'${field}`), `锅巴 schema 不再含 ${field}`)
 }
 const viewSrc = read('assets/js/views/config.js')
-for (const f of ['form.jev.enable', 'form.jev.providerId', 'form.jev.modelId', 'form.jev.decisions.llmTool', 'form.jev.decisions.terminalRisk', 'form.jev.allowDestructive', 'form.shell.intercept', "form.thinkingAuto.classifier", 'reflectOptions', 'jevReady']) {
-  ok(viewSrc.includes(f), `Web 视图绑定字段 ${f}`)
+for (const f of ['form.jev', 'form.thinkingAuto', 'form.shell', 'form.reflect', 'reflectOptions', 'jevReady']) {
+  ok(!viewSrc.includes(`v-model="${f}`), `Web 视图不再绑定 ${f}`)
 }
-ok(!/form\.toolDiscovery\./.test(viewSrc), 'Web 视图不再绑定 toolDiscovery 配置')
-ok(viewSrc.includes("['jev', 'Jev(TypeSafe 判断模型)']"), '厂商预设含 jev')
+ok(!viewSrc.includes("['jev', 'Jev(TypeSafe 判断模型)']"), '厂商预设不再含 jev')
+ok(!viewSrc.includes('Shell 命令安全'), 'Web 配置中心不再有 Shell 命令安全分区')
 ok(!/表情包<\/b>配置已移至独立页/.test(viewSrc), '已移除「表情包配置已移至独立页」提示')
 
 console.log(`\n通过 ${passed}，失败 ${failed}`)

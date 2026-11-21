@@ -91,11 +91,10 @@
   const OPT = {
     trigger: [['at', '@机器人触发'], ['command', '触发词触发'], ['both', '两者皆可']],
     protocol: [['openai', 'OpenAI 兼容'], ['anthropic', 'Anthropic 兼容'], ['gemini', 'Gemini 原生(官方SDK)']],
-    preset: [['deepseek', 'DeepSeek'], ['openai', 'OpenAI'], ['gemini', 'Gemini'], ['dashscope', '通义(DashScope)'], ['zhipu', '智谱'], ['moonshot', 'Kimi(Moonshot)'], ['mimo', '小米(MiMo)'], ['minimax', 'MiniMax(M3)'], ['doubao', '豆包(火山方舟)'], ['anthropic', 'Anthropic'], ['openrouter', 'OpenRouter(聚合)'], ['opencode', 'OpenCode Zen'], ['opencode-go', 'OpenCode Go(订阅)'], ['commandcode', 'Command Code'], ['jev', 'Jev(TypeSafe 判断模型)']],
+    preset: [['deepseek', 'DeepSeek'], ['openai', 'OpenAI'], ['gemini', 'Gemini'], ['dashscope', '通义(DashScope)'], ['zhipu', '智谱'], ['moonshot', 'Kimi(Moonshot)'], ['mimo', '小米(MiMo)'], ['minimax', 'MiniMax(M3)'], ['doubao', '豆包(火山方舟)'], ['anthropic', 'Anthropic'], ['openrouter', 'OpenRouter(聚合)'], ['opencode', 'OpenCode Zen'], ['opencode-go', 'OpenCode Go(订阅)'], ['commandcode', 'Command Code']],
     permission: [['master', '仅主人'], ['admin', '管理员'], ['owner', '群主'], ['all', '所有人']],
     guardAction: [['block', '拦截(block)'], ['flag', '隔离标注(flag)'], ['sanitize', '脱敏(sanitize)']],
     guardSensitivity: [['low', '低 (0.95)'], ['medium', '中 (0.7)'], ['high', '高 (0.5)']],
-    reflect: [['off', '关闭'], ['auto', '自动'], ['always', '总是']],
     replyMode: [['text', '纯文本（默认）'], ['image', '图片渲染']],
     degrade: [['skip', 'skip 丢弃'], ['note', 'note 占位说明（默认）'], ['text', 'text 文本类提取']],
     researchPerm: [['master', '仅主人(防滥用)'], ['all', '所有人']],
@@ -169,7 +168,6 @@
         // Command Code 双协议：openai 走 /chat/completions（baseURL 带 /v1）；anthropic 走 /messages（client 自动拼 /v1，baseURL 不能带）
         commandcode: { openai: 'https://api.commandcode.ai/provider/v1', anthropic: 'https://api.commandcode.ai/provider' },
         // Jev（TypeSafe 判断模型）：非 OpenAI 兼容（systemone API），仅供 Jev 决策层使用
-        jev: 'https://api.typesafe.ai',
       }
 
       /* 同步 form 与快照(不触发 dirty) */
@@ -293,12 +291,10 @@
         delete form.reflectMaxIterations
         delete form.rootTokenBudget
         delete form.toolDiscovery
-        if (form.thinkingAuto && typeof form.thinkingAuto === 'object') {
-          delete form.thinkingAuto.model
-          delete form.thinkingAuto.timeoutMs
-          delete form.thinkingAuto.budgets
-          delete form.thinkingAuto.style
-        }
+        delete form.thinkingAuto
+        delete form.jev
+        delete form.reflect
+        delete form.shell
         if (!form.kb) form.kb = {}
         if (form.kb.vectorStore == null) form.kb.vectorStore = true
         if (form.kb.vectorBackend == null) form.kb.vectorBackend = 'auto'
@@ -374,37 +370,6 @@
         if (!form.render) form.render = {}
         if (!form.taskStore) form.taskStore = {}
         if (!form.skill) form.skill = {}
-        // 思考自动决策兜底（UI 绑定需完整对象树）
-        if (!form.thinkingAuto) form.thinkingAuto = {}
-        if (form.thinkingAuto.enable == null) form.thinkingAuto.enable = false
-        if (form.thinkingAuto.classifier == null) form.thinkingAuto.classifier = 'auto'
-        if (form.thinkingAuto.maxBudget == null) form.thinkingAuto.maxBudget = 32768
-        // Jev（TypeSafe 判断模型，opt-in）兜底：UI 绑定需完整对象树。Jev 现作为「厂商+模型」注册。
-        if (!form.jev) form.jev = {}
-        if (form.jev.enable == null) form.jev.enable = false
-        if (form.jev.providerId == null) form.jev.providerId = ''
-        if (form.jev.modelId == null) form.jev.modelId = ''
-        if (form.jev.model == null) form.jev.model = ''
-        if (form.jev.timeoutMs == null) form.jev.timeoutMs = 4000
-        if (form.jev.maxRetries == null) form.jev.maxRetries = 1
-        if (!form.jev.decisions) form.jev.decisions = {}
-        for (const k of ['llmTool', 'terminalRisk']) {
-          if (form.jev.decisions[k] == null) form.jev.decisions[k] = false
-        }
-        if (!form.jev.thresholds) form.jev.thresholds = {}
-        for (const k of ['lowConfidence', 'highConfidence', 'thinkingMinConfidence', 'terminalRiskFloor', 'reflectFloor']) {
-          if (form.jev.thresholds[k] == null) form.jev.thresholds[k] = { lowConfidence: 0.5, highConfidence: 0.9, thinkingMinConfidence: 0.5, terminalRiskFloor: 0.75, reflectFloor: 0.5 }[k]
-        }
-        if (form.jev.allowDestructive == null) form.jev.allowDestructive = false
-        // shell 自定义拦截指令
-        if (!form.shell) form.shell = {}
-        if (!Array.isArray(form.shell.intercept)) form.shell.intercept = []
-        // 工具选择方法 / 反思模式 / 判档方式：缺失时补默认（jev 由对应卡片选择器派生，无需单独 decisions）
-        if (form.reflect == null) form.reflect = 'auto'
-        // Jev 未启用/未配齐时，退出 jev 选项，避免下拉无匹配项显示空白
-        const _jevReady = !!(form.jev.enable && form.jev.providerId && (form.jev.modelId || form.jev.model))
-        if (!_jevReady && form.thinkingAuto.classifier === 'jev') form.thinkingAuto.classifier = 'auto'
-        if (!_jevReady && form.reflect === 'jev') form.reflect = 'auto'
         if (!form.devLog) form.devLog = {}
         if (!form.humanize) form.humanize = {}
         if (!form.humanize.memory) form.humanize.memory = {}
@@ -640,13 +605,6 @@
       const mainProv = computed(() => (form.llmProviders || []).find((p) => p.id === form.providerId) || null)
       const mainModels = computed(() => (form.llmModels || []).filter((m) => m && mainProv.value && m.providerId === mainProv.value.id))
       const mainModel = computed(() => (form.llmModels || []).find((m) => m && m.id === form.modelId) || null)
-      // —— Jev（TypeSafe 判断模型）：作为「厂商 + 模型」注册；判档/反思/工具选择等卡片据此判断是否显示 jev 选项 ——
-      const isJevProvider = (p) => !!p && (p.preset === 'jev' || p.preset === 'openrouter' || /typesafe/i.test(p.baseURL || '') || /jev/i.test(p.name || ''))
-      const jevProviders = computed(() => (form.llmProviders || []).filter(isJevProvider))
-      const jevModels = computed(() => (form.llmModels || []).filter((m) => m && m.providerId === form.jev?.providerId))
-      // 「已填写 Jev 厂商和模型 且 开启 Jev」→ 各卡片显示 jev 决策选项
-      const jevReady = computed(() => !!(form.jev?.enable && form.jev.providerId && (form.jev.modelId || form.jev.model)))
-      const reflectOptions = computed(() => [...OPT.reflect, ...(jevReady.value ? [['jev', 'jev（Jev 决策）']] : [])])
       const provSameAsMain = (pid) => {
         const m = mainProv.value
         if (!pid || !m) return true // 未选厂商时不施加端点约束
@@ -815,7 +773,6 @@
         { id: 'mcp', name: 'MCP 服务', icon: 'tool', grad: 'var(--grad-mint)' },
         { id: 'search', name: '搜索', icon: 'search', grad: 'var(--grad-sky)' },
         { id: 'sandbox', name: 'E2B 沙箱', icon: 'tool', grad: 'var(--grad-mint)' },
-        { id: 'shell', name: 'Shell 命令安全', icon: 'shield', grad: 'var(--grad-rose)' },
         { id: 'stagehand', name: '浏览器自动化', icon: 'tool', grad: 'var(--grad-sky)' },
         { id: 'ext', name: '多模态 / 工具 / 扩展', icon: 'tool', grad: 'var(--grad-sky)' },
       ]
@@ -1226,7 +1183,6 @@
         delProvider, testProvider, testing, provById, provName, provModal, openProvView, openProvEdit, saveProv,
         delModel, modelModal, openModelView, openModelEdit, saveModel, THK_ZH, knownModels, provSameAsMain, onProvPreset,
         mainProv, mainModels, mainModel, setBaseProvider, setBaseModel,
-        jevProviders, jevModels, jevReady, reflectOptions,
         FEATURES, featureVal, featureSel, onFeatureSel,
         // 配置搜索
         search, onSearchInput, onSearchKey, nextHit, pickHit, clearSearchInput, clearSearch,
@@ -1365,49 +1321,6 @@
                 剩余 $ {{ orKey.limit_remaining ?? '∞' }} / 上限 $ {{ orKey.limit ?? '∞' }} · 已用 $ {{ orKey.usage ?? 0 }}（本月 $ {{ orKey.usage_monthly ?? 0 }}）<span v-if="orKey.is_free_tier"> · 免费层</span>
               </div>
             </div>
-
-            <div class="cf-sub"><v-icon name="cpu"/>Jev 判断模型（TypeSafe，opt-in）</div>
-            <div class="full note n-rose" style="margin:0 0 6px">
-              <v-icon name="shield"/>
-              <div style="flex:1"><b>数据外发警告：</b>启用后会把<b>用户对话内容 / shell 命令</b>发往第三方 TypeSafe（typesafe.ai）做结构化判断。默认关闭；失败/低置信一律无感回退现有方案，不阻塞对话。请先在「厂商配置」添加一个 <b>Jev 预设</b>（或 OpenRouter）厂商并填 Key，再到「模型列表」给它挂上 jev 模型，然后在此开启并选择。</div>
-            </div>
-            <cfg-row name="启用 Jev" desc="opt-in 总开关：关闭时各卡片的 jev 决策选项不显示、不生效">
-              <v-switch v-model="form.jev.enable"/>
-            </cfg-row>
-            <cfg-row class="full" name="Jev 厂商" :desc="'仅列出 preset=jev / OpenRouter / 地址含 typesafe 的厂商。' + (jevProviders.length ? '' : '还没有 Jev 厂商：去「厂商配置」添加一个预设为 Jev(TypeSafe) 的厂商（或 OpenRouter）。')">
-              <div class="row g6">
-                <select class="sel" style="width:280px" v-model="form.jev.providerId" :disabled="!form.jev.enable" @change="form.jev.modelId = ''">
-                  <option value="">（未选择）</option>
-                  <option v-for="p in jevProviders" :key="p.id" :value="p.id">{{ p.name || '（未命名）' }} · {{ p.baseURL || '未填地址' }}</option>
-                </select>
-                <button type="button" class="btn b-line b-sm" @click="jump('providers')"><v-icon name="edit"/>管理厂商</button>
-              </div>
-            </cfg-row>
-            <cfg-row class="full" name="Jev 模型" desc="从该 Jev 厂商下的模型条目选（在「模型列表」添加，如 jev-latest）">
-              <div class="row g6">
-                <select class="sel" style="width:220px" v-model="form.jev.modelId" :disabled="!form.jev.enable || !form.jev.providerId">
-                  <option value="">（未选择）</option>
-                  <option v-for="m in jevModels" :key="m.id" :value="m.id">{{ m.name ? m.name + ' · ' : '' }}{{ m.model }}</option>
-                </select>
-                <input class="inp mono" style="width:150px" v-model="form.jev.model" :disabled="!form.jev.enable" placeholder="或手填模型 ID">
-              </div>
-            </cfg-row>
-            <cfg-row name="超时(ms)" desc="超时/失败自动回退。Jev 典型延迟 ~100-300ms">
-              <input type="number" class="inp" style="width:110px" min="500" step="500" :disabled="!form.jev.enable" v-model.number="form.jev.timeoutMs">
-            </cfg-row>
-            <cfg-row name="重试次数" desc="408/429/5xx 退避重试；401/422 不重试；连续失败 3 次熔断 30s">
-              <input type="number" class="inp" style="width:90px" min="0" max="5" :disabled="!form.jev.enable" v-model.number="form.jev.maxRetries">
-            </cfg-row>
-            <cfg-row name="注册 jev 工具" desc="主 LLM 可主动把 state+questions 发给 Jev 取结构化答案">
-              <v-switch v-model="form.jev.decisions.llmTool" :disabled="!form.jev.enable"/>
-            </cfg-row>
-            <div class="full" style="font-size:12px;font-weight:700;color:var(--ink3);padding:8px 2px;border-top:1px dashed var(--line)">高级阈值（低置信→回退；破坏性动作需高置信）</div>
-            <cfg-row name="思考档位置信阈值" desc="thinkingMinConfidence：低于则回退规则判档">
-              <input type="number" class="inp" style="width:110px" min="0" max="1" step="0.05" :disabled="!form.jev.enable" v-model.number="form.jev.thresholds.thinkingMinConfidence">
-            </cfg-row>
-            <cfg-row name="反思触发阈值" desc="reflectFloor：noul 概率达标才反思">
-              <input type="number" class="inp" style="width:110px" min="0" max="1" step="0.05" :disabled="!form.jev.enable" v-model.number="form.jev.thresholds.reflectFloor">
-            </cfg-row>
 
             <div class="cf-sub"><v-icon name="shield"/>网络 / 容错</div>
             <cfg-row name="代理" desc="http 代理(留空=直连)">
@@ -1678,31 +1591,14 @@
                    就显示越界的 200、箭头被卡在 100（2026-10-17 回归审计 low） -->
               <input type="number" class="inp" style="width:110px" min="1" max="1000" v-model.number="form.maxTurns">
             </cfg-row>
-            <cfg-row name="深度思考" :desc="form.thinkingAuto.enable ? '已由「思考自动决策」接管（手动深度思考已关闭）' : '模型先思考再作答(更慢更耗 token)'">
-              <v-switch v-model="thinkingOn" :disabled="form.thinkingAuto.enable"/>
-            </cfg-row>
-            <cfg-row name="思考自动决策" desc="按提问复杂度自动决定是否思考与深度(覆盖手动 thinking；模型级覆盖仍优先)">
-              <v-switch v-model="form.thinkingAuto.enable"/>
-            </cfg-row>
-            <cfg-row name="判档方式" desc="auto=规则不确定时用小模型/ always=总是小模型/ off=纯规则/ jev=由 Jev 判档（需开启 Jev）">
-              <select class="sel" style="width:170px" :disabled="!form.thinkingAuto.enable" v-model="form.thinkingAuto.classifier">
-                <option value="auto">auto（小模型+规则）</option>
-                <option value="always">always（总是小模型）</option>
-                <option value="off">off（纯规则）</option>
-                <option v-if="jevReady" value="jev">jev（Jev 决策）</option>
-              </select>
-            </cfg-row>
-            <cfg-row name="自动预算上限" desc="单轮思考预算硬顶(tokens)">
-              <input type="number" class="inp" style="width:130px" min="1024" max="128000" step="1024" :disabled="!form.thinkingAuto.enable" v-model.number="form.thinkingAuto.maxBudget">
+            <cfg-row name="深度思考" desc="模型先思考再作答（更慢更耗 token）">
+              <v-switch v-model="thinkingOn"/>
             </cfg-row>
             <cfg-row name="单次回复最大 token" desc="留空=厂商默认">
               <input type="number" class="inp" style="width:130px" min="1" v-model.number="form.maxTokens" placeholder="null">
             </cfg-row>
             <cfg-row name="工具结果字符上限" desc="超出截断,防爆 context">
               <input type="number" class="inp" style="width:130px" min="100" v-model.number="form.maxToolResultChars">
-            </cfg-row>
-            <cfg-row name="反思模式" desc="回复前自检回环；jev=由 Jev 判断是否需要反思（需开启 Jev）">
-              <select class="sel" style="width:150px" v-model="form.reflect"><option v-for="o in reflectOptions" :value="o[0]">{{ o[1] }}</option></select>
             </cfg-row>
             <div class="full" style="padding:9px 12px;border:1px dashed var(--line);border-radius:10px">
               <div class="mut2" style="font-size:12px"><v-icon name="info"/> 循环护栏、时间/token 预算、收尾、工具并发/校验、缓存与流式等参数已内置为偏宽松的最优值，不再提供配置。</div>
@@ -2564,31 +2460,6 @@
                 <tag-editor v-model="form.sandbox.network.denyOut" mono placeholder="如 169.254.169.254/32"/>
               </cfg-row>
             </div></div>
-          </div></div>
-        </div>
-
-        <!-- ===== Shell 命令安全（独立 section）===== -->
-        <div :id="'cfg-shell'" class="card cf-sec" :class="{open: open.shell}">
-          <div class="cf-sh" @click="open.shell = !open.shell">
-            <span class="ct-ico" style="background:var(--grad-rose)"><v-icon name="shield"/></span>
-            <div><div class="ct-t">Shell 命令安全</div><div class="ct-s">自定义拦截指令 · 可选 Jev 指令风险检查（破坏性默认拒绝）</div></div>
-            <v-icon class="cf-arrow" name="chevron"/>
-          </div>
-          <div class="cf-body" v-show="open.shell"><div class="cf-grid">
-            <div class="desc mb10">终端命令在 E2B 沙箱内执行（宿主无 shell）。此处可做**确定性拦截**（命中即拒绝，与 Jev 无关），并可选启用 Jev 指令风险检查。</div>
-            <cfg-row class="full" name="自定义拦截指令" desc="大小写不敏感子串匹配；命中即拒绝执行（如 rm -rf /、mkfs、dd if=）。留空=不拦截">
-              <tag-editor v-model="form.shell.intercept" mono placeholder="回车添加要拦截的指令片段"/>
-            </cfg-row>
-            <div class="full" style="font-size:12px;font-weight:700;color:var(--ink3);padding:8px 2px;border-top:1px dashed var(--line)">Jev 指令风险检查（需先在「基础 / 模型」开启并选择 Jev）</div>
-            <cfg-row name="启用 Jev 风险检查" :desc="jevReady ? 'terminal 执行前用 Jev 判只读/可逆/破坏性' : '需先在「基础 / 模型」填写并开启 Jev 厂商/模型'">
-              <v-switch v-model="form.jev.decisions.terminalRisk" :disabled="!jevReady"/>
-            </cfg-row>
-            <cfg-row name="允许破坏性命令" desc="风险：关闭=破坏性一律拒绝（fail-closed，推荐）；开启=仅高置信破坏性放行（终端无审批，谨慎）">
-              <v-switch v-model="form.jev.allowDestructive" :disabled="!jevReady || !form.jev.decisions.terminalRisk"/>
-            </cfg-row>
-            <cfg-row name="破坏性命令置信阈值" desc="terminalRiskFloor：仅「允许破坏性命令」开启时用于高置信放行判定">
-              <input type="number" class="inp" style="width:110px" min="0" max="1" step="0.05" :disabled="!jevReady || !form.jev.allowDestructive" v-model.number="form.jev.thresholds.terminalRiskFloor">
-            </cfg-row>
           </div></div>
         </div>
 

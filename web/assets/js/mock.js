@@ -91,42 +91,12 @@
     maxTurns: 200,
     temperature: 0.2,
     thinking: null,
-    thinkingAuto: {
-      enable: false,
-      classifier: "auto",
-      maxBudget: 32768
-    },
-    jev: {
-      enable: false,
-      providerId: "",
-      modelId: "",
-      model: "",
-      timeoutMs: 4000,
-      maxRetries: 1,
-      maxStateChars: 32000,
-      decisions: {
-        llmTool: false,
-        terminalRisk: false
-      },
-      allowDestructive: false,
-      thresholds: {
-        lowConfidence: 0.5,
-        highConfidence: 0.9,
-        thinkingMinConfidence: 0.5,
-        terminalRiskFloor: 0.75,
-        reflectFloor: 0.5
-      }
-    },
-    shell: {
-      intercept: []
-    },
     maxTokens: null,
     maxToolResultChars: 8000,
     taskStore: {
       enable: false,
       dir: "data/tasks"
     },
-    reflect: "auto",
     render: {
       card: true,
       timeoutMs: 15000,

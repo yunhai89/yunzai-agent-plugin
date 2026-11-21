@@ -11,8 +11,8 @@
 | --- | --- | --- |
 | **基础与回复** | `trigger` `triggerCommand` `commandPassThrough` `privateChat` `isolation.enable` `progress` `progressRecall` `reply.mode/atSender/quote/narrate/renderScale` `render.*` | 触发方式、私聊开关、数据隔离、进度与回复渲染 |
 | **模型** | `providerId` `modelId` `llmProviders[]` `llmModels[]` `fallbackModels[]` `utilityModel` `proxy` `temperature` `maxTokens` | 引用制厂商/模型、回退、旁路小模型、代理 |
-| **思考** | `thinking` `thinkingAuto.enable/classifier/maxBudget` `jev.*` | 手动思考 / 自动判档（深度预算、判档模型与超时已内置） |
-| **上下文与缓存** | `reflect` | 上下文窗口、压缩、缓存断点、推理回灌、流式与收尾预算均已内置，无配置项 |
+| **思考** | `thinking` | 手动深度思考开关（模型级 thinking 覆盖优先） |
+| **上下文与缓存** | 自动 | 上下文窗口、压缩、缓存断点、推理回灌、流式与收尾预算均由 Mastra/运行时自动处理 |
 | **循环与工具** | `maxTurns` `maxToolResultChars` `taskStore.*` | 轮次预算、工具结果上限、工具全量常驻、账本 |
 | **记忆** | `memoryLimits` `memory.*` `recall.*` `profile.*` `kb.*` | 声明式记忆、长期召回、用户画像、知识库 |
 | **自动化** | `schedule.*` `selfReview.*` `evolution.*` `toolEvo.*` | 定时任务、自评审进化、工具进化 |
@@ -61,7 +61,7 @@
 | `maxTokens` | 空 | 单次回复最大 token（留空=厂商默认；Anthropic 默认 4096） |
 | 上下文窗口 / 压缩 | 自动 | 不再提供配置项。运行时按模型官方 `/models` 元数据 → 本地模型目录 → 学习值 → 128K 兜底解析；按可用输入预算 **80% 触发、45% 目标**压缩，始终开启无损归档（`context_recall` 可恢复）。厂商报上下文超限时会自动学习真实上限并压缩重试一次。详见 [记忆体系与上下文缓存](memory-and-context.md) |
 | `maxToolResultChars` | `8000` | 单条工具结果字符上限，超长截断防上下文膨胀 |
-| 推理/循环/收尾（内置） | 固定 | 不再提供配置项：循环护栏（同动作 4 / 连续失败 6 / 无进展 8 步）、根任务时间 2 小时、有效 token 2,000,000、收尾宽限 2 分钟、收尾输出 8192、工具并发 4、参数校验开启、反思回环 1 次、推理不回灌、逐字流式关闭；工具定义全量常驻（缓存优先）；缓存策略按官方端点自动启用（Anthropic 显式断点 / OpenAI `prompt_cache_key`），兼容网关不下发。 |
+| 推理/循环/收尾（内置） | 固定 | 不再提供配置项：工具轮次由 `maxTurns` 控制；上下文压缩、工具结果截断、缓存/流式由 Mastra 运行时自动处理。 |
 | `progress` | `true` | 工具调用时推送节流进度消息（消除"干等"，默认开） |
 | `progressRecall` | `3` | 进度消息多少秒后自动撤回（适配器不支持则忽略） |
 | `reply.mode` | `text` | 回复渲染：`text`（纯文本，默认）/ `image`（markdown→浅色图片，失败自动退文本）。**QQ 官方机器人下自动走 Markdown 直发，本项被忽略** |
@@ -84,7 +84,6 @@
 | `qqBot.intents` | `0` | 事件订阅位图（0=默认只订群@+C2C=33554432；按钮交互=100663296，频道=1073741825。未开通的位会被 4013 拒绝，插件自动降级） |
 | `qqBot.apiBase` / `qqBot.tokenUrl` | 空 | 覆盖 OpenAPI 基址/token 端点（默认 `api.bot.qq.com`，失败自动回退 `api.sgroup.qq.com` / `bots.qq.com`） |
 | `thinking` | 空 | 手动深度思考开关（provider 原生形状，内部固定 `{ type: "enabled", budget_tokens: 16000 }`）；留空=不开启。预算不再提供配置，Web/锅巴只保留开关。 |
-| `thinkingAuto` | 关 | 思考自动决策：`{ enable, classifier, maxBudget }`。判档方式 `classifier`：`auto`=规则不确定时用小模型判（省调用）/`always`=总是小模型/`off`=纯规则/`jev`=由 Jev 判档（需开启 Jev）。判档模型固定为 `utilityModel → 主模型`、超时 2500ms、低/中/高深度预算固定 4096/8192/32768，失败自动回退规则，不阻塞对话。档位→厂商原生字段（MiMo/Kimi/GLM/豆包→`thinking`、DeepSeek→`thinking`+`reasoning_effort`、Qwen→`enable_thinking`+`thinking_budget`、MiniMax→`adaptive`、Anthropic→`budget_tokens`、o/GPT-5→`reasoning_effort`、Gemini→`thinking_level`）。模型级 `thinking` 显式覆盖仍优先。**能力自适应**：能力表没明确表态的（新）型号默认乐观启用思考——厂商若拒绝思考字段，请求层自动剥离重试一次并记忆（之后自动判为不支持，`[chat]` 日志随之转 off，无需重启）；明确判为不支持的模型（如 gpt-4o）启动时有 `[thinking]` 警告，可设 `agent.media.caps.thinking=true` 强制 |
 | `memoryLimits` | 空 | 声明式记忆字符上限，如 `{ memory: 2200, user: 1375 }` |
 | `systemPrompt` | 空 | 默认身份 system prompt（留空用富默认身份）。**优先级**：人设覆盖 > 进化产出的 agent 提示词 > 本项 > 内置默认（v1.26.30 修：此前注册表里预置的内置模板会被当成「进化产出」，导致本项写了也不生效） |
 | `chatPermission` | `master` | `#ai` 命令权限：`master`/`admin`/`owner`/`all` |

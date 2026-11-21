@@ -59,7 +59,6 @@ function linesToArray(v) {
 /** 面板「多行文本 ↔ 数组」字段（getConfigData 侧 join、setConfigData 侧 split） */
 const MULTILINE_FIELDS = new Set([
   'agent.masters',
-  'agent.shell.intercept',
   'agent.sandbox.network.allowOut',
   'agent.sandbox.network.denyOut',
   'agent.humanize.groups',
@@ -126,12 +125,6 @@ const OPT = {
     { label: '低(0.95)', value: 'low' },
     { label: '中(0.7)', value: 'medium' },
     { label: '高(0.5)', value: 'high' },
-  ],
-  reflect: [
-    { label: 'auto 自动（默认：多轮/用工具时）', value: 'auto' },
-    { label: 'off 关闭', value: 'off' },
-    { label: 'always 每次最终回复都反思', value: 'always' },
-    { label: 'jev 由 Jev 判断（需开启 Jev）', value: 'jev' },
   ],
   degrade: [
     { label: 'skip 丢弃', value: 'skip' },
@@ -275,7 +268,6 @@ export function supportGuoba() {
         { field: 'agent.reply.quote', label: '群聊回复引用触发消息', bottomHelpMessage: '默认开；私聊不引用；可与艾特同开，人多时便于定位回复对象', component: 'Switch' },
         { field: 'agent.reply.renderScale', label: '回复图清晰度倍率', bottomHelpMessage: 'deviceScaleFactor：3=超清（默认）/ 2=高清 / 1=普通；越大越清晰但越耗内存', component: 'InputNumber', componentProps: { min: 1, max: 4 } },
         { field: 'agent.render.card', label: '卡片图渲染', bottomHelpMessage: '帮助/列表等卡片图开关（默认开）；弱服务器可关，直接回文本避免渲染卡死。回复图由上面的「回复渲染方式」控制', component: 'Switch' },
-        { field: 'agent.reflect', label: '自我反思/自纠', bottomHelpMessage: '默认 auto：仅多轮或用工具时反思；always=每次最终回复都反思；jev=由 Jev 判断（需开启 Jev）', component: 'Select', componentProps: { options: OPT.reflect } },
 
         // 循环护栏 / 时间与 token 预算 / 收尾 / 工具并发与校验 / 缓存策略均已内置，不再提供面板配置。
 
@@ -321,38 +313,6 @@ export function supportGuoba() {
         // —— 深度思考 ——
         { label: '深度思考（Thinking）', component: 'SOFT_GROUP_BEGIN' },
         { field: 'agent.thinking.enable', label: '开启深度思考', bottomHelpMessage: 'Anthropic 等支持的扩展思考：模型先思考再作答（更慢、更耗 token，但复杂问题质量更高）；留空=不手动开启', component: 'Switch' },
-        { field: 'agent.thinkingAuto.enable', label: '思考自动决策', bottomHelpMessage: '按提问复杂度自动决定是否思考与深度（闲聊不思考、复杂问题深度思考）；开启后覆盖上面的手动 thinking（模型级覆盖仍优先，不会删除手动配置）。能力表未表态的新型号默认乐观启用；厂商拒绝思考字段会自动剥离记忆（转不支持，无需重启）', component: 'Switch' },
-        { field: 'agent.thinkingAuto.classifier', label: '判档方式', bottomHelpMessage: 'auto=规则不确定时用小模型判（省调用）/ always=总是小模型 / off=纯规则 / jev=由 Jev 判档（需开启 Jev）', component: 'Select', componentProps: { options: [{ label: 'auto（小模型+规则）', value: 'auto' }, { label: 'always（总是小模型）', value: 'always' }, { label: 'off（纯规则）', value: 'off' }, { label: 'jev（由 Jev 判档，需开启 Jev）', value: 'jev' }] } },
-        { field: 'agent.thinkingAuto.maxBudget', label: '自动预算上限(tokens)', bottomHelpMessage: '自动模式单轮思考预算硬顶（默认 32768），防烧太多；上限 128000', component: 'InputNumber', componentProps: { min: 1024, max: 128000, step: 1024 } },
-
-        // —— Jev（TypeSafe 判断模型，opt-in，作为「厂商 + 模型」注册）——
-        {
-          label: 'Jev 判断模型（TypeSafe）',
-          component: 'SOFT_GROUP_BEGIN',
-        },
-        {
-          field: 'agent.jev.enable',
-          label: '启用 Jev',
-          bottomHelpMessage: '⚠️ 会把用户对话内容与 shell 命令发往第三方 TypeSafe（typesafe.ai）做结构化判断，属新增数据外发面。默认关闭；失败/低置信一律无感回退现有方案。需先在「厂商配置」添加 preset=jev 的厂商（或 OpenRouter）、在「模型列表」给它挂 jev 模型。语言/工具/失败路径见 Web 配置中心。',
-          component: 'Switch',
-        },
-        { field: 'agent.jev.providerId', label: 'Jev 厂商 id', bottomHelpMessage: '引用 llmProviders[].id（preset=jev 或 openrouter）；推荐用 Web 配置中心下拉选择', component: 'Input' },
-        { field: 'agent.jev.modelId', label: 'Jev 模型条目 id', bottomHelpMessage: '引用 llmModels[].id（挂在上面厂商下）', component: 'Input' },
-        { field: 'agent.jev.model', label: 'Jev 模型 ID（手填）', bottomHelpMessage: '留空=用 modelId 指向的注册模型；可直接填 jev-latest / jev-1.13.0', component: 'Input', componentProps: { placeholder: 'jev-latest' } },
-        { field: 'agent.jev.timeoutMs', label: 'Jev 超时(ms)', bottomHelpMessage: '超时/失败自动回退现有方案（默认 4000；Jev 典型延迟 ~100-300ms）', component: 'InputNumber', componentProps: { min: 500, max: 60000, step: 500 } },
-        { field: 'agent.jev.maxRetries', label: 'Jev 重试次数', bottomHelpMessage: '408/429/5xx 指数退避重试（401/422 不重试；默认 1）；连续失败 3 次熔断 30s', component: 'InputNumber', componentProps: { min: 0, max: 5 } },
-        { field: 'agent.jev.decisions.llmTool', label: '注册 jev 工具', bottomHelpMessage: '让主 LLM 在需要判断时主动把 state+questions 发给 Jev 取结构化答案', component: 'Switch' },
-        { field: 'agent.jev.decisions.terminalRisk', label: 'shell：Jev 风险检查', bottomHelpMessage: 'terminal 执行前用 Jev 判只读/可逆/破坏性；破坏性默认拒绝（回退：现有行为）', component: 'Switch' },
-        { field: 'agent.jev.allowDestructive', label: 'shell：允许破坏性命令', bottomHelpMessage: '⚠️ 关闭=破坏性一律拒绝（fail-closed，推荐）；开启=仅当 Jev 置信度≥破坏性阈值才放行', component: 'Switch' },
-        { field: 'agent.jev.thresholds.lowConfidence', label: '通用低置信阈值', bottomHelpMessage: '低于此值回退现有方案（默认 0.5；与 thinkingMinConfidence 取更严者决定思考回退）', component: 'InputNumber', componentProps: { min: 0, max: 1, step: 0.05 } },
-        { field: 'agent.jev.thresholds.highConfidence', label: '通用高置信阈值', bottomHelpMessage: '破坏性命令放行下限（默认 0.9；实际取 max(terminalRiskFloor, 本值)）', component: 'InputNumber', componentProps: { min: 0, max: 1, step: 0.05 } },
-        { field: 'agent.jev.thresholds.terminalRiskFloor', label: '破坏性命令置信阈值', bottomHelpMessage: '仅「允许破坏性命令」开启时用于高置信放行判定（默认 0.75，0~1）', component: 'InputNumber', componentProps: { min: 0, max: 1, step: 0.05 } },
-        { field: 'agent.jev.thresholds.thinkingMinConfidence', label: '思考档位置信阈值', bottomHelpMessage: 'thinkingMinConfidence：低于则回退规则判档（默认 0.5，0~1）', component: 'InputNumber', componentProps: { min: 0, max: 1, step: 0.05 } },
-        { field: 'agent.jev.thresholds.reflectFloor', label: '反思触发阈值', bottomHelpMessage: 'reflectFloor：noul 概率达标才反思（默认 0.5，0~1）', component: 'InputNumber', componentProps: { min: 0, max: 1, step: 0.05 } },
-
-        // —— Shell 命令安全 + 工具选择方法 ——
-        { label: 'Shell 命令安全', component: 'SOFT_GROUP_BEGIN' },
-        { field: 'agent.shell.intercept', label: '自定义拦截指令', bottomHelpMessage: '大小写不敏感子串匹配，命中即拒绝 terminal 执行；每行一条（如 rm -rf /）。留空=不拦截。推荐用 Web 配置中心编辑', component: 'InputTextArea', componentProps: { rows: 3, placeholder: '每行一条，如：\nrm -rf /\nmkfs' } },
 
         // —— 安全与审批 ——
         { label: '安全与审批', component: 'SOFT_GROUP_BEGIN' },

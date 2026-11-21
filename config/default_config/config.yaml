@@ -66,44 +66,9 @@ agent:
   # 例：主 DeepSeek，回退 GPT → [{ model: "gpt-4o", baseURL: "https://api.openai.com/v1", apiKey: "sk-gpt-xxx", protocol: "openai" }]
   fallbackModels: []
   proxy: ""  # HTTP(S) 代理（如 http://127.0.0.1:7890）；国内服务器访问 GPT/Gemini 等海外 LLM 用，留空=直连。SOCKS 暂不支持（socks5:// 会被忽略并直连）
-  maxTurns: 200  # 单次对话工具调用轮次预算上限（默认 256；配合内置循环护栏智能终止，实际很少触顶）
-  # 循环护栏/时间/token 预算已内置：同动作 4 次、连续失败 6 次、无进展 8 步；
-  # 根任务 2 小时 / 2,000,000 有效 token（缓存命中读按 0.1x 折算），收尾宽限 2 分钟。
+  maxTurns: 200  # Mastra 单次请求最大工具往返步数（maxSteps）
   temperature: 0.2  # 工具调用稳定性（建议 0.1~0.3；勿设 0 避免复读式回复）
   thinking:                # 手动深度思考开关（留空=不手动开启）；预算固定 16000，不再需要手填 provider 形状
-  thinkingAuto:            # 思考自动决策（opt-in）：按提问复杂度自动决定是否思考与深度；开启后覆盖手动 thinking（模型级 thinking 覆盖仍优先）
-                           # 能力自适应：能力表未明确表态的（新）型号默认乐观启用；厂商拒绝思考字段时自动剥离重试并记忆（之后自动转不支持，无需重启）
-    enable: false          # 打开后 Agent 每轮判定：闲聊/简单问题不思考，复杂问题按深度思考
-    classifier: auto       # 判档方式：auto=规则不确定时用小模型判（省调用）/ always=总是小模型 / off=纯规则 / jev=由 Jev 判档（需开启 Jev）
-    maxBudget: 32768       # 自动思考预算硬顶（tokens；各深度预算内置 4096/8192/32768）
-  # ── Jev（TypeSafe AI 判断模型，opt-in，默认关）──
-  # ⚠️ 安全警告：启用后会把**用户对话内容 / shell 命令**发往第三方 TypeSafe（typesafe.ai）做结构化判断，
-  #    属新增数据外发面。默认关闭；仅在明确知晓并接受该风险时开启。所有决策点失败/低置信一律无感回退
-  #    现有方案（思考→规则+小模型；工具→tool_search；reflect→auto；shell→现有行为），不阻塞对话、不 500。
-  #    Jev 现在作为「厂商 + 模型」注册（厂商配置里选 jev 预设；模型列表挂 jev 模型），在「基础 / 模型」卡片
-  #    打开 Jev 开关并选择厂商/模型；问题/阈值/模型 ID 集中在 model/agent/jev/spec.js 一起版本化。
-  jev:
-    enable: false          # 总开关（opt-in；关闭时下列 decisions 全部不生效，零影响）
-    providerId: ""         # Jev 厂商引用（「厂商配置」中 preset=jev 或 openrouter 的条目）
-    modelId: ""            # Jev 模型引用（「模型列表」中该厂商下的模型条目）
-    model: ""              # 手填模型 ID（留空=用 modelId 指向的注册模型；可直接填 jev-latest / jev-1.13.0）
-    timeoutMs: 4000        # 单请求超时（毫秒；超时/失败自动回退。Jev 典型延迟 ~100-300ms，4s 已很宽松）
-    maxRetries: 1          # 408/429/5xx 重试次数（401/422 不重试；遵守 Retry-After）。连续失败 3 次熔断 30s
-    maxStateChars: 32000   # LLM jev 工具单次 state 字符上限（防上下文/计费失控）
-    decisions:             # 各决策点是否走 Jev（多数由对应卡片的选择器派生；见 apps/agent.js）
-      llmTool: false       # 注册 jev 工具供主 LLM 主动调用（把 state+questions 发给 Jev 取结构化答案）
-      terminalRisk: false  # shell 命令执行前用 Jev 判定风险（破坏性默认拒绝；回退：现有行为）
-    allowDestructive: false  # shell 风险：是否允许"高置信破坏性"命令执行。false=破坏性一律拒绝（fail-closed，推荐）；
-                             # true=仅当 Jev 置信度 ≥ thresholds.terminalRiskFloor 才放行（终端无审批，请谨慎）
-    thresholds:            # 置信度门控阈值（集中可配；按"答错的代价"校准）
-      lowConfidence: 0.5       # 通用低置信边界（低→回退）
-      highConfidence: 0.9      # 通用高置信边界（高→才允许破坏性动作）
-      thinkingMinConfidence: 0.5  # 思考档位低于此值回退规则判档
-      terminalRiskFloor: 0.75  # 破坏性命令需达此置信度才允许执行（allowDestructive=true 时）
-      reflectFloor: 0.5        # reflect noul 概率达此值才触发反思
-  # shell 安全：自定义拦截指令（在 terminal 执行前做确定性拦截，与 Jev 是否开启无关）
-  shell:
-    intercept: []          # 需拦截的指令片段列表（大小写不敏感子串匹配；命中即拒绝执行，如 "rm -rf /"）
   maxTokens:              # 单次回复最大 token（留空=厂商默认；Anthropic 默认 4096）
   # 上下文窗口/压缩水位由运行时自动解析（官方 /models → 本地模型目录 → 学习值 → 128K 兜底），
   # 按可用输入预算 80% 触发、45% 目标动态压缩；无需也不支持在此配置。
@@ -113,7 +78,6 @@ agent:
     enable: false           # 默认关闭（开发阶段开关；开启后写入任务库，写操作默认不自动重放）
     dir: "data/tasks"       # 任务库目录
   # keepReasoning 固定 false（省 context；thinking 工具轮协议必需字段仍保留）；逐字流式固定关闭（稳定性优先）。
-  reflect: auto             # 自我反思/自纠：off=关 | auto=仅多轮/用工具时(默认) | always=每次最终回复都反思 | jev=由 Jev 判断是否需要反思
   # 收尾输出上限固定 8192；根任务 token 预算不设额外上限（子代理/编排各自预算仍生效）。
   render:                   # 卡片图渲染（帮助/聊天列表/人设列表；回复图由 reply.mode 控制）
     card: true              # 帮助/列表卡片图开关；弱服务器可置 false 直接回文本，避免渲染卡死
