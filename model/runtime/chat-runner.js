@@ -441,5 +441,10 @@ function stripHistoryPrefix(converted, history) {
   const c = converted.map(norm)
   let n = 0
   while (n < h.length && n < c.length && h[n] === c[n]) n++
-  return n === h.length ? converted.slice(n) : converted
+  if (n === h.length) return converted.slice(n)
+  // Mastra 返回的 messages 通常包含完整输入历史；工具轮的 assistant/tool 归一化可能与
+  // 上一次落盘形态有细微差异，导致逐条前缀比较在中途断开。只要首条仍是同一条历史，
+  // 就按历史条数截断，避免把整段历史再次 append（曾导致 12 轮膨胀到 1214 条）。
+  if (h.length && c.length >= h.length && c[0] === h[0]) return converted.slice(h.length)
+  return converted
 }

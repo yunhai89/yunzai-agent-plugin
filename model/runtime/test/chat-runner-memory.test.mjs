@@ -168,6 +168,24 @@ console.log('\n[工具 ctx 注入 userTexts]')
   eq(captured, ['REMEMBER-ME'], '工具 ctx.userTexts 为当前用户原话')
   const conv = await bridge.getConversation('u9', null, 9, { selfId: '123' })
   ok(conv.some((m) => m.role === 'tool' && String(m.content).includes('"ok":true')), '工具结果已持久化')
+
+  // 第二回合仍带工具：历史必须按前缀截断，不能把上一轮历史再次 append。
+  let turn2 = 0
+  const fetchImpl2 = async () => {
+    turn2++
+    const msg = turn2 === 1
+      ? { role: 'assistant', content: '', tool_calls: [{ id: 'c2', type: 'function', function: { name: 'ctx_probe', arguments: '{}' } }] }
+      : { role: 'assistant', content: 'ok2' }
+    return new Response(JSON.stringify({
+      choices: [{ index: 0, message: msg, finish_reason: turn2 === 1 ? 'tool_calls' : 'stop' }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const inst2 = makeAgentInst({ tools })
+  const runner2 = createMastraChatRunner({ cfg, deps: { tools, confirm: inst2.confirm, memory: bridge }, fetchImpl: fetchImpl2 })
+  await runner2.runChat('SECOND', { agentInst: inst2, ctx: { userId: 'u9', conversationId: 9, scopeUserId: 'u9', selfId: '123' } })
+  const conv2 = await bridge.getConversation('u9', null, 9, { selfId: '123' })
+  eq(conv2.length, 8, '两轮工具对话后 8 条（无历史重复 append）')
 }
 
 console.log('\n[隔离：不同 bot / 群 / 用户]')
