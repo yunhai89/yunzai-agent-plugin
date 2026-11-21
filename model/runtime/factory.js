@@ -88,7 +88,7 @@ export async function createRuntimeFacade({ cfg = {}, dataDir, scope = null, leg
         },
         logger,
       })
-      logger?.('mark', '[runtime] Mastra 非流式聊天 Runner 已就绪（仅灰度命中时使用）')
+      logger?.('mark', '[runtime] Mastra 聊天 Runner 已就绪（全量）')
     } catch (e) {
       initError = normalizeRuntimeError(e, { phase: 'mastra' })
       logger?.('error', '[runtime] Mastra 聊天 Runner 初始化失败，启动中止', initError.code, initError.message)

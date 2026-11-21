@@ -1666,7 +1666,7 @@ async function _buildRuntime(scope) {
   const runtimeDesc = describeRuntimeConfig(runtime.config)
   const runtimeLabel = runtimeDesc.engine === 'legacy'
     ? 'legacy'
-    : (runtime.mastraReady ? `mastra（storage=${runtimeDesc.storage.driver}，灰度 u=${runtimeDesc.gray.users} g=${runtimeDesc.gray.groups} ${runtimeDesc.gray.percent || 0}%）` : 'legacy（mastra 初始化失败）')
+    : (runtime.mastraReady ? `mastra（storage=${runtimeDesc.storage.driver}，全量）` : 'legacy（mastra 初始化失败）')
   startupInfo.runtime = runtimeDesc
 
   Log.panel(`运行时就绪 · ${cfg.model}`, [
