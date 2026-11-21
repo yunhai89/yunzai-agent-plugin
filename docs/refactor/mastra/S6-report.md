@@ -118,6 +118,22 @@ Mastra 路径继续使用 legacy 的压缩实现：
 - 错误：启动日志无插件加载失败/ERROR
 - 观察：S6 上线后先保持 legacy 稳定；Mastra gray 后续按用户/群逐步开启。
 
+### S6 Mastra 灰度真机（两轮历史）
+
+配置 `engine=mastra`、`gray.users=['tester']`，直接通过真实 `Chat` 入口跑两轮（`/tmp/opencode/s6-real2.log`）：
+
+```
+runChat engine=mastra chat=mastra user=tester gray=yes
+Mastra 灰度回复 model=deepseek-v4.1-flash turns=1 tools=0
+REPLIES ["思考中…","s6-one","思考中…","第一轮代号是 S6-ALPHA；s6-two 与这个事实不符，我不能拿它代替答案回复。"]
+HISTORY_ROLES ["user","assistant","user","assistant"]
+HISTORY_HAS_ALPHA true
+```
+
+确认：第二轮读到了第一轮历史（S6-ALPHA），SessionStore 写回 4 条；模型按事实纠正了“只回复 s6-two”的指令冲突。
+
+验证后已恢复 `engine=legacy` 并 `pm2 restart`，当前上线状态为 legacy。
+
 ---
 
 ## 8. 边界
