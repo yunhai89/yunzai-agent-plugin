@@ -7,6 +7,39 @@ agent:
   privateChat: false   # 私聊是否触发对话（默认关；false=私聊不响应，仅群内 @/命令触发）
   isolation:
     enable: true  # 多用户数据隔离（默认开）。true=每个群每个用户完全独立（会话/长期记忆/recall/群历史可见范围）；false=同群完全共享（群体型 bot，会话+记忆+群历史全群共用）。跨群始终隔离；私聊始终按用户。提醒/笔记/人设始终按用户。
+  # ── Agent 运行时引擎（Mastra 重构过渡开关）──
+  # 默认 legacy，行为与旧版完全一致；mastra 在 PR1 只创建嵌入式骨架/数据库，不接聊天流量（PR4 才切）。
+  runtime:
+    engine: legacy          # legacy | mastra
+    fallbackToLegacy: true  # mastra 初始化失败时回退 legacy；false=启动失败（fail-closed）
+    gray:                   # PR4 灰度范围；PR1 只解析不读取
+      users: []             # 指定用户 id（完整官方 ID 或 QQ 号）
+      groups: []            # 指定群 id
+      percent: 0            # 0-100，按稳定哈希取模
+  # ── Mastra 基础设施（仅 engine=mastra 时加载；默认不创建数据库）──
+  mastra:
+    storage:
+      driver: libsql              # libsql | postgres
+      libsqlFile: mastra/mastra.db # 相对插件 data 目录；运行时转绝对路径
+      libsqlUrl: ""               # 显式 file:/abs、:memory:（仅测试）或 libsql://；留空用 libsqlFile
+      connectionStringEnv: MASTRA_DATABASE_URL  # postgres DSN 只从环境变量读
+      schemaName: mastra
+      ssl: false
+      max: 10
+      idleTimeoutMillis: 30000
+      disableInit: false          # true=部署阶段先迁移，运行时不自动建表
+    vector:
+      enable: false               # PR1 默认不建向量库
+      driver: libsql
+      indexName: yz_memory
+      dimensions: 1536
+    memory:
+      mode: sessionstore          # sessionstore（Phase 1，历史仍由 SessionStore 唯一写）| mastra（Phase 2，需评审）
+      semanticRecall: false       # 默认关闭；需独立评审
+    approval:
+      mode: legacy                # legacy=旧 ConfirmStore 阻塞（#确认 原样）| bridge=ApprovalBridge 持久化 + suspend/resume
+      timeoutMs: 300000
+    closeTimeoutMs: 15000         # 关闭/健康检查单步超时
   # ── 基础模型：引用下方「厂商配置 / 模型列表」的条目，不在此单独设置 ──
   providerId: ""      # 选中的厂商条目 id（Web 配置中心 → 厂商配置；运行时由此解析 protocol/preset/baseURL/apiKey）
   modelId: ""         # 选中的模型条目 id（模型列表；须属于上面 providerId 指向的厂商）

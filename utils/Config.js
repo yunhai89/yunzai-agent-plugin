@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url'
 import yaml from 'yaml'
 
 import Log from './Log.js'
+import { normalizeAgentRuntimeConfig } from '../model/runtime/schemas/config.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const PLUGIN_DIR = path.join(__dirname, '..')
@@ -322,6 +323,8 @@ export function normalizeConfig(root) {
   if (agent.thinking === true) { agent.thinking = { type: 'enabled' }; dirty = true }
   else if (agent.thinking === false) { agent.thinking = null; dirty = true }
   if (syncBaseModel(agent)) dirty = true
+  // Runtime/Mastra 配置：旧配置缺省=legacy；非法值回退安全默认（不阻塞启动）
+  if (normalizeAgentRuntimeConfig(agent, { logger: Log })) dirty = true
   warnDanglingBaseRef(agent)
   return dirty
 }

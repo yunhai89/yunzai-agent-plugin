@@ -96,6 +96,28 @@
 | `guardSensitivity` | `medium` | 防御灵敏度：`low`(0.95)/`medium`(0.7)/`high`(0.5) |
 | `redactSecrets` | `true` | 外发文本统一脱敏（回复/中途播报/错误提示/续跑），屏蔽 API Key / token 等敏感信息；`false`=全部不脱敏（慎用） |
 
+### `agent.runtime` / `agent.mastra` —— Mastra 过渡开关（PR1）
+
+默认 `runtime.engine: legacy`，不加载 Mastra、不创建数据库，行为与旧版一致。
+
+```yaml
+agent:
+  runtime:
+    engine: legacy          # legacy | mastra
+    fallbackToLegacy: true  # mastra 初始化失败回退；false=启动失败
+    gray: { users: [], groups: [], percent: 0 }  # PR4 灰度，PR1 不读取
+  mastra:
+    storage:
+      driver: libsql
+      libsqlFile: mastra/mastra.db   # 相对插件 data 目录，运行转绝对路径
+      connectionStringEnv: MASTRA_DATABASE_URL  # postgres DSN 只从 env 读
+    vector: { enable: false, dimensions: 1536 }
+    memory: { mode: sessionstore, semanticRecall: false }
+    approval: { mode: legacy, timeoutMs: 300000 }  # bridge=持久化审批 + suspend/resume
+```
+
+PR1 下即使 `engine: mastra`，聊天仍走 legacy（只创建骨架，用于验证依赖、Storage 生命周期和 Identity）；PR4 才切聊天流量。Postgres 需设置 `MASTRA_DATABASE_URL`，缺失时按 `fallbackToLegacy` 决定回退或启动失败。
+
 ### `agent.policy` —— RBAC 策略
 
 ```yaml

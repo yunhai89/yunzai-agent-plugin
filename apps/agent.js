@@ -58,6 +58,9 @@ import { createMediaService, makeMediaTools, fetchQuotedContext } from '../model
 import { detectCapabilities } from '../model/llm/capabilities.js'
 import { primeModelCaps } from '../model/llm/caps-source.js'
 import { buildEmbed } from '../model/llm/embed-wiring.js'
+import { createRuntimeFacade } from '../model/runtime/factory.js'
+import { ApprovalBridge } from '../model/runtime/approval-bridge.js'
+import { describeRuntimeConfig } from '../model/runtime/schemas/config.js'
 import { thinkingLogFields as fmtThinkingLogFields } from '../model/llm/thinking.js'
 import { KnowledgeStore, makeKbSearchTool } from '../model/agent/knowledge.js'
 import { detectGpu } from '../model/agent/vector-backends.js'
@@ -1610,6 +1613,43 @@ async function _buildRuntime(scope) {
   if (startupInfo.tts) extras.push(`TTS(${startupInfo.tts.provider}${startupInfo.tts.configured ? '' : `·待配置${startupInfo.tts.missing?.length ? ':' + startupInfo.tts.missing.join('/') : ''}`}${startupInfo.tts.sovitsRef ? `·参考音频 ${startupInfo.tts.sovitsRef}` : `·音色${startupInfo.tts.voices}`})`)
   if (cfg.multiagent?.enable !== false) extras.push(`多代理(${startupInfo.multiagent || 'spawn'})`)
   const mcpNames = Object.keys(cfg.mcp?.servers || {})
+  // PR1：运行时 Facade 骨架。默认 legacy（不加载 Mastra）；engine=mastra 时只创建
+  // Mastra/Storage 骨架并登记到 scope，聊天仍由 makeAgent 走 legacy（PR4 才切换）。
+  let approvalBridge = null
+  const nativeApproval = cfg.mastra?.approval?.mode === 'bridge'
+  if (nativeApproval) {
+    try {
+      approvalBridge = new ApprovalBridge({ kv: K, timeoutMs: cfg.mastra?.approval?.timeoutMs, logger: Log })
+      await approvalBridge.restore()
+      scope.register(() => approvalBridge.close(), { name: 'approval-bridge', order: 5 })
+      Log.mark('[runtime] ApprovalBridge 已启用（持久化审批 / suspend-resume）')
+    } catch (e) {
+      approvalBridge = null
+      Log.warn('[runtime] ApprovalBridge 初始化失败，灰度审批回退 ConfirmStore', e?.message || e)
+    }
+  }
+  const runtime = await createRuntimeFacade({
+    cfg,
+    dataDir: Config.path.data,
+    scope,
+    legacy: { makeAgent },
+    chat: { tools, confirm, taskStore, approval: approvalBridge, nativeApproval: nativeApproval && !!approvalBridge, makeAgent },
+    logger: Log.tag('runtime'),
+    generation: _runtimeGen,
+  })
+  // 让 #取消任务/Web 取消同时中止 Mastra 灰度 run（legacy 仍走 abortActiveRun）
+  if (taskStore?.setCancelHook) {
+    taskStore.setCancelHook((id) => {
+      try { abortActiveRun(id) } catch { /* noop */ }
+      try { runtime.abort(id) } catch { /* noop */ }
+    })
+  }
+  const runtimeDesc = describeRuntimeConfig(runtime.config)
+  const runtimeLabel = runtimeDesc.engine === 'legacy'
+    ? 'legacy'
+    : (runtime.mastraReady ? `mastra（storage=${runtimeDesc.storage.driver}，灰度 u=${runtimeDesc.gray.users} g=${runtimeDesc.gray.groups} ${runtimeDesc.gray.percent || 0}%）` : 'legacy（mastra 初始化失败）')
+  startupInfo.runtime = runtimeDesc
+
   Log.panel(`运行时就绪 · ${cfg.model}`, [
     ['模型', `${cfg.model} · ${protocol}${fallbackProviders.length ? ` · 回退 ${fallbackProviders.length}` : ''}`],
     ['工具', `${tools.list().length} 个 · 技能 ${skills.list().length} 个`],
@@ -1619,10 +1659,11 @@ async function _buildRuntime(scope) {
     ['进化', evolutionBits.join(' · ') || 'off'],
     ['MCP', mcpNames.length ? `${mcpNames.length} 个（${mcpNames.join('、')}）` : 'none'],
     ['其他', extras.join(' / ') || '-'],
+    ['运行时', runtimeLabel],
     ['面板', cfg.webApi?.enable !== false ? `:${cfg.webApi?.port || 6098}` : 'off'],
   ])
 
-  return { agentConfig, makeAgent, completePersona, tools, session, recall, profile, knowledge, memory, confirm, schedule, scheduler, mcp, provider, modelRouter, persona, personaStore, personaLore, personaAdoptionQueue, vision, skills, skillsDir, sticker: getStickerManager(), kv: K, usageStats, promptRegistry, traceStore, selfReview, promptDir, suggestionDir, toolEvo, stagehand, diagram, sandbox, multiagent, taskStore, scope, tts, gpuInfo }
+  return { agentConfig, makeAgent, completePersona, tools, session, recall, profile, knowledge, memory, confirm, schedule, scheduler, mcp, provider, modelRouter, persona, personaStore, personaLore, personaAdoptionQueue, vision, skills, skillsDir, sticker: getStickerManager(), kv: K, usageStats, promptRegistry, traceStore, selfReview, promptDir, suggestionDir, toolEvo, stagehand, diagram, sandbox, multiagent, taskStore, scope, tts, gpuInfo, runtime }
 }
 
 const getRuntime = async () => {
@@ -1719,6 +1760,15 @@ Config.onChange(() => {
   Log.info('[config] 配置已热加载，运行时将在下次对话重建')
 })
 Config.startWatch() // 应用入口启动配置文件监听（不在 Config import 时启动，免得测试进程不退出）
+
+// PR1：Yunzai 正常退出/重启时等待运行时 scope 关闭（含 Facade → Mastra/Storage）。
+// Bot.exit() 会 await exitEvent('exit')，因此这里可以安全地做异步清理；避免 WAL 未 checkpoint、
+// LibSQL 连接未释放。Hook 只注册一次（apps 模块不热重载）；无 Bot 的离线测试自动跳过。
+if (typeof Bot !== 'undefined' && typeof Bot?.once === 'function') {
+  Bot.once('exit', async () => {
+    try { await invalidateRuntime() } catch (e) { Log.warn('[runtime] 退出清理异常', e?.message || e) }
+  })
+}
 
 // 供 apps/research.js 等复用已装配的 provider / 工具集
 export { getRuntime }
@@ -2576,7 +2626,7 @@ export class Chat extends plugin {
           ? '\n\n【回复格式】当前通道是 QQ 官方机器人，支持 Markdown 原生渲染：可用 **粗体**、# 标题、- 列表、> 引用、`行内代码`、```代码块```、表格、[链接](url)。优先用简洁的 Markdown 组织答案；提到以 # 开头的机器人指令时，行内用 `#指令` 包裹，独立示例用代码块，避免被当成标题；不要输出 HTML、不要输出 Markdown 图片（平台不渲染本地图片）。'
           : '')
       const agentInst = rt.makeAgent()
-      const { content, stopReason, turns, usage } = await agentInst.run(input, {
+      const runOpts = {
         ctx, systemPrompt: systemPrompt ? systemPrompt + __textHint : __textHint.trim(), context,
         taskId: traceId, // 串联 dev trace：Agent 内 run_start/turn/tool/.../run_end 用同一 id
         stream: wantStream,
@@ -2603,7 +2653,10 @@ export class Chat extends plugin {
           const args = typeof tc?.arguments === 'string' ? tc.arguments : JSON.stringify(tc?.arguments ?? {})
           safeReply(maybeRedact(`⚠️ 主人任务免确认自动执行（高危）：${tc?.name || '?'} ${String(args).slice(0, 200)}`))
         },
-      })
+      }
+      const { content, stopReason, turns, usage } = rt.runtime?.runChat
+        ? await rt.runtime.runChat(input, { ...runOpts, agentInst })
+        : await agentInst.run(input, runOpts)
       // [chat] 汇总行：thinkingAuto 为 on 时显示自动判定的档位/预算/判档来源；off 时显示静态 thinking 与上限
       Log.mark('[chat]', `user=${ctx.userId} gid=${ctx.groupId || '-'} conv=${ctx.conversationId} model=${cfg.model} persona=${personaId || 'default'} vision=${caps.vision ? 'on' : 'off'} ${thinkingLogFields(agentInst, cfg)}${context ? ` ctx=${String(context).length}字` : ''}`)
       // —— 在线自进化：采迹（数据闭环）+ 后台自评审触发（全异步、兜底，绝不阻塞回复）——
@@ -3659,6 +3712,11 @@ export class Chat extends plugin {
     const id = this.e.msg.match(/\d+/)?.[0]
     if (!isEventMaster(this.e)) return this.e.reply('无权限：仅主人可审批'), true
     const rt = await getRuntime()
+    if (rt.runtime?.approve) {
+      const r = await rt.runtime.approve(id, true, String(this.e.user_id))
+      if (r?.ok && r.resumed && r.content) return this.e.reply(r.content), true
+      if (r?.ok && r.resumed === false) return this.e.reply(`已批准 #${id}（运行快照不可恢复，未自动续跑）`), true
+    }
     if (rt.confirm.resolve(id, true)) return this.e.reply(`已批准 #${id}`), true
     await this.e.reply(`未找到待审 #${id}`)
     return true
@@ -3668,6 +3726,10 @@ export class Chat extends plugin {
     const id = this.e.msg.match(/\d+/)?.[0]
     if (!isEventMaster(this.e)) return this.e.reply('无权限：仅主人可审批'), true
     const rt = await getRuntime()
+    if (rt.runtime?.approve) {
+      const r = await rt.runtime.approve(id, false, String(this.e.user_id))
+      if (r?.ok) return this.e.reply(`已拒绝 #${id}`), true
+    }
     if (rt.confirm.resolve(id, false)) return this.e.reply(`已拒绝 #${id}`), true
     await this.e.reply(`未找到待审 #${id}`)
     return true
@@ -3677,9 +3739,11 @@ export class Chat extends plugin {
     if (!isEventMaster(this.e)) return this.e.reply('无权限：仅主人可查看'), true
     const rt = await getRuntime()
     const list = rt.confirm.list()
-    if (!list.length) return this.e.reply('当前无待审批'), true
+    const bridge = (await rt.runtime?.pendingApprovals?.()) || []
+    if (!list.length && !bridge.length) return this.e.reply('当前无待审批'), true
     const lines = []
     for (const p of list) lines.push(`#${p.id} ${p.tool} ${JSON.stringify(p.args || {}).slice(0, 80)}`)
+    for (const p of bridge) lines.push(`#${p.id} ${p.toolName} ${String(p.argsPreview || '').slice(0, 80)}`)
     await this.e.reply(lines.join('\n'))
     return true
   }
@@ -4124,10 +4188,15 @@ export class Chat extends plugin {
         // 否则会重新绑定到已删会话遗留的压缩归档目录（F02）。只清会话/活跃指针/消息。
         if (parts[0] === 'conv' && parts[1] === 'seq') continue
         let keyUid = null
-        if (parts[0] === 'conv') keyUid = parts[1] === 'active' ? parts[3] : parts[2]
-        else keyUid = parts[1] // 旧 group:user 会话 <gid>:<uid>
+        if (parts[0] === 'conv') {
+          // 对话对象带完整 scopeUserId（S6）；active 指针无元数据，循环后单独按精确 key 删除
+          const rec = parts[1] === 'active' ? null : await rt.kv.get(k).catch(() => null)
+          keyUid = rec?.scopeUserId != null ? String(rec.scopeUserId) : (parts[1] === 'active' ? parts[3] : parts[2])
+        } else keyUid = parts[1] // 旧 group:user 会话 <gid>:<uid>
         if (keyUid === uid && !isSharedScopeId(keyUid)) { await rt.session.clear(k); nSess++ }
       }
+      // active 指针单独按精确 key 删除（官方 ID 含冒号时不能从键名反推）
+      try { await rt.session.clear(rt.session.activeKey(uid, ctx.groupId || null)) } catch { /* noop */ }
       if (nSess) cleared.push(`对话历史(${nSess})`)
       // 压缩归档独立于会话 KV 落盘（按 convKey 分目录）：「清空所有记录」必须一并清理，
       // 否则旧原文仍可被新会话召回（F02）。群共享归档在 '__group__' 域，purge(uid) 不会误伤。

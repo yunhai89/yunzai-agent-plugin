@@ -349,10 +349,19 @@ router.post('/tasks/:id/resume', asyncHandler(async (req, res) => {
   return out.ok ? ok(res, out) : fail(res, CODE.BAD, `无法继续：${out.code}`)
 }))
 
-// GET /api/confirm —— 待审批队列（内存态）
+// GET /api/confirm —— 待审批队列（ConfirmStore + ApprovalBridge）
 router.get('/confirm', asyncHandler(async (req, res) => {
   const r = await getRt(res); if (!r) return
-  return ok(res, r.confirm.list())
+  const bridge = ((await r.runtime?.pendingApprovals?.()) || []).map((p) => ({
+    id: p.id,
+    tool: p.toolName,
+    args: { preview: p.argsPreview || '' },
+    ctx: { user: p.ctx?.userId || '', gid: p.ctx?.groupId || '' },
+    createdAt: p.createdAt,
+    expiresAt: p.expiresAt,
+    bridge: true,
+  }))
+  return ok(res, [...r.confirm.list(), ...bridge])
 }))
 
 // GET /api/runtime/scopes —— 资源作用域观测（P0-4）：未关闭 scope 数 + 当前运行时作用域统计
@@ -1223,9 +1232,14 @@ router.delete('/schedule/:id', asyncHandler(async (req, res) => {
 // POST /api/confirm/:id/decide —— 审批决策（不存在/超时 4004）
 router.post('/confirm/:id/decide', asyncHandler(async (req, res) => {
   const r = await getRt(res); if (!r) return
+  const approved = !!req.body?.approve
+  if (r.runtime?.approve) {
+    const out = await r.runtime.approve(req.params.id, approved, String(req.body?.actor || 'web'))
+    if (out?.ok) return ok(res, { decided: true, resumed: out.resumed === true, content: out.content || null })
+  }
   const exists = r.confirm.list().some((c) => c.id === req.params.id)
   if (!exists) return fail(res, CODE.NOTFOUND, '审批项不存在或已超时')
-  r.confirm.resolve(req.params.id, !!req.body?.approve)
+  r.confirm.resolve(req.params.id, approved)
   return ok(res, { decided: true })
 }))
 

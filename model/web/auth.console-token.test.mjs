@@ -19,7 +19,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import express from 'express'
-import Config from '../../utils/Config.js'
+import Config, { readYamlDir } from '../../utils/Config.js'
 import {
   ensureConsoleToken, verifyConsoleToken, revokeConsoleToken,
   consoleTokenDir, consoleTokenTtlMs, formatConsoleUrls, announceConsoleAccess,
@@ -170,7 +170,8 @@ console.log('\n[6] announceConsoleAccess：启动横幅 + 地址副本文件')
 
 console.log('\n[7] 默认配置开箱可用')
 {
-  const cfg = Config.get().agent?.webApi || {}
+  // 只读默认配置：用户 config.yaml 可能显式关闭面板（真机部署常见），不能拿它断言默认值
+  const cfg = readYamlDir(Config.path.defaultConfig).agent?.webApi || {}
   eq(cfg.enable, true, 'webApi.enable 默认 true（面板随插件启动）')
   eq(cfg.printTokenOnStart, true, 'webApi.printTokenOnStart 默认 true（启动即给地址）')
   eq(consoleTokenTtlMs({ consoleTokenTtlHours: 720 }), 720 * 3600 * 1000, 'TTL 读取配置（720h）')

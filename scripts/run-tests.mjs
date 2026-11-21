@@ -73,6 +73,9 @@ const HOOKED_STRESS = new Set([
   'stress/e2e/run.mjs', 'stress/e2e/agent-init-failure.mjs', 'stress/e2e/agent-sandbox-wiring.mjs',
   'stress/e2e/tool-category-audit.mjs', // 全量工具必须声明合法 RBAC category（memory 漏声明实机事故回归）
   'stress/e2e/compaction-clear.mjs', // F02：清空记录必须连同压缩归档一起清理 + 会话 id 不复用
+  'stress/e2e/official-id-clear.mjs', // PR0 契约：官方 ID 含冒号时 #清空所有记录 的现状（KNOWN-BUG）
+  'stress/e2e/runtime-facade-wiring.mjs', // PR1：真实 apps runtime 装配/重建/关闭 Facade
+  'stress/e2e/tool-adapter-wiring.mjs', // PR3a：真实 ToolRegistry → 只读 Mastra 工具集
   // 真实 Web router 测试需要 Yunzai 桩（apps/agent.js / lib 解析）
   'model/web/api.tevo.test.mjs',
   'model/web/api.persona-lore.test.mjs',

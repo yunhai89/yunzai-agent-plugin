@@ -195,6 +195,9 @@ export class SessionStore {
       messages: [],
       createdAt: Date.now(),
       updatedAt: Date.now(),
+      // S6：保存创建时的完整 scope，避免官方 ID 含冒号时从键名反推截断
+      scopeUserId: String(userId ?? ''),
+      scopeGroupId: groupId == null || groupId === '' ? '' : String(groupId),
     }
     await this.kv.set(this.convKey(userId, groupId, id), conv)
     await this.setActiveConversation(userId, groupId, id)
@@ -250,6 +253,9 @@ export class SessionStore {
       const parts = k.slice(`${this.prefix}conv:`.length).split(':')
       const userId = parts[parts.length - 2] || ''
       const groupId = parts.slice(0, -2).join(':') || 'private'
+      // 新会话带 scope 元数据；旧数据回退键名解析（官方 ID 的已知缺陷由迁移处理）
+      const scopedUser = c.scopeUserId != null ? String(c.scopeUserId) : userId
+      const scopedGroup = c.scopeGroupId != null ? String(c.scopeGroupId) : (groupId === 'private' ? '' : groupId)
       out.push({
         id: c.id,
         title: c.title || `对话 ${c.id}`,
@@ -257,8 +263,8 @@ export class SessionStore {
         updatedAt: c.updatedAt || c.createdAt || 0,
         createdAt: c.createdAt || 0,
         preview: preview(c.messages || []),
-        scopeUserId: userId,
-        scopeGroupId: groupId === 'private' ? '' : groupId,
+        scopeUserId: scopedUser,
+        scopeGroupId: scopedGroup,
       })
     }
     return out.sort((a, b) => b.updatedAt - a.updatedAt)
