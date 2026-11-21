@@ -76,6 +76,9 @@ export function createMastraChatRunner({ cfg = {}, deps = {}, logger = null, fet
 
     const ctx = opts.ctx || {}
     const rawText = agentInst._inputText(input)
+    // 工具执行时 memory/evolution 的 evidence 校验依赖 userTexts；必须在 generate 前注入。
+    const toolCtx = { ...ctx, userTexts: [rawText] }
+    if (agentInst) agentInst._userTexts = [rawText]
     const scopeUserId = ctx.scopeUserId || ctx.userId || ''
     const groupId = ctx.groupId || null
     const convId = ctx.conversationId
@@ -147,7 +150,7 @@ export function createMastraChatRunner({ cfg = {}, deps = {}, logger = null, fet
     rc.set('yz.model', main.model)
     rc.set('yz.tools', adapted.tools)
     rc.set('yz.conversationId', convId)
-    rc.set('yz.ctx', ctx)
+    rc.set('yz.ctx', toolCtx)
     rc.set('yz.taskId', taskId)
     rc.set('yz.runId', runId)
     rc.set('yz.toolCallId', null)
@@ -156,7 +159,7 @@ export function createMastraChatRunner({ cfg = {}, deps = {}, logger = null, fet
     rc.set('yz.scopeKey', opts.scopeKey || null)
 
     const taskStore = deps.taskStore || agentInst.taskStore || null
-    const resumeEntry = { agent, rc, agentInst, history, scopeUserId, groupId, convId, taskStore, taskId, rawText, main, protocol: main.ref.protocol, runId, memory, ctx, ...compactedState }
+    const resumeEntry = { agent, rc, agentInst, history, scopeUserId, groupId, convId, taskStore, taskId, rawText, main, protocol: main.ref.protocol, runId, memory, ctx: toolCtx, ...compactedState }
     if (nativeApproval) pending.set(runId, resumeEntry)
     if (taskStore && taskId) {
       try { await taskStore.begin({ taskId, ctx, phase: 'running', input: rawText }) } catch { /* 旧路径/已存在不阻断 */ }

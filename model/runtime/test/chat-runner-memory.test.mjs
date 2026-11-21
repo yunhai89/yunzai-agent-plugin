@@ -143,6 +143,33 @@ console.log('\n[压缩：全量覆写 + cacheEpoch/ledger 写 thread metadata]')
   ok(fs.readdirSync(path.join(TMP, 'archive')).length > 0, '归档落盘')
 }
 
+console.log('\n[工具 ctx 注入 userTexts]')
+{
+  let captured = null
+  const tools = new ToolRegistry().register({
+    name: 'ctx_probe', description: 'probe', category: 'query', meta: { effect: 'read' },
+    parameters: { type: 'object', properties: {} },
+    async execute(_p, ctx) { captured = ctx?.userTexts; return { ok: true } },
+  })
+  let turn = 0
+  const fetchImpl = async () => {
+    turn++
+    const msg = turn === 1
+      ? { role: 'assistant', content: '', tool_calls: [{ id: 'c1', type: 'function', function: { name: 'ctx_probe', arguments: '{}' } }] }
+      : { role: 'assistant', content: 'ok' }
+    return new Response(JSON.stringify({
+      choices: [{ index: 0, message: msg, finish_reason: turn === 1 ? 'tool_calls' : 'stop' }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    }), { status: 200, headers: { 'content-type': 'application/json' } })
+  }
+  const inst = makeAgentInst({ tools })
+  const runner = createMastraChatRunner({ cfg, deps: { tools, confirm: inst.confirm, memory: bridge }, fetchImpl })
+  await runner.runChat('REMEMBER-ME', { agentInst: inst, ctx: { userId: 'u9', conversationId: 9, scopeUserId: 'u9', selfId: '123' } })
+  eq(captured, ['REMEMBER-ME'], '工具 ctx.userTexts 为当前用户原话')
+  const conv = await bridge.getConversation('u9', null, 9, { selfId: '123' })
+  ok(conv.some((m) => m.role === 'tool' && String(m.content).includes('"ok":true')), '工具结果已持久化')
+}
+
 console.log('\n[隔离：不同 bot / 群 / 用户]')
 {
   const c1 = await bridge.createConversation('u3', 'g3', 'A', { selfId: '111' })
