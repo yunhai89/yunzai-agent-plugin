@@ -5,7 +5,7 @@
 ## 🌿 分支与更新（先看）
 
 - **`master` 是唯一主分支**：新功能、底层改动、bug 修复都直接提交到 `master`；历史上的 `beta` 分支已于 v1.21.0 全量合并并停用。
-- **`dev` 是 Mastra 全量切换实验分支**：默认 `engine=mastra`、`memory.mode=mastra`，旧 Agent 内核已删除。可以安装、启动、部署运行，但研究和多代理等外围链路仍在补齐，效果**远不如 `master`**，不要用于生产。
+- **dev 是 Mastra 全量切换实验分支**：默认引擎为 mastra，Mastra Memory 接管历史，旧 Agent 内核已删除。可以安装、启动、部署运行，但研究和多代理等外围链路仍在补齐，效果**远不如 master**，不要用于生产。
 - 更新：主人发 **`#agent更新`**，或手动 `cd plugins/agents-plugin && git pull origin master`（package.json 有变动时 `#agent更新` 会自动 `pnpm install`）。
 - **代码改动必须重启进程**（`#重启`，或等 `#agent更新` 自动重启）；**只改配置**用 `#agent重载` 即可（它按新配置重建运行时，但不重新加载已改动的代码文件）。
 - 本地有未提交改动时更新会中止并列出冲突文件名（不会丢改动）；`#agent强制更新` 会 `git reset --hard`，未提交改动将永久丢失。
