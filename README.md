@@ -30,7 +30,7 @@
 
 > **这是实验分支，不是稳定版。日常使用请回到 `master`。**
 >
-> `dev` 正在把 Agent 内核整体重写为 **Mastra + Vercel AI SDK**，目前完成 S0–S4、S6（运行时骨架、模型/工具适配、灰度聊天、审批、Memory Phase 1）；S5 功能已完成但 72h 观察待执行，S7–S11 尚未开始。
+> `dev` 正在把 Agent 内核整体重写为 **Mastra + Vercel AI SDK**，目前完成 S0–S4、S6、S7（运行时骨架、模型/工具适配、灰度聊天、审批、Memory Phase 1、Mastra Memory 接管与迁移）；S5 功能已完成但 72h 观察待执行，S8–S11 尚未开始。
 >
 > - ✅ **可以安装、启动、部署运行**：默认仍是 `engine: legacy`，真实聊天走旧内核；Mastra 仅通过 `mastra.gray` 按用户/群灰度。
 > - ⚠️ **效果远不如 `master`**：Mastra 灰度链路的能力覆盖、稳定性、长会话、异常恢复和外围功能 parity 都未达标，当前只适合参与重构验证。

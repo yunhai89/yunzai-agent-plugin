@@ -697,7 +697,7 @@ async function _buildRuntime(scope) {
   const usageStats = createUsageStats({ kv: K, logger: Log })
   // F16：获取即登记清理（带 order），构建中途失败时也可回滚
   scope.register(async () => { try { await usageStats?.flushNow?.() } catch { /* noop */ } ; try { usageStats?.stop?.() } catch { /* noop */ } }, { name: 'usageStats', order: 70 })
-  const session = new SessionStore({ kv: K })
+  let session = new SessionStore({ kv: K })
 
   // 可恢复任务账本（P0-3，opt-in）：任务事件/检查点落 sqlite 事务；重启把未结算任务标 interrupted
   // （默认不自动重放副作用）。与 SessionStore（对话历史投影）职责分离。
@@ -1628,15 +1628,34 @@ async function _buildRuntime(scope) {
       Log.warn('[runtime] ApprovalBridge 初始化失败，灰度审批回退 ConfirmStore', e?.message || e)
     }
   }
+  const runtimeIdentity = (() => {
+    const explicit = cfg.mastra?.identity || {}
+    if (explicit.botId) return { botId: String(explicit.botId), adapter: String(explicit.adapter || 'onebot') }
+    try {
+      if (cfg.qqBot?.appId) return { botId: String(cfg.qqBot.appId), adapter: 'qqbot' }
+      if (typeof Bot !== 'undefined' && Bot) return { botId: String(Bot.uin || Bot.uins?.[0] || ''), adapter: 'onebot' }
+    } catch { /* noop */ }
+    return { botId: '', adapter: 'onebot' }
+  })()
   const runtime = await createRuntimeFacade({
     cfg,
     dataDir: Config.path.data,
     scope,
     legacy: { makeAgent },
-    chat: { tools, confirm, taskStore, approval: approvalBridge, nativeApproval: nativeApproval && !!approvalBridge, makeAgent },
+    chat: {
+      tools, confirm, taskStore, approval: approvalBridge,
+      nativeApproval: nativeApproval && !!approvalBridge, makeAgent,
+      session,
+      identity: runtimeIdentity,
+    },
     logger: Log.tag('runtime'),
     generation: _runtimeGen,
   })
+  // S7：memory.mode=mastra 时，Facade 返回 MemoryBridge；后续 Agent/Web/命令统一读写 Mastra。
+  if (runtime.history) {
+    session = runtime.history
+    agentConfig.session = session
+  }
   // 让 #取消任务/Web 取消同时中止 Mastra 灰度 run（legacy 仍走 abortActiveRun）
   if (taskStore?.setCancelHook) {
     taskStore.setCancelHook((id) => {
@@ -2305,7 +2324,7 @@ export class Chat extends plugin {
     ctx.pendingCards = []
     // 会话指针读取须有错误边界（此前裸 await 抛出 → 整条消息无响应、控制台无 trace）
     try {
-      ctx.conversationId = await rt.session.getActiveConversation(ctx.scopeUserId, ctx.groupId)
+      ctx.conversationId = await rt.session.getActiveConversation(ctx.scopeUserId, ctx.groupId, ctx)
     } catch (e) {
       Log.error('[chat] 读取活跃会话失败', e?.message || e)
       triggerOnFailure('getActiveConversation')
@@ -2315,7 +2334,7 @@ export class Chat extends plugin {
     }
     // per-会话日志文件名所需信息；uid 用 scopeUserId 保证"同会话同文件"（群共享时为 __group__）
     let __convMeta = null
-    try { __convMeta = await rt.session.getConversationMeta(ctx.scopeUserId, ctx.groupId, ctx.conversationId) } catch { /* noop */ }
+    try { __convMeta = await rt.session.getConversationMeta(ctx.scopeUserId, ctx.groupId, ctx.conversationId, ctx) } catch { /* noop */ }
     ctx.devScope = { gid: ctx.groupId || 'private', uid: ctx.scopeUserId, convId: ctx.conversationId, createdAt: __convMeta?.createdAt || Date.now() }
     devScope = ctx.devScope
     devLog('trigger', {
@@ -2945,8 +2964,8 @@ export class Chat extends plugin {
   async chatList() {
     const rt = await getRuntime()
     const ctx = ctxOf(this.e)
-    const list = await rt.session.listConversations(ctx.scopeUserId, ctx.groupId)
-    const activeId = await rt.session.getActiveConversation(ctx.scopeUserId, ctx.groupId)
+    const list = await rt.session.listConversations(ctx.scopeUserId, ctx.groupId, ctx)
+    const activeId = await rt.session.getActiveConversation(ctx.scopeUserId, ctx.groupId, ctx)
     const html = buildChatListHtml({ user: ctx.userId, conversations: list, activeId })
     // render.card=false：弱服务器直接走文本回退（此前只有 #帮助 尊重该开关，列表仍会截图，配置互搏审计 F26）
     const img = Config.get().agent?.render?.card === false ? null : await screenshot('agents-plugin/chat-list', html)
@@ -2960,7 +2979,7 @@ export class Chat extends plugin {
     const id = this.e.msg.match(/\d+/)?.[0]
     const rt = await getRuntime()
     const ctx = ctxOf(this.e)
-    const ok = await rt.session.setActiveConversation(ctx.scopeUserId, ctx.groupId, id)
+    const ok = await rt.session.setActiveConversation(ctx.scopeUserId, ctx.groupId, id, ctx)
     await this.e.reply(ok ? `已切换到对话 #${id}` : `未找到对话 #${id}，发送 #聊天列表 查看`)
     return true
   }
@@ -2968,7 +2987,7 @@ export class Chat extends plugin {
   async newChat() {
     const rt = await getRuntime()
     const ctx = ctxOf(this.e)
-    const conv = await rt.session.createConversation(ctx.scopeUserId, ctx.groupId)
+    const conv = await rt.session.createConversation(ctx.scopeUserId, ctx.groupId, undefined, ctx)
     await this.e.reply(`已新建对话 #${conv.id}（${conv.title}），后续消息在此对话中继续`)
     return true
   }
@@ -3294,7 +3313,7 @@ export class Chat extends plugin {
     const masters = Config.get().agent?.masters || []
     if (!masters.length) { await this.e.reply('⚠️ 未配置 agent.masters，无人接收上报。'); return true }
     // 最近 10 个会话（listConversations 默认按 id 升序，这里按 updatedAt 降序取最近）
-    const list = (await rt.session.listConversations(ctx.scopeUserId, ctx.groupId))
+    const list = (await rt.session.listConversations(ctx.scopeUserId, ctx.groupId, ctx))
       .sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)).slice(0, 10)
     const c = Config.get().agent?.devLog
     const devDir = c?.dir ? path.resolve(c.dir) : Config.path.logs
@@ -4020,7 +4039,7 @@ export class Chat extends plugin {
   async _taskScope() {
     const rt = await getRuntime()
     const ctx = ctxOf(this.e)
-    try { ctx.conversationId = await rt.session.getActiveConversation(ctx.scopeUserId, ctx.groupId) } catch { /* 无活动会话按默认 */ }
+    try { ctx.conversationId = await rt.session.getActiveConversation(ctx.scopeUserId, ctx.groupId, ctx) } catch { /* 无活动会话按默认 */ }
     // 任务续跑/恢复会重新跑 Agent 工具链：运行时能力（沙箱/视觉）与交互路径同口径
     attachToolRuntime(ctx, rt)
     return { rt, ctx, scopeKey: scopeKeyOfCtx(ctx) }
@@ -4178,6 +4197,11 @@ export class Chat extends plugin {
     _clearPending.delete(uid)
     try {
       const cleared = []
+      // S7：memory.mode=mastra 时消息不在 KV；先删 Mastra thread（同时清理 legacy 对话对象/active）
+      if (typeof rt.session.clearAllConversations === 'function') {
+        const nMastra = await rt.session.clearAllConversations(uid, ctx.groupId || null)
+        if (nMastra) cleared.push(`Mastra 对话(${nMastra})`)
+      }
       // 会话：扫描归属当前用户的 session 键（keyUid=该 key 的归属用户；ON=本人各群会话；群共享 '__group__' 跳过）
       const sessPrefix = 'Yz:agent:sess:'
       let nSess = 0
@@ -4279,7 +4303,7 @@ export class Chat extends plugin {
     try {
       // 只读活跃对话：`getActiveConversation()` 在无对话时会**新建空对话**，
       // 让一次资料补齐凭空出现在用户的 #聊天列表 里（副作用）。
-      base.conversationId = await rt.session.peekActiveConversation?.(base.scopeUserId, base.groupId) || 'persona-complete'
+      base.conversationId = await rt.session.peekActiveConversation?.(base.scopeUserId, base.groupId, base) || 'persona-complete'
     } catch { base.conversationId = 'persona-complete' }
     base.selfId = String(this.e.self_id || this.e.selfId || '')
     return base

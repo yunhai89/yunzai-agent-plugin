@@ -34,8 +34,12 @@ agent:
       indexName: yz_memory
       dimensions: 1536
     memory:
-      mode: sessionstore          # sessionstore（Phase 1，历史仍由 SessionStore 唯一写）| mastra（Phase 2，需评审）
+      mode: sessionstore          # sessionstore（Phase 1，历史仍由 SessionStore 唯一写）| mastra（Phase 2，Mastra Memory 唯一写）
       semanticRecall: false       # 默认关闭；需独立评审
+      onDemandMigration: true     # Phase 2 下首次读写未迁移对话时，自动从 SessionStore 导入（只写 Mastra）
+    identity:                     # thread/resource 归属；留空 botId 时从 ctx.selfId / 官方 ID 前缀推断
+      botId: ""
+      adapter: onebot             # onebot | qqbot | qqguild
     approval:
       mode: legacy                # legacy=旧 ConfirmStore 阻塞（#确认 原样）| bridge=ApprovalBridge 持久化 + suspend/resume
       timeoutMs: 300000

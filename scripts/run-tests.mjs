@@ -75,12 +75,14 @@ const HOOKED_STRESS = new Set([
   'stress/e2e/compaction-clear.mjs', // F02：清空记录必须连同压缩归档一起清理 + 会话 id 不复用
   'stress/e2e/official-id-clear.mjs', // PR0 契约：官方 ID 含冒号时 #清空所有记录 的现状（KNOWN-BUG）
   'stress/e2e/runtime-facade-wiring.mjs', // PR1：真实 apps runtime 装配/重建/关闭 Facade
+  'stress/e2e/mastra-memory-wiring.mjs', // S7：memory.mode=mastra → rt.session/Agent/Web 同源
   'stress/e2e/tool-adapter-wiring.mjs', // PR3a：真实 ToolRegistry → 只读 Mastra 工具集
   // 真实 Web router 测试需要 Yunzai 桩（apps/agent.js / lib 解析）
   'model/web/api.tevo.test.mjs',
   'model/web/api.persona-lore.test.mjs',
   'model/web/api.clearcache.test.mjs', // 清空 Token 缓存统计：真实 router + 真实 UsageStats + 桩 runtime
   'model/web/api.qqbot.test.mjs', // QQBot 账号 API：真实 router + 桩适配器/Config
+  'model/web/api.memory.test.mjs', // S7：Mastra Memory → Web conversations/sessions
   'model/web/api.web-console.test.mjs', // 启动默认地址 API：真实 router + 真实 auth 中间件
   // TTS 路由测试需要桩 Config（写配置不落盘真实 config.yaml）
   'model/web/tts.test.mjs',

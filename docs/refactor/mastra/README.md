@@ -1,6 +1,6 @@
 # Mastra 底层重构：审计、方案与开发文档
 
-> 状态：**极早期初步开发（pre-alpha）**。S0–S4、S6 已完成；S5 功能完成、72h 观察待执行；S7–S11 未开始。代码已可在 `engine: legacy` 下部署运行，Mastra 仅按用户/群灰度；但能力覆盖、稳定性与效果**远不如 `master`**，请勿用于生产。
+> 状态：**极早期初步开发（pre-alpha）**。S0–S4、S6、S7 已完成；S5 功能完成、72h 观察待执行；S8–S11 未开始。代码已可在 `engine: legacy` 下部署运行，Mastra 仅按用户/群灰度；但能力覆盖、稳定性与效果**远不如 `master`**，请勿用于生产。
 >
 > 审查基线：`dev @ 9323c5d`（2026-11-20）。当前 `dev` 已包含 S0–S6 的实现（最新提交以仓库为准），`master` 仍是唯一维护线。文中历史审计的 `路径:行号` 以基线为准；除“现状”外，目标设计章节仍标注为**目标设计**，落地代码以仓库为准。
 >
@@ -26,6 +26,7 @@
 | [PR4a-report.md](PR4a-report.md) | S4 后半：Mastra 非流式聊天灰度、历史/上下文/工具/回退、完整 Yunzai 真机 | 实现者、QA |
 | [PR4b-report.md](PR4b-report.md) | PR4b/4c：流式、取消、原生 ApprovalBridge、重启 resume、灰度群 | 实现者、QA |
 | [S6-report.md](S6-report.md) | S6 Memory Phase 1：MessageAdapter、压缩/ledger、多对话/隔离、官方 ID 修复 | 实现者、QA |
+| [S7-report.md](S7-report.md) | S7 Memory Phase 2：MemoryBridge、迁移/校验/回滚、Web 兼容、重启/隔离 | 实现者、QA、运维 |
 
 ## 推荐阅读顺序
 
@@ -85,8 +86,8 @@
 ## 当前状态与免责声明
 
 - **这是 `dev` 分支上的实验性重构，处于极早期初步开发（pre-alpha）**。它可以安装、启动、部署运行，但 Mastra 灰度链路的能力覆盖、稳定性、长会话、异常恢复与外围 parity 都未达标，**实际效果远不如 `master`**；日常使用与生产部署请使用 `master`。
-- 已完成：S0 基线、S1 Runtime Facade/Storage/Identity、S2 ModelFactory、S3 只读 Tool Adapter、S4 写工具/审批/非流式与流式灰度、S6 Memory Phase 1。S5 的 72h 观察期尚未执行；S7–S11 未开始。
-- 默认配置仍是 `runtime.engine: legacy`；只有 `mastra.gray` 命中的用户/群走 Mastra 聊天，未被命中或初始化失败会回退 legacy。Mastra Memory 未启用，历史唯一真源仍是 `SessionStore`（ADR-004 Phase 1）。
+- 已完成：S0 基线、S1 Runtime Facade/Storage/Identity、S2 ModelFactory、S3 只读 Tool Adapter、S4 写工具/审批/非流式与流式灰度、S6 Memory Phase 1、S7 Memory Phase 2 与迁移。S5 的 72h 观察期尚未执行；S8–S11 未开始。
+- 默认配置仍是 `runtime.engine: legacy`；只有 `mastra.gray` 命中的用户/群走 Mastra 聊天，未被命中或初始化失败会回退 legacy。`memory.mode=sessionstore` 时历史唯一真源是 `SessionStore`；切到 `mastra` 后 Mastra Memory 唯一写，SessionStore 只读/迁移源（ADR-004 Phase 2）。
 - 文档中的**审计基线**是 `9323c5d`；S0–S6 的落地代码、测试和报告已在该基线上继续提交，历史 `路径:行号` 证据需按当前代码重新核对。
 - 文中“目标设计”代码示例使用 TypeScript 语法仅用于表达类型；**推荐实现语言仍是 ESM JavaScript + JSDoc**，理由见 ADR-001。示例不能直接粘贴运行。
 - 任何“性能提升”“行为等价”结论都必须由 [05](05-test-and-acceptance.md) 的 parity/性能测试证明；未测试前一律视为待验证。

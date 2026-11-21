@@ -172,6 +172,7 @@ export function mastraMessagesToLegacy(messages = [], { fromIndex = 0 } = {}) {
     let text = ''
     let reasoning = ''
     const native = []
+    let nativeRelevant = false
     const flushText = () => {
       if (!text) return
       out.push({ role: 'assistant', content: text })
@@ -196,10 +197,11 @@ export function mastraMessagesToLegacy(messages = [], { fromIndex = 0 } = {}) {
       if (p?.type === 'text') { text += p.text || ''; native.push({ type: 'text', text: p.text || '' }); continue }
       if (p?.type === 'reasoning') {
         reasoning += p.text || ''
-        const sig = p.providerOptions?.anthropic?.signature
-        const redacted = p.providerOptions?.anthropic?.redactedData
-        if (sig) native.push({ type: 'thinking', thinking: p.text || '', signature: sig })
-        else if (redacted) native.push({ type: 'redacted_thinking', data: redacted })
+        const pm = p.providerOptions || p.providerMetadata
+        const sig = pm?.anthropic?.signature
+        const redacted = pm?.anthropic?.redactedData
+        if (sig) { nativeRelevant = true; native.push({ type: 'thinking', thinking: p.text || '', signature: sig }) }
+        else if (redacted) { nativeRelevant = true; native.push({ type: 'redacted_thinking', data: redacted }) }
         continue
       }
       if (p?.type === 'tool-invocation') {
@@ -208,6 +210,7 @@ export function mastraMessagesToLegacy(messages = [], { fromIndex = 0 } = {}) {
           flushText()
           pendingCalls.push({ id: inv.toolCallId, name: inv.toolName, args: inv.args })
           pendingResults.push({ id: inv.toolCallId, name: inv.toolName, result: inv.result })
+          nativeRelevant = true
           native.push({ type: 'tool_use', id: inv.toolCallId, name: inv.toolName, input: inv.args })
           flushTools()
         }
@@ -215,12 +218,12 @@ export function mastraMessagesToLegacy(messages = [], { fromIndex = 0 } = {}) {
     }
     flushText()
     flushTools()
-    if ((reasoning || native.length) && out.length) {
+    if ((reasoning || nativeRelevant) && out.length) {
       // 附到本 step 的第一条 assistant（有 tool_calls 时应为它；无工具则最终文本）
       const first = out[startIndex]?.role === 'assistant' ? out[startIndex] : [...out].reverse().find((x) => x.role === 'assistant')
       if (first) {
         if (reasoning) first.reasoning = reasoning
-        if (native.length) first.provider_native = { type: 'anthropic', content: native }
+        if (nativeRelevant && native.length) first.provider_native = { type: 'anthropic', content: native }
       }
     }
   }
@@ -239,4 +242,196 @@ export function currentUserContent(input, text) {
     return parts
   }
   return text
+}
+
+
+/**
+ * legacy 历史 → MastraDBMessage[]（Memory Phase 2 / S7）。
+ *
+ * 与 `legacyToMastraMessages` 的区别：
+ *  - 目标不是 AI SDK ModelMessage，而是 Memory 持久化的 `content.format=2.parts`；
+ *  - 工具调用使用 Mastra UI 的 `tool-invocation` 形态，结果按 `role:'tool'` 独立成消息；
+ *  - id 由调用方注入（迁移用稳定 hash，新消息用 thread+seq 稳定 id），重复写入幂等。
+ */
+export function legacyToMastraDbMessages(messages = [], {
+  threadId = '', resourceId = '', startSeq = 0, baseTime = Date.now(), makeId = null,
+} = {}) {
+  const out = []
+  const calls = new Map()
+  let seq = Number(startSeq) || 0
+  const nextId = (msg) => {
+    if (typeof makeId === 'function') {
+      const id = makeId(seq, msg)
+      if (id) return String(id)
+    }
+    return `yz_${seq.toString(36)}_${contentHash32(JSON.stringify(msg))}`
+  }
+  for (const m of messages || []) {
+    if (!m || !m.role) continue
+    const createdAt = new Date(Number(baseTime || Date.now()) + seq)
+    const id = nextId(m)
+    seq++
+    if (m.role === 'user') {
+      out.push({ id, role: 'user', createdAt, threadId, resourceId, content: { format: 2, parts: legacyContentToParts(m.content) } })
+      continue
+    }
+    if (m.role === 'assistant') {
+      const parts = []
+      const native = anthropicNativeParts(m)
+      const nativeMeta = native.length ? { yzProviderNative: 'anthropic' } : null
+      if (native.length) {
+        for (const p of native) {
+          if (p.type === 'reasoning') parts.push({ type: 'reasoning', text: p.text || '', ...(p.providerOptions ? { providerOptions: p.providerOptions } : {}) })
+          else if (p.type === 'text') parts.push({ type: 'text', text: p.text || '' })
+          else if (p.type === 'tool-call') {
+            parts.push({ type: 'tool-invocation', toolInvocation: { state: 'call', toolCallId: p.toolCallId, toolName: p.toolName, args: p.input ?? {} } })
+            calls.set(p.toolCallId, p.input ?? {})
+          }
+        }
+        // provider_native 未携带完整文本时兜底；避免重复
+        if (!parts.some((p) => p.type === 'text')) {
+          const text = textOf(m.content)
+          if (text) parts.push({ type: 'text', text })
+        }
+      } else {
+        if (m.reasoning) parts.push({ type: 'reasoning', text: String(m.reasoning) })
+        const text = textOf(m.content)
+        if (text) parts.push({ type: 'text', text })
+        for (const tc of Array.isArray(m.tool_calls) ? m.tool_calls : []) {
+          let input = tc.function?.arguments ?? tc.arguments ?? {}
+          if (typeof input === 'string') { try { input = JSON.parse(input) } catch { input = { _raw: input } } }
+          const callId = tc.id || `call_${seq}`
+          const name = tc.function?.name || tc.name || ''
+          parts.push({ type: 'tool-invocation', toolInvocation: { state: 'call', toolCallId: callId, toolName: name, args: input } })
+          calls.set(callId, input)
+        }
+      }
+      if (!parts.length) continue
+      out.push({ id, role: 'assistant', createdAt, threadId, resourceId, content: { format: 2, parts, ...(nativeMeta ? { metadata: nativeMeta } : {}) } })
+      continue
+    }
+    if (m.role === 'tool') {
+      const callId = m.tool_call_id || m.toolCallId || ''
+      const name = m.name || ''
+      const args = calls.get(callId) ?? {}
+      let result = m.content
+      if (typeof result === 'string') { try { result = JSON.parse(result) } catch { /* keep string */ } }
+      out.push({
+        id, role: 'assistant', createdAt, threadId, resourceId,
+        content: { format: 2, parts: [{
+          type: 'tool-invocation',
+          toolInvocation: { state: 'result', toolCallId: callId, toolName: name, args, result },
+        }] },
+      })
+    }
+  }
+  return out
+}
+
+/** 32 位短 hash：仅用于兜底 id，不参与内容校验 */
+function contentHash32(s) {
+  let h = 0x811c9dc5
+  const text = String(s)
+  for (let i = 0; i < text.length; i++) {
+    h ^= text.charCodeAt(i)
+    h = Math.imul(h, 0x01000193) >>> 0
+  }
+  return h.toString(16).padStart(8, '0')
+}
+
+/**
+ * MastraDBMessage[] → legacy 历史（Memory 读取 / 迁移校验）。
+ *
+ * 与 `mastraMessagesToLegacy` 的差异：结果消息是独立 `role:'tool'`，且不会为每个
+ * tool-result 重复生成 assistant tool_calls；只有真正含 call part 的 assistant 才生成。
+ */
+export function mastraDbMessagesToLegacy(messages = []) {
+  const out = []
+  let lastAssistant = null
+  for (const m of messages || []) {
+    const parts = Array.isArray(m?.content?.parts) ? m.content.parts : []
+    if (m?.role === 'user') {
+      const content = []
+      for (const p of parts) {
+        if (p?.type === 'text') content.push({ type: 'text', text: p.text || '' })
+        else if (p?.type === 'image') content.push({ type: 'image_url', image_url: { url: typeof p.image === 'string' ? p.image : '' } })
+        else if (p?.type === 'file') content.push({ type: 'text', text: `[文件${p.filename ? ` ${p.filename}` : ''}]` })
+      }
+      const t = partText(parts) || textOf(m.content?.content ?? m.content)
+      const onlyText = content.length === 1 && content[0].type === 'text'
+      if (!content.length && t) out.push({ role: 'user', content: t })
+      else if (onlyText) out.push({ role: 'user', content: content[0].text })
+      else if (content.length) out.push({ role: 'user', content })
+      lastAssistant = null
+      continue
+    }
+    if (m?.role !== 'assistant') continue
+    let text = ''
+    let reasoning = ''
+    const native = []
+    let nativeRelevant = m.content?.metadata?.yzProviderNative === 'anthropic'
+    const calls = []
+    const results = []
+    for (const p of parts) {
+      if (p?.type === 'text') {
+        text += p.text || ''
+        native.push({ type: 'text', text: p.text || '' })
+        continue
+      }
+      if (p?.type === 'reasoning') {
+        reasoning += p.text || ''
+        const pm = p.providerOptions || p.providerMetadata
+        const sig = pm?.anthropic?.signature
+        const redacted = pm?.anthropic?.redactedData
+        if (sig) { nativeRelevant = true; native.push({ type: 'thinking', thinking: p.text || '', signature: sig }) }
+        else if (redacted) { nativeRelevant = true; native.push({ type: 'redacted_thinking', data: redacted }) }
+        continue
+      }
+      if (p?.type === 'tool-invocation') {
+        const inv = p.toolInvocation || {}
+        if (inv.state === 'result' || inv.state === 'output-error' || inv.state === 'output-denied') {
+          results.push({ id: inv.toolCallId, name: inv.toolName, result: inv.isError ? { error: inv.errorText || inv.result } : inv.result })
+        } else if (inv.toolName) {
+          calls.push({ id: inv.toolCallId, name: inv.toolName, args: inv.args })
+          native.push({ type: 'tool_use', id: inv.toolCallId, name: inv.toolName, input: inv.args })
+        }
+        continue
+      }
+      if (p?.type === 'tool-call') {
+        calls.push({ id: p.toolCallId, name: p.toolName, args: p.input })
+        native.push({ type: 'tool_use', id: p.toolCallId, name: p.toolName, input: p.input })
+        continue
+      }
+      if (p?.type === 'tool-result') {
+        let result = p.output?.value ?? p.result
+        if (typeof result === 'string') { try { result = JSON.parse(result) } catch { /* keep */ } }
+        results.push({ id: p.toolCallId, name: p.toolName, result })
+      }
+    }
+    if (calls.length) {
+      const msg = {
+        role: 'assistant', content: text,
+        tool_calls: calls.map((c) => ({
+          id: c.id, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args ?? {}) },
+        })),
+      }
+      if (reasoning) msg.reasoning = reasoning
+      if (nativeRelevant && native.length) msg.provider_native = { type: 'anthropic', content: native }
+      out.push(msg)
+      lastAssistant = msg
+      text = ''
+    }
+    if (text) {
+      const msg = { role: 'assistant', content: text }
+      if (reasoning && !calls.length) msg.reasoning = reasoning
+      if (nativeRelevant && native.length && !calls.length) msg.provider_native = { type: 'anthropic', content: native }
+      out.push(msg)
+      lastAssistant = msg
+    }
+    for (const r of results) {
+      out.push({ role: 'tool', tool_call_id: r.id || '', name: r.name || '', content: typeof r.result === 'string' ? r.result : JSON.stringify(r.result ?? '') })
+    }
+    if (!calls.length && !text && reasoning && lastAssistant && !lastAssistant.reasoning) lastAssistant.reasoning = reasoning
+  }
+  return out
 }

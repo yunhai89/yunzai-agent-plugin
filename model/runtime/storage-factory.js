@@ -37,6 +37,7 @@ export function resolveLibsqlUrl(cfg, { dataDir } = {}) {
     if (!raw.startsWith('file:')) throw new RuntimeConfigError(`libsqlUrl 不支持的协议：${raw}`)
     const p = raw.slice('file:'.length)
     if (!path.isAbsolute(p)) throw new RuntimeConfigError(`libsqlUrl 必须使用绝对路径（收到 ${raw}）；相对路径会按 cwd 打开不同库`)
+    fs.mkdirSync(path.dirname(p), { recursive: true })
     return { url: raw, memory: false, path: p }
   }
   if (!dataDir) throw new RuntimeConfigError('缺少 dataDir，无法解析 LibSQL 路径')

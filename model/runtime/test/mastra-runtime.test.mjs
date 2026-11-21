@@ -44,6 +44,29 @@ const rt = await createEmbeddedMastra({ config, dataDir: TMP })
   ok(!JSON.stringify(h).includes('MASTRA_DATABASE_URL'), 'health 不含 DSN/env')
 }
 
+console.log('\n[Memory Phase 2：创建 Memory]')
+{
+  const memCfg = resolveRuntimeConfig({
+    runtime: { engine: 'mastra' },
+    mastra: {
+      storage: { driver: 'libsql', libsqlFile: 'memory.db' },
+      memory: { mode: 'mastra' },
+      closeTimeoutMs: 5_000,
+    },
+  })
+  const rtm = await createEmbeddedMastra({ config: memCfg, dataDir: TMP })
+  ok(!!rtm.memory, 'Memory 已创建')
+  eq(rtm.describe().memory.mode, 'mastra', 'describe mode=mastra')
+  eq(rtm.describe().memory.ready, true, 'describe memory ready')
+  const hm = await rtm.health()
+  eq(hm.memory.ready, true, 'health memory ready')
+  const now = new Date()
+  await rtm.memory.saveThread({ thread: { id: 'm1', resourceId: 'r1', title: 'M', createdAt: now, updatedAt: now } })
+  const got = await rtm.memory.getThreadById({ threadId: 'm1', resourceId: 'r1' })
+  eq(got?.title, 'M', 'Memory thread 可写读')
+  await rtm.close('memory')
+}
+
 console.log('\n[重复 close 幂等]')
 {
   const a = await rt.close('test')

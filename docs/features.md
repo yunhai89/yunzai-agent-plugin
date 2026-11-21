@@ -2,7 +2,7 @@
 
 > 本文是主 README 的拆分文档。返回 [README](../README.md)。
 
-> ⚠️ **分支说明**：本文描述的是 `master` 的稳定能力。`dev` 分支正在重写 Agent 内核（Mastra），目前处于**极早期初步开发**，可以部署运行但效果**远不如 `master`**；Mastra 灰度路径尚未覆盖本文全部能力。详见 [Mastra 重构文档](refactor/mastra/README.md)。
+> ⚠️ **分支说明**：本文描述的是 `master` 的稳定能力。`dev` 分支正在重写 Agent 内核（Mastra），目前处于**极早期初步开发**，可以部署运行但效果**远不如 `master`**；Mastra 灰度路径尚未覆盖本文全部能力；S7 已让 Mastra Memory 接管会话历史，但整体仍在早期。详见 [Mastra 重构文档](refactor/mastra/README.md)。
 
 ## ✨ 项目亮点
 

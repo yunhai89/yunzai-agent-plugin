@@ -112,7 +112,7 @@
 
 ## ADR-004 · 消息历史：Phase 1 用 SessionStore，Phase 2 才让 Mastra Memory 接管
 
-**Status**: proposed（推荐 accepted）
+**Status**: **accepted（Phase 2 于 2026-11-21 获批并完成 S7）**
 
 ### Context
 
@@ -135,6 +135,8 @@
 ### Decision
 
 选择 **2**。Phase 1：`memory: undefined`，`MessageAdapter` 读写 SessionStore；Phase 2：Mastra Memory 唯一写，SessionStore 只读/迁移源。**绝不双写**。
+
+Phase 2 已落地（S7）：`MastraMemoryBridge` 提供 conversation API，`scripts/migrate-mastra.mjs` 提供 inventory/dry-run/apply/verify/rollback，默认 `memory.mode=sessionstore`，切到 `mastra` 后仍可回退。
 
 ### Consequences
 

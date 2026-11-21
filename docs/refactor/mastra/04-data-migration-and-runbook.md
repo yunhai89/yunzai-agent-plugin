@@ -6,7 +6,7 @@
 >
 > 原则：**先只读、再 dry-run、再备份、再迁移、再校验、最后才切写**。任何一步失败都能回到 legacy，且不会重复执行工具副作用。
 >
-> 本文命令/脚本名为目标设计；PR5 实施时落地为 `scripts/migrate-mastra.mjs`。
+> **S7 已落地**：命令已实现为 `scripts/migrate-mastra.mjs`（inventory/dry-run/apply/verify/rollback）。默认不改配置、不双写；`--apply`/`--rollback` 需要 `--yes`。
 
 ---
 
@@ -16,9 +16,9 @@
 |---|---|---|
 | 1 | Node >= 22.13.0 | 宿主进程 `node -v` |
 | 2 | `zod` >= 3.25.76（且 `zod-stagehand` 仍 4.4.3） | `node -e "console.log(require('zod/package.json').version)"` |
-| 3 | 现有 147/0/12 测试全绿 | `pnpm test` |
-| 4 | 官方 ID 冒号解析缺陷已修 | `#聊天列表`/`#清空所有记录` 对 `<appid>:<openid>` 的测试 |
-| 5 | 新 identity 含 adapter+bot | thread/resource 单测 |
+| 3 | 当前 S7 基线 180/0/12 测试全绿 | `pnpm test` |
+| 4 | 官方 ID 冒号解析缺陷已修（S6） | `#聊天列表`/`#清空所有记录` 对 `<appid>:<openid>` 的测试 |
+| 5 | 新 identity 含 adapter+bot（S7） | thread/resource 单测 |
 | 6 | 全量备份完成 | KV dump/文件 tar/sqlite backup/PG dump |
 | 7 | 迁移脚本 dry-run 通过 | `--dry-run` 输出 0 error |
 | 8 | 回滚脚本演练通过 | 在临时库跑一次 |
@@ -116,7 +116,12 @@ subThreadId = `yz_${adapter}_${ownerKey}_sub_${agentName}_${childTaskId}`
 ### 阶段 0 · 盘点
 
 ```bash
-node scripts/migrate-mastra.mjs --inventory --json > /tmp/mastra-inventory.json
+# 直接从 Redis 扫描（Yunzai 根目录运行，需 redis 客户端）
+node scripts/migrate-mastra.mjs --redis-url "$YZ_REDIS_URL" --inventory --json > /tmp/mastra-inventory.json
+
+# 或先导出源，再离线执行
+node scripts/migrate-mastra.mjs --redis-url "$YZ_REDIS_URL" --dump-source /tmp/mastra-source.json
+node scripts/migrate-mastra.mjs --source-json /tmp/mastra-source.json --inventory --json
 ```
 
 输出：
@@ -185,10 +190,12 @@ node scripts/migrate-mastra.mjs --init-storage --target postgres
 
 ```bash
 node scripts/migrate-mastra.mjs \
+  --source-json /tmp/mastra-source.json \
   --target libsql \
-  --mode conversations \
-  --batch-size 50 \
-  --checkpoint /tmp/mastra-checkpoint.json \
+  --bot-id <botId> --adapter onebot \
+  --apply --yes \
+  --checkpoint data/mastra/migration-checkpoint.json \
+  --backup-dir data/mastra/backup \
   --report /tmp/mastra-import.json
 ```
 
@@ -223,7 +230,9 @@ for each scope in inventory:
 ### 阶段 5 · 校验
 
 ```bash
-node scripts/migrate-mastra.mjs --verify --target libsql --sample 5% --report /tmp/mastra-verify.json
+node scripts/migrate-mastra.mjs \
+  --source-json /tmp/mastra-source.json \
+  --verify --sample 5 --report /tmp/mastra-verify.json
 ```
 
 校验项：
@@ -244,7 +253,7 @@ node scripts/migrate-mastra.mjs --verify --target libsql --sample 5% --report /t
 抽样 hash 示例：
 
 ```bash
-node scripts/migrate-mastra.mjs --hash-sample 100 --target libsql
+node scripts/migrate-mastra.mjs --source-json /tmp/mastra-source.json --verify --sample 100
 ```
 
 ### 阶段 6 · 切写
@@ -257,6 +266,16 @@ node scripts/migrate-mastra.mjs --hash-sample 100 --target libsql
 6. 观察错误率/延迟/回复质量。
 
 **禁止**：切换后继续双写。若必须双读，明确“Mastra 是唯一写，legacy 只读”。
+
+### 阶段 6.1 · 回滚
+
+```bash
+node scripts/migrate-mastra.mjs \
+  --rollback --yes \
+  --checkpoint data/mastra/migration-checkpoint.json
+```
+
+回滚只删除本次迁移新建的 thread / 导入的 message id；legacy KV、压缩归档和 Mastra 中其它数据保留。然后把 `memory.mode` 改回 `sessionstore` 并重启/热加载。
 
 ### 阶段 7 · 观察与清理
 

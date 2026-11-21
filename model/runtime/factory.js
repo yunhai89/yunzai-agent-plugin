@@ -54,11 +54,31 @@ export async function createRuntimeFacade({ cfg = {}, dataDir, scope = null, leg
     }
   }
 
+  let history = null
+  if (mastra && config.mastra.memory.mode === 'mastra') {
+    try {
+      const { MastraMemoryBridge } = await import('./memory-bridge.js')
+      history = new MastraMemoryBridge({
+        memory: mastra.memory,
+        storage: mastra.storage?.store,
+        legacySession: chat?.session || null,
+        botId: chat?.identity?.botId || '',
+        adapter: chat?.identity?.adapter || 'onebot',
+        onDemandMigration: config.mastra.memory.onDemandMigration !== false,
+        logger: makeLoggerAdapter(logger),
+      })
+      logger?.('mark', '[runtime] Mastra Memory 已接管会话历史（迁移可回退 SessionStore）')
+    } catch (e) {
+      initError = normalizeRuntimeError(e, { phase: 'mastra_memory' })
+      logger?.('warn', '[runtime] Mastra Memory 初始化失败，历史将回退 SessionStore', initError.code, initError.message)
+    }
+  }
+
   let chatRunner = null
   if (mastra && chat) {
     try {
       const { createMastraChatRunner } = await import('./chat-runner.js')
-      chatRunner = createMastraChatRunner({ cfg, deps: { ...chat, mastra: mastra?.mastra }, logger })
+      chatRunner = createMastraChatRunner({ cfg, deps: { ...chat, mastra: mastra?.mastra, memory: history }, logger })
       logger?.('mark', '[runtime] Mastra 非流式聊天 Runner 已就绪（仅灰度命中时使用）')
     } catch (e) {
       initError = normalizeRuntimeError(e, { phase: 'mastra' })
@@ -75,6 +95,7 @@ export async function createRuntimeFacade({ cfg = {}, dataDir, scope = null, leg
     initError,
     logger,
     generation,
+    history,
   })
   if (scope && typeof scope.register === 'function') {
     scope.register(() => facade.close('scope_close'), { name: 'runtime-facade', order: 0 })

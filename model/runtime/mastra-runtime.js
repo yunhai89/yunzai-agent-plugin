@@ -1,8 +1,8 @@
 /**
  * 嵌入式 Mastra 运行时（PR1 骨架）。
  *
- * 只创建 Mastra 实例 + Storage/Vector，不注册 Agent/Workflow、不接聊天流量。
- * PR4 才在这里注册 chat Agent；PR1 的 Facade 永远回退 legacy 执行。
+ * 创建 Mastra 实例 + Storage/Vector；memory.mode=mastra 时创建 Memory（S7 Phase 2）。
+ * 聊天 Agent 由 chat-runner 注册；本模块不决定灰度，只负责资源生命周期。
  *
  * 关闭顺序（与 01 §3.2 一致）：
  *   mastra.shutdown（取消/回滚在途 run）→ memory.settled → vector.close → storage.close
@@ -21,9 +21,24 @@ export async function createEmbeddedMastra({ config, dataDir, logger = null } = 
   const startedAt = Date.now()
   const bundle = await createStorageBundle(config?.mastra, { dataDir, logger })
   let mastra = null
+  let memory = null
   try {
+    if (config?.mastra?.memory?.mode === 'mastra') {
+      const { Memory } = await import('@mastra/memory')
+      memory = new Memory({
+        id: 'yz-memory',
+        storage: bundle.storage.store,
+        vector: false,
+        options: {
+          lastMessages: false,
+          semanticRecall: false,
+          workingMemory: { enabled: false },
+        },
+      })
+    }
     mastra = new Mastra({
       storage: bundle.storage.store,
+      ...(memory ? { memory: { default: memory } } : {}),
       ...(bundle.vector?.store ? { vectors: { default: bundle.vector.store } } : {}),
       logger: false,
     })
@@ -40,18 +55,27 @@ export async function createEmbeddedMastra({ config, dataDir, logger = null } = 
     mastra,
     storage: bundle.storage,
     vector: bundle.vector,
-    memory: null, // Phase 2（PR5）才创建；Phase 1 历史仍由 SessionStore 唯一写
+    memory,
     initMs: Date.now() - startedAt,
     describe() {
       return {
         engine: 'mastra',
         storage: bundle.storage.describe(),
         vector: bundle.vector?.describe?.() || { enable: false },
-        memory: { mode: config?.mastra?.memory?.mode || 'sessionstore', semanticRecall: config?.mastra?.memory?.semanticRecall === true },
+        memory: {
+          mode: config?.mastra?.memory?.mode || 'sessionstore',
+          semanticRecall: config?.mastra?.memory?.semanticRecall === true,
+          ready: !!memory,
+        },
       }
     },
     async health() {
-      const out = { engine: 'mastra', ok: false, storage: bundle.storage.describe(), vector: bundle.vector?.describe?.() || { enable: false } }
+      const out = {
+        engine: 'mastra', ok: false,
+        storage: bundle.storage.describe(),
+        vector: bundle.vector?.describe?.() || { enable: false },
+        memory: { mode: config?.mastra?.memory?.mode || 'sessionstore', ready: !!memory },
+      }
       try {
         out.ok = await bundle.ping({ timeoutMs: Math.min(closeTimeoutMs, 5_000) })
       } catch (e) {
@@ -70,7 +94,7 @@ export async function createEmbeddedMastra({ config, dataDir, logger = null } = 
         }
         // 1) 取消在途 run / 释放线程租约；2) Memory 后台向量清理；3) Vector 连接；4) Storage 连接
         await step('mastra.shutdown', () => mastra.shutdown({ drainTimeout: closeTimeoutMs }))
-        await step('memory.settled', () => null)
+        await step('memory.settled', () => memory?.settled?.())
         await step('vector.close', () => bundle.vector?.close?.())
         await step('storage.close', () => bundle.storage.close())
         closed = true

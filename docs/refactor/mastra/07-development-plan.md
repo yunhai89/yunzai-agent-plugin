@@ -2,7 +2,7 @@
 
 > 本文是 [02 改造矩阵与 PR 计划](02-refactor-plan.md) 的**执行版排期**，不重复逐文件矩阵。所有技术方案以 [01 目标架构](01-target-architecture.md) 为准，测试/验收以 [05](05-test-and-acceptance.md) 为准。
 >
-> 计划基线：`dev @ 9323c5d`。当前 `dev` 已完成 **S0–S4、S6**；S5 功能完成、72h 观察待执行；S7–S11 未开始。
+> 计划基线：`dev @ 9323c5d`。当前 `dev` 已完成 **S0–S4、S6、S7**；S5 功能完成、72h 观察待执行；S8–S11 未开始。
 >
 > ⚠️ **当前是极早期初步开发（pre-alpha）**：可以部署运行，默认仍是 `engine: legacy`，Mastra 仅按用户/群灰度；能力覆盖、稳定性与效果**远不如 `master`**，请勿用于生产。`master` 仍是唯一维护线。
 >
@@ -26,7 +26,7 @@
 
 | # | 标准 | 证据 |
 |---|---|---|
-| 1 | 现有基线测试保持（审计 147/0/12 → S6 173/0/12）；新增测试全绿 | CI |
+| 1 | 现有基线测试保持（审计 147/0/12 → S6 173/0/12 → S7 180/0/12）；新增测试全绿 | CI |
 | 2 | legacy/mastra parity P1–P14 无未解释差异 | parity 报告 |
 | 3 | 工具权限/审批/账本/副作用语义不退化 | 工具契约测试 + E2E |
 | 4 | 会话/记忆/压缩/隔离/重启不退化 | Memory 测试 + 迁移校验 |
@@ -79,7 +79,7 @@
 | M4 写工具+审批 | S4 | W9–W10 | PR3b + PR4a | 审批/拒绝/超时/取消；非流式 Agent 灰度 1 用户 |
 | M5 流式/取消 | S5 | W11–W12 | PR4b | 流式/取消/重复文本/最终去重通过；灰度 1 群 |
 | M6 Memory Phase 1 | S6 | W13–W14 | PR5a | 历史适配器稳定；重启/多对话/隔离通过 |
-| M7 Memory Phase 2 | S7 | W15–W16 | PR5b（仅 ADR-004 Phase 2 获批） | 迁移 dry-run 0 error；抽样校验通过；灰度新会话 |
+| M7 Memory Phase 2 | S7 | W15–W16 | PR5b（ADR-004 Phase 2 已获批） | ✅ 迁移 dry-run 0 error；抽样校验通过；灰度新会话 |
 | M8 Workflow | S8 | W17–W18 | PR6 | 研究/工具进化 suspend/resume/幂等通过 |
 | M9 外围 parity | S9 | W19–W20 | PR7 | 功能清单逐项签字 |
 | M10 全量+soak | S10 | W21–W22 | PR8a | 100% 灰度；观察期无 P0/P1 |
@@ -243,9 +243,9 @@
 
 ---
 
-### S7 · Memory Phase 2 与迁移（PR5b）
+### S7 · Memory Phase 2 与迁移（PR5b）✅ 已完成（2026-11-21）
 
-> **条件**：仅当 ADR-004 的 Phase 2 获批。若未获批，跳过 S7，停在 S6；PR6/S8 仍可继续（Workflow 用独立 storage），但消息历史迁移不做。
+> **条件**：ADR-004 Phase 2 已获批（2026-11-21）。Mastra Memory 接管历史；SessionStore 只读/迁移源。
 
 **目标**：Mastra Memory 接管历史；迁移脚本 dry-run 0 error。
 
@@ -539,7 +539,7 @@ RACI 简表：
 | M4 | **完成** | 实现者 | 2026-11-20 | 2026-11-20 | [PR4a-report.md](PR4a-report.md)、[PR4b-report.md](PR4b-report.md)：170/0/12、7,908 断言；灰度/流式/取消/原生审批 | S5 观察期 |
 | M5 | **功能完成（72h 观察待执行）** | 实现者 | 2026-11-20 | | [PR4b-report.md](PR4b-report.md)：流式/取消/灰度群/原生审批 | 72h 观察 |
 | M6 | **完成** | 实现者 | 2026-11-21 | 2026-11-21 | [S6-report.md](S6-report.md)：173/0/12、7,982 断言；两轮 Mastra gray 真机；pm2 legacy 上线 | 无 |
-| M7 | 未开始 | | | | | |
+| M7 | **完成** | 实现者 | 2026-11-21 | 2026-11-21 | [S7-report.md](S7-report.md)：180/0/12、8,114 断言；MemoryBridge/迁移/校验/回滚/Web | 无 |
 | M8 | 未开始 | | | | | |
 | M9 | 未开始 | | | | | |
 | M10 | 未开始 | | | | | |

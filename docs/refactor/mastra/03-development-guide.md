@@ -2,9 +2,9 @@
 
 > 面向接手 Mastra 重构的开发者。本文假设你已读完 [00](00-code-audit.md) 和 [01](01-target-architecture.md)。
 >
-> ⚠️ **当前是极早期初步开发（pre-alpha）**：S0–S4、S6 已落地，默认 `engine: legacy`，Mastra 只按用户/群灰度；S5 观察期与 S7–S11 未完成，效果**远不如 `master`**，不要用于生产。
+> ⚠️ **当前是极早期初步开发（pre-alpha）**：S0–S4、S6、S7 已落地，默认 `engine: legacy`，Mastra 只按用户/群灰度；S5 观察期与 S8–S11 未完成，效果**远不如 `master`**，不要用于生产。
 >
-> **S1–S6 已落地**：Mastra/AI SDK/Zod 依赖、`model/runtime/` 骨架（Facade/Storage/Identity/Config）、ModelFactory、Tool Adapter、灰度聊天/审批、Memory Phase 1 都已存在。标注“目标/后续 PR”的章节仍是将来的实现。
+> **S1–S7 已落地**：Mastra/AI SDK/Zod 依赖、`model/runtime/` 骨架（Facade/Storage/Identity/Config）、ModelFactory、Tool Adapter、灰度聊天/审批、Memory Phase 1/2 与迁移都已存在。标注“目标/后续 PR”的章节仍是将来的实现。
 
 ---
 
@@ -34,7 +34,7 @@ PR1 已加入 Mastra/AI SDK 依赖；`pnpm install --frozen-lockfile` 必须可�
 ### 1.3 离线测试与 lint（现状）
 
 ```bash
-pnpm test          # 185 文件；173 通过 / 0 失败 / 12 跳过；7982 断言
+pnpm test          # 192 文件；180 通过 / 0 失败 / 12 跳过；8114 断言
 pnpm lint          # 0 errors / 50 warnings
 node scripts/mastra-smoke.mjs   # PR1 骨架冒烟（legacy + mastra 创建/health/close）
 node scripts/mastra-model-smoke.mjs  # PR2 真实模型双通道（AI SDK + legacy；需配置主模型）
@@ -600,7 +600,7 @@ pnpm add zod@^3.25.76
 
 1. `node -v` >= 22.13.0？宿主进程用的是同一个 Node 吗？
 2. `pnpm install --frozen-lockfile` 成功？`zod` 解析到 >=3.25.76？
-3. `pnpm test` 是否仍保持当前基线（S6：173/0/12，7,982 断言）？新增失败是否与本次改动相关？
+3. `pnpm test` 是否仍保持当前基线（S7：180/0/12，8,114 断言）？新增失败是否与本次改动相关？
 4. `agent.runtime.engine` 是 legacy 还是 mastra？灰度命中了吗？
 5. `facade.health()` 的 storage/vector 是否 ok？close 顺序对吗？
 6. 模型解析：`providerId/modelId` 有效？fallback 每条有 apiKey？

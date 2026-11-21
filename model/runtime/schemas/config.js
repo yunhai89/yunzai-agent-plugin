@@ -41,6 +41,11 @@ export const DEFAULT_MASTRA_CONFIG = Object.freeze({
   memory: Object.freeze({
     mode: 'sessionstore',
     semanticRecall: false,
+    onDemandMigration: true,
+  }),
+  identity: Object.freeze({
+    botId: '',
+    adapter: 'onebot',
   }),
   approval: Object.freeze({
     mode: 'legacy',
@@ -89,6 +94,12 @@ const vectorStrict = z.object({
 const memoryStrict = z.object({
   mode: z.enum(MEMORY_MODES).default('sessionstore'),
   semanticRecall: z.boolean().default(false),
+  onDemandMigration: z.boolean().default(true),
+}).passthrough()
+
+const identityStrict = z.object({
+  botId: z.string().max(128).default(''),
+  adapter: z.enum(['onebot', 'qqbot', 'qqguild']).default('onebot'),
 }).passthrough()
 
 const approvalStrict = z.object({
@@ -100,6 +111,7 @@ const mastraStrict = z.object({
   storage: storageStrict.default({}),
   vector: vectorStrict.default({}),
   memory: memoryStrict.default({}),
+  identity: identityStrict.default({}),
   approval: approvalStrict.default({}),
   closeTimeoutMs: z.number().int().min(1_000).max(300_000).default(15_000),
 }).passthrough()
@@ -139,7 +151,13 @@ const vectorLenient = z.object({
 const memoryLenient = z.object({
   mode: z.enum(MEMORY_MODES).catch('sessionstore'),
   semanticRecall: z.boolean().catch(false),
+  onDemandMigration: z.boolean().catch(true),
 }).passthrough().catch(clone(DEFAULT_MASTRA_CONFIG.memory))
+
+const identityLenient = z.object({
+  botId: z.string().max(128).catch(''),
+  adapter: z.enum(['onebot', 'qqbot', 'qqguild']).catch('onebot'),
+}).passthrough().catch(clone(DEFAULT_MASTRA_CONFIG.identity))
 
 const approvalLenient = z.object({
   mode: z.enum(['legacy', 'bridge']).catch('legacy'),
@@ -150,6 +168,7 @@ const mastraLenient = z.object({
   storage: storageLenient,
   vector: vectorLenient,
   memory: memoryLenient,
+  identity: identityLenient,
   approval: approvalLenient,
   closeTimeoutMs: z.number().int().min(1_000).max(300_000).catch(15_000),
 }).passthrough().catch(clone(DEFAULT_MASTRA_CONFIG))
@@ -216,7 +235,12 @@ export function describeRuntimeConfig(value) {
       ...(storage.driver === 'libsql' ? { file: storage.libsqlFile || storage.libsqlUrl || '' } : { schemaName: storage.schemaName }),
     },
     vector: { enable: v.mastra.vector.enable, driver: v.mastra.vector.driver, indexName: v.mastra.vector.indexName, dimensions: v.mastra.vector.dimensions },
-    memory: { mode: v.mastra.memory.mode, semanticRecall: v.mastra.memory.semanticRecall },
+    memory: {
+      mode: v.mastra.memory.mode,
+      semanticRecall: v.mastra.memory.semanticRecall,
+      onDemandMigration: v.mastra.memory.onDemandMigration,
+    },
+    identity: { botId: v.mastra.identity.botId ? '***' : '', adapter: v.mastra.identity.adapter },
     approval: { mode: v.mastra.approval.mode, timeoutMs: v.mastra.approval.timeoutMs },
     closeTimeoutMs: v.mastra.closeTimeoutMs,
   }

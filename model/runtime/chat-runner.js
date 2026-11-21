@@ -26,6 +26,7 @@ import { getPromptCalibration } from '../llm/model-context.js'
 export function createMastraChatRunner({ cfg = {}, deps = {}, logger = null, fetchImpl = null } = {}) {
   let factoryPromise = null
   const pending = new Map()
+  const memory = deps.memory || null
   const nativeApproval = deps.nativeApproval === true
   // 单实例 + 动态 instructions/model/tools（从 RequestContext 取），native approval 需要 Agent 注册到 Mastra storage 才能 resume
   const agent = new Agent({
@@ -67,12 +68,15 @@ export function createMastraChatRunner({ cfg = {}, deps = {}, logger = null, fet
     const scopeUserId = ctx.scopeUserId || ctx.userId || ''
     const groupId = ctx.groupId || null
     const convId = ctx.conversationId
-    let history = await loadHistory(agentInst, { scopeUserId, groupId, convId })
+    let history = await loadHistory(agentInst, { scopeUserId, groupId, convId, ctx, memory })
     const badShape = hasUnsupportedLegacyShape(history)
     if (badShape) return { unsupported: badShape }
     let convState = {}
-    if (convId != null && typeof agentInst.session?.getConversationState === 'function') {
-      try { convState = await agentInst.session.getConversationState(scopeUserId, groupId, convId) || {} } catch { convState = {} }
+    if (convId != null) {
+      const store = memory || agentInst.session
+      if (typeof store?.getConversationState === 'function') {
+        try { convState = await store.getConversationState(scopeUserId, groupId, convId, ctx) || {} } catch { convState = {} }
+      }
     }
     agentInst.cacheEpoch = Number(convState.cacheEpoch) || 0
     agentInst._compactLedger = convState.compactLedger && typeof convState.compactLedger === 'object' ? convState.compactLedger : null
@@ -141,7 +145,7 @@ export function createMastraChatRunner({ cfg = {}, deps = {}, logger = null, fet
     rc.set('yz.scopeKey', opts.scopeKey || null)
 
     const taskStore = deps.taskStore || agentInst.taskStore || null
-    const resumeEntry = { agent, rc, agentInst, history, scopeUserId, groupId, convId, taskStore, taskId, rawText, main, protocol: main.ref.protocol, runId, ...compactedState }
+    const resumeEntry = { agent, rc, agentInst, history, scopeUserId, groupId, convId, taskStore, taskId, rawText, main, protocol: main.ref.protocol, runId, memory, ctx, ...compactedState }
     if (nativeApproval) pending.set(runId, resumeEntry)
     if (taskStore && taskId) {
       try { await taskStore.begin({ taskId, ctx, phase: 'running', input: rawText }) } catch { /* 旧路径/已存在不阻断 */ }
@@ -230,6 +234,7 @@ export function createMastraChatRunner({ cfg = {}, deps = {}, logger = null, fet
         await saveHistory(agentInst, {
           scopeUserId, groupId, convId, msgs: finalMsgs, replace: compactedState.compacted,
           extra: { cacheEpoch: compactedState.cacheEpoch, compactLedger: compactedState.ledger || undefined },
+          memory, ctx,
         })
       } catch (e) {
         logger?.('warn', '[runtime] Mastra 历史持久化失败', e?.message || e)
@@ -284,6 +289,7 @@ export function createMastraChatRunner({ cfg = {}, deps = {}, logger = null, fet
       scopeUserId: c.scopeUserId || c.userId || '', groupId: c.groupId || null,
       convId: c.conversationId || null, taskStore: deps.taskStore || inst.taskStore || null,
       taskId: rec.runId, rawText: '', main, protocol: main.ref.protocol, runId: rec.runId,
+      memory: deps.memory || null, ctx: rec.ctx || null,
     }
   }
 
@@ -332,6 +338,7 @@ async function finalizeResume(out, e) {
       await saveHistory(e.agentInst, {
         scopeUserId: e.scopeUserId, groupId: e.groupId, convId: e.convId, msgs: finalMsgs, replace: e.compacted === true,
         extra: { cacheEpoch: e.cacheEpoch, compactLedger: e.ledger || undefined },
+        memory: e.memory, ctx: e.ctx,
       })
     } catch { /* noop */ }
   }
@@ -339,14 +346,15 @@ async function finalizeResume(out, e) {
   return { content, stopReason, usage, turns, taskId: e.runId, engine: 'mastra' }
 }
 
-async function loadHistory(agentInst, { scopeUserId, groupId, convId }) {
-  const s = agentInst.session
+async function loadHistory(agentInst, { scopeUserId, groupId, convId, ctx = null, memory = null }) {
+  const s = memory || agentInst.session
   if (!s) return []
   try {
     if (convId != null && typeof s.getConversation === 'function') {
-      const arr = await s.getConversation(scopeUserId, groupId, convId)
+      const arr = await s.getConversation(scopeUserId, groupId, convId, ctx)
       if (Array.isArray(arr)) return arr
     }
+    if (memory) return []
     const key = typeof s.key === 'function' ? s.key(groupId, scopeUserId) : null
     if (key) {
       const arr = await s.get(key)
@@ -356,12 +364,12 @@ async function loadHistory(agentInst, { scopeUserId, groupId, convId }) {
   return []
 }
 
-async function saveHistory(agentInst, { scopeUserId, groupId, convId, msgs, replace = false, extra = {} }) {
-  const s = agentInst.session
+async function saveHistory(agentInst, { scopeUserId, groupId, convId, msgs, replace = false, extra = {}, memory = null, ctx = null }) {
+  const s = memory || agentInst.session
   if (!s || !msgs?.length) return
   if (convId != null && typeof s.appendConversation === 'function') {
-    if (replace && typeof s.setConversation === 'function') await s.setConversation(scopeUserId, groupId, convId, msgs, extra)
-    else await s.appendConversation(scopeUserId, groupId, convId, msgs, extra)
+    if (replace && typeof s.setConversation === 'function') await s.setConversation(scopeUserId, groupId, convId, msgs, extra, ctx)
+    else await s.appendConversation(scopeUserId, groupId, convId, msgs, extra, ctx)
     return
   }
   const key = typeof s.key === 'function' ? s.key(groupId, scopeUserId) : null

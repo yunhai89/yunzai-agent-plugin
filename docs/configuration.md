@@ -114,11 +114,25 @@ agent:
       libsqlFile: mastra/mastra.db   # 相对插件 data 目录，运行转绝对路径
       connectionStringEnv: MASTRA_DATABASE_URL  # postgres DSN 只从 env 读
     vector: { enable: false, dimensions: 1536 }
-    memory: { mode: sessionstore, semanticRecall: false }
+    memory:
+      mode: sessionstore        # sessionstore=Phase 1（SessionStore 唯一写）| mastra=Phase 2（Mastra Memory 唯一写）
+      semanticRecall: false     # 默认关；Phase 2 也不启用
+      onDemandMigration: true   # 首次读写未迁移对话时自动从 SessionStore 导入（只写 Mastra）
+    identity:
+      botId: ""                 # 留空=从 ctx.selfId / 官方 ID 前缀推断
+      adapter: onebot           # onebot | qqbot | qqguild
     approval: { mode: legacy, timeoutMs: 300000 }  # bridge=持久化审批 + suspend/resume
 ```
 
-当前 `engine: mastra` 只对 `gray.users` / `gray.groups` / `gray.percent` 命中的会话启用 Mastra 聊天；未命中或初始化失败仍回退 legacy。历史唯一真源仍是 `SessionStore`，Mastra Memory 未启用、无双写（ADR-004 Phase 1）。Postgres 需设置 `MASTRA_DATABASE_URL`，缺失时按 `fallbackToLegacy` 决定回退或启动失败。
+当前 `engine: mastra` 只对 `gray.users` / `gray.groups` / `gray.percent` 命中的会话启用 Mastra 聊天；未命中或初始化失败仍回退 legacy。
+
+历史模式：
+
+- `memory.mode: sessionstore`（默认，Phase 1）：`SessionStore` 是唯一写，Mastra 只接收显式 messages。
+- `memory.mode: mastra`（Phase 2，S7）：Mastra Memory 是唯一写；`SessionStore` 只读/迁移源，**绝不双写**。`onDemandMigration=true` 时，首次读写某个未迁移对话会先导入到 Mastra thread 再继续；也可用 `scripts/migrate-mastra.mjs` 批量迁移/校验/回滚。
+- 迁移后如需回退：把 `memory.mode` 改回 `sessionstore` 并重启/热加载；legacy KV 与压缩归档保留，Mastra 数据不删除。切换后的新写入不会自动回填 legacy，需要按 [迁移 Runbook](refactor/mastra/04-data-migration-and-runbook.md) 导出/人工处理。
+
+Postgres 需设置 `MASTRA_DATABASE_URL`，缺失时按 `fallbackToLegacy` 决定回退或启动失败。
 
 ### `agent.policy` —— RBAC 策略
 

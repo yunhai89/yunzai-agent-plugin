@@ -21,13 +21,15 @@ export class AgentRuntimeFacade {
    * @param {Function} [opts.logger] (level,...args) 兼容现有 Log.tag
    * @param {number} [opts.generation]
    */
-  constructor({ engine = 'legacy', legacy = null, mastra = null, chatRunner = null, gray = null, config = null, initError = null, logger = null, generation = 0 } = {}) {
+  constructor({ engine = 'legacy', legacy = null, mastra = null, chatRunner = null, gray = null, config = null, initError = null, logger = null, generation = 0, history = null } = {}) {
     if (engine !== 'legacy' && engine !== 'mastra') throw new Error(`未知 runtime engine：${engine}`)
     this.requestedEngine = engine
     this.engine = engine
     this.legacy = legacy
     this.mastra = mastra
     this.chatRunner = chatRunner
+    this.history = history || null
+    this.session = history || null
     this.gray = gray || null
     this.config = config
     this.initError = initError
@@ -175,6 +177,7 @@ export class AgentRuntimeFacade {
       chatEngine: this.chatEngine,
       gray: this.gray ? { users: this.gray.users?.length || 0, groups: this.gray.groups?.length || 0, percent: this.gray.percent || 0 } : null,
       mastraBuilt: this.mastraReady,
+      history: this.history ? 'mastra' : 'sessionstore',
       closed: this.closed,
       generation: this.generation,
       initError: this.initError ? { code: this.initError.code, phase: this.initError.phase } : null,

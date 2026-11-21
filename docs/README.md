@@ -37,7 +37,7 @@
 
 ## 重构审计（Mastra）
 
-> ⚠️ `dev` 分支的 Mastra 重构处于**极早期初步开发**：S0–S4、S6 已完成，S5 观察期与 S7–S11 未完成；可以部署运行，但效果**远不如 `master`**，不要用于生产。
+> ⚠️ `dev` 分支的 Mastra 重构处于**极早期初步开发**：S0–S4、S6、S7 已完成，S5 观察期与 S8–S11 未完成；可以部署运行，但效果**远不如 `master`**，不要用于生产。
 
 - [Mastra 重构文档索引](refactor/mastra/README.md) —— 审计基线、目标架构、PR 计划、迁移 Runbook、测试验收、ADR
 - [现状源码审计](refactor/mastra/00-code-audit.md) —— 调用链、功能/数据清单、技术债、证据索引
@@ -56,5 +56,6 @@
 - [PR4a 实施报告](refactor/mastra/PR4a-report.md) —— Mastra 非流式聊天灰度、历史/上下文/工具/回退、完整 Yunzai 真机
 - [PR4b/4c 实施报告](refactor/mastra/PR4b-report.md) —— 流式、取消、原生 ApprovalBridge、重启 resume、灰度群
 - [S6 Memory Phase 1 报告](refactor/mastra/S6-report.md) —— MessageAdapter、压缩/ledger、多对话/隔离、官方 ID 修复
+- [S7 Memory Phase 2 报告](refactor/mastra/S7-report.md) —— Mastra Memory 接管、迁移脚本、回滚、Web 兼容
 
 [← 返回主 README](../README.md)
