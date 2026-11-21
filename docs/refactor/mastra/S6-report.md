@@ -108,7 +108,15 @@ Mastra 路径继续使用 legacy 的压缩实现：
 
 ## 7. 真机 / 上线
 
-（部署运行后补：Yunzai 启动、QQ READY、legacy/Mastra gray 状态、S6 无异常）
+- 提交：`d2d449e feat(mastra): complete runtime S0-S6 with gray chat and memory phase 1`
+- 推送：`origin/dev`（新分支，`git push origin dev` 成功）
+- 部署：`/root/Yunzai` → `pnpm start`（pm2 `TRSS-Yunzai`）
+- 进程：online，约 282MB
+- 插件：`agents-plugin v1.51.1`，11 个应用
+- 运行时：`legacy`（本次上线保持默认，Mastra 仅代码/灰度能力，不切生产流量）
+- QQ：`QQBot 1903797111 已连接`，`READY intents=33554432`，`适配器就绪 1/1`
+- 错误：启动日志无插件加载失败/ERROR
+- 观察：S6 上线后先保持 legacy 稳定；Mastra gray 后续按用户/群逐步开启。
 
 ---
 
