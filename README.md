@@ -33,7 +33,9 @@
 > `dev` 已全量切换到 **Mastra + Vercel AI SDK**，旧 handwritten Agent / ReAct 内核已删除；默认 `runtime.engine: mastra`、`mastra.memory.mode: mastra`，不再按灰度切流。
 >
 > - ✅ **可以安装、启动、部署运行**：主聊天、工具调用、Mastra Memory、Web 会话与迁移脚本已接通。
-> - ⚠️ **仍在早期**：研究/多代理/交付链路的部分旧行为测试已标记为待补齐；外围 parity、长期稳定性与真实 Provider 覆盖仍需继续验证。
+> - ✅ **基础回归已通过**：`166` 个测试文件通过 / `0` 失败 / `27` 跳过（共 `193`），`6,600` 断言；Lint `0 errors / 51 warnings`。
+> - ✅ **真实链路已验证**：Mastra Memory 跨重启、QQBot REST 实发、缓存命中约 `95%`、上下文压缩触发并写入 ledger/归档。
+> - ⚠️ **仍在早期**：研究/多代理/交付链路的部分旧行为测试已标记为待补齐；外围 parity、长期稳定性与更多真实 Provider 覆盖仍需继续验证。
 > - 🚫 **不要用于生产**：版本、配置和数据格式都可能随时变化；升级前务必备份 `data/` 与 `config/config.yaml`。
 > - 📚 开发/重构文档只在本地保留，不随仓库发布。
 >
