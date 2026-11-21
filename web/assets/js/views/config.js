@@ -257,10 +257,18 @@
         if (form.stagehand.llmTimeoutMs == null) form.stagehand.llmTimeoutMs = 30000
         if (form.stagehand.domSettleTimeoutMs == null) form.stagehand.domSettleTimeoutMs = 3000
         if (!Array.isArray(form.stagehand.blockedHosts)) form.stagehand.blockedHosts = []
-        // 搜索源兜底（旧 config 无 searxng 字段时 v-model 不报错）
+        // 搜索源兜底（旧 config 无新字段时 v-model 不报错）
         if (!form.search) form.search = {}
+        if (form.search.engine == null) form.search.engine = 'auto'
+        if (form.search.safeSearch == null) form.search.safeSearch = 'off'
+        if (form.search.cacheMinutes == null) form.search.cacheMinutes = 5
+        if (form.search.bing == null) form.search.bing = true
         if (!form.search.searxng) form.search.searxng = {}
         if (form.search.searxng.url == null) form.search.searxng.url = ''
+        for (const k of ['anysearch', 'keenable', 'firecrawl', 'parallel', 'you']) {
+          if (!form.search[k]) form.search[k] = {}
+          if (form.search[k].apiKey == null) form.search[k].apiKey = ''
+        }
         if (form.privateChat == null) form.privateChat = false
         // 人设注入检测免检（旧配置无此块时防 v-model 报错）
         if (!form.persona) form.persona = {}
@@ -2402,14 +2410,56 @@
         <div :id="'cfg-search'" class="card cf-sec" :class="{open: open.search}">
           <div class="cf-sh" @click="open.search = !open.search">
             <span class="ct-ico" style="background:var(--grad-sky)"><v-icon name="search"/></span>
-            <div><div class="ct-t">搜索</div><div class="ct-s">多源自动路由：Tavily/Exa/Perplexity/Brave → SearXNG → DDG 兜底</div></div>
+            <div><div class="ct-t">搜索</div><div class="ct-s">免费引擎优先：Bing / DDG / AnySearch / Exa / Tavily / Keenable / Firecrawl / Parallel / You.com → SearXNG</div></div>
             <v-icon class="cf-arrow" name="chevron"/>
           </div>
           <div class="cf-body" v-show="open.search"><div class="cf-grid">
-            <cfg-row name="Tavily 搜索 Key" desc="任填一个搜索源即启用">
+            <cfg-row name="首选引擎" desc="auto=按语言自动选；失败仍会回退其它引擎">
+              <select class="sel" style="width:190px" v-model="form.search.engine">
+                <option value="auto">自动（推荐）</option>
+                <option value="bing">Bing</option>
+                <option value="ddg">DuckDuckGo</option>
+                <option value="anysearch">AnySearch</option>
+                <option value="exa">Exa</option>
+                <option value="tavily">Tavily</option>
+                <option value="keenable">Keenable</option>
+                <option value="firecrawl">Firecrawl</option>
+                <option value="parallel">Parallel</option>
+                <option value="you">You.com</option>
+                <option value="searxng">SearXNG</option>
+                <option value="brave">Brave</option>
+                <option value="perplexity">Perplexity</option>
+              </select>
+            </cfg-row>
+            <cfg-row name="安全搜索" desc="作用于 Bing / DDG">
+              <select class="sel" style="width:150px" v-model="form.search.safeSearch">
+                <option value="off">关闭</option>
+                <option value="moderate">适中</option>
+                <option value="strict">严格</option>
+              </select>
+            </cfg-row>
+            <cfg-row name="搜索缓存(分钟)" desc="相同查询的进程内缓存；0=关闭">
+              <input type="number" class="inp" style="width:110px" min="0" max="60" v-model.number="form.search.cacheMinutes">
+            </cfg-row>
+            <cfg-row name="Bing 免费引擎">
+              <v-switch v-model="form.search.bing"/>
+            </cfg-row>
+            <cfg-row name="DDG 免费兜底">
+              <v-switch v-model="form.search.ddg"/>
+            </cfg-row>
+            <cfg-row class="full" name="AnySearch / Keenable / Firecrawl / Parallel / You.com Key" desc="均可留空走匿名额度；填 key 提升限额">
+              <div class="row g6 wrap">
+                <input class="inp mono" style="width:150px" v-model="form.search.anysearch.apiKey" placeholder="AnySearch">
+                <input class="inp mono" style="width:150px" v-model="form.search.keenable.apiKey" placeholder="Keenable">
+                <input class="inp mono" style="width:150px" v-model="form.search.firecrawl.apiKey" placeholder="Firecrawl">
+                <input class="inp mono" style="width:150px" v-model="form.search.parallel.apiKey" placeholder="Parallel">
+                <input class="inp mono" style="width:150px" v-model="form.search.you.apiKey" placeholder="You.com">
+              </div>
+            </cfg-row>
+            <cfg-row name="Tavily 搜索 Key" desc="可留空走 keyless 匿名额度">
               <input class="inp mono" style="width:220px" v-model="form.search.tavily.apiKey" placeholder="tvly-...">
             </cfg-row>
-            <cfg-row class="full" name="Exa / Brave / PPLX Key" desc="其余搜索源密钥(明文)">
+            <cfg-row class="full" name="Exa / Brave / PPLX Key" desc="Exa 可留空走匿名 MCP；Brave/PPLX 需要 key">
               <div class="row g6 wrap">
                 <input class="inp mono" style="width:150px" v-model="form.search.exa.apiKey" placeholder="Exa">
                 <input class="inp mono" style="width:150px" v-model="form.search.brave.apiKey" placeholder="Brave">
@@ -2418,9 +2468,6 @@
             </cfg-row>
             <cfg-row class="full" name="SearXNG 地址 (可选)" desc="自建/公共元搜索，免 key；留空=不启用该源。插件自动带 format=json 请求——需在实例 settings.yml 的 search.formats 里启用 json（默认只回 HTML）">
               <input class="inp mono" style="width:300px" v-model="form.search.searxng.url" placeholder="http://localhost:8080">
-            </cfg-row>
-            <cfg-row name="DDG 兜底" desc="本地 DuckDuckGo,免 key">
-              <v-switch v-model="form.search.ddg"/>
             </cfg-row>
           </div></div>
         </div>

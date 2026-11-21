@@ -74,7 +74,7 @@ import { createSearchManager, makeSearchTools } from '../model/search/index.js'
 import {
   PersonaStore, PersonaService, PersonaLore, PersonaAdoptionQueue,
   PERSONA_MAX_NAME_LEN, PERSONA_MAX_PROMPT_LEN,
-  groundingText, composePersonaSystemPrompt, PERSONA_COMPLETION_SYSTEM, buildCompletionInput,
+  groundingText, composePersonaSystemPrompt, personaBreakReminder, PERSONA_COMPLETION_SYSTEM, buildCompletionInput,
   parseCompletionOutput, buildLoreDraft, formatDraftSummary, isCompletionToolAllowed,
 } from '../model/persona/index.js'
 import { VisionService, describeImages, resolveVisionBaseURL, resolveVisionRoute } from '../model/vision/index.js'
@@ -799,7 +799,8 @@ async function _buildRuntime(scope) {
     try { skills.register(s) } catch (e) { Log.warn('[skill] 注册失败', s.name, e?.message || e) }
   }
 
-  // 统一搜索：多源自动路由（Tavily/Exa/Perplexity/Brave → SearXNG → DDG 兜底）
+  // 统一搜索：免费引擎优先（Bing/DDG/AnySearch/Exa/Tavily/Keenable/Firecrawl/Parallel/You.com/SearXNG）
+  // + 可选 key 引擎（Brave/Perplexity）+ 失败分类/冷却/缓存。
   // fetcher 必须与 provider 一致走代理：DDG/海外源直连在受限网络下超时（undici 默认不读 HTTP(S)_PROXY），
   // 此前搜索固定用裸 fetch → 配了 agent.proxy 也不生效，DDG 兜底形同虚设。
   const searchManager = createSearchManager({
@@ -1949,16 +1950,20 @@ async function resolvePersonaGrounding(rt, ctx, queryText) {
     const lore = rt.personaLore?.get?.(persona.id)
     const active = lore && lore.status === 'active' ? lore : null
     const basePrompt = composePersonaSystemPrompt(persona)
+    // system 必须是纯静态前缀（工具数组 + system 逐轮字节一致才能命中前缀缓存）。
+    // 逐轮变化的人设提醒只能进本轮 user 消息尾部（由 run 的 context 通道注入）。
+    const lockReminder = personaBreakReminder(queryText)
     const systemPrompt = [basePrompt, active ? groundingText(active) : ''].filter(Boolean).join('\n\n') || undefined
-    let context
+    let context = lockReminder || undefined
     if (active) {
       const hits = await rt.personaLore.retrieve(active.id, queryText, 3).catch(() => [])
       if (hits.length) {
-        context = '【角色设定·长尾资料（检索，仅供参考；与已核实事实冲突时以已核实事实为准）】\n'
+        const loreText = '【角色设定·长尾资料（检索，仅供参考；与已核实事实冲突时以已核实事实为准）】\n'
           + hits.map((h) => `- ${h.text}`).join('\n')
+        context = context ? `${context}\n\n${loreText}` : loreText
       }
     }
-    return { personaId: persona.id, systemPrompt, context }
+    return { personaId: persona.id, systemPrompt, context, lockReminder }
   } catch (e) {
     Log.warn('[persona] 接地解析失败', e?.message || e)
     return none

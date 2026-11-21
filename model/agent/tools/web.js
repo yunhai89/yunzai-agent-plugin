@@ -6,16 +6,22 @@
  */
 
 export function stripHtml(s) {
-  return String(s || '')
-    .replace(/<[^>]+>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#x27;/g, "'")
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/\s+/g, ' ')
-    .trim()
+  const text = String(s || '').replace(/<[^>]+>/g, '')
+  const entities = {
+    amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ', ensp: ' ', emsp: ' ',
+    thinsp: ' ', middot: '·', mdash: '—', ndash: '–', hellip: '…',
+    ldquo: '“', rdquo: '”', lsquo: '‘', rsquo: '’', laquo: '«', raquo: '»',
+    times: '×', divide: '÷', copy: '©', reg: '®', trade: '™', deg: '°',
+  }
+  return text.replace(/&(#x?[0-9a-f]+|[a-z]+);/gi, (m, name) => {
+    const key = String(name).toLowerCase()
+    if (Object.prototype.hasOwnProperty.call(entities, key)) return entities[key]
+    try {
+      if (key.startsWith('#x')) return String.fromCodePoint(parseInt(key.slice(2), 16))
+      if (key.startsWith('#')) return String.fromCodePoint(parseInt(key.slice(1), 10))
+    } catch { /* noop */ }
+    return m
+  }).replace(/\s+/g, ' ').trim()
 }
 
 /** 解码 DDG lite 的 /l/?uddg=<encoded> 跳转 */
@@ -106,15 +112,24 @@ export function looksBlocked(html) {
 }
 
 const DDG_ENDPOINTS = [
-  { name: 'lite', url: (q) => `https://lite.duckduckgo.com/lite/?q=${encodeURIComponent(q)}`, parse: parseDDG },
-  { name: 'html', url: (q) => `https://html.duckduckgo.com/html/?q=${encodeURIComponent(q)}`, parse: parseDDGHtml },
+  { name: 'lite', base: 'https://lite.duckduckgo.com/lite/', parse: parseDDG },
+  { name: 'html', base: 'https://html.duckduckgo.com/html/', parse: parseDDGHtml },
 ]
+
+function ddgQueryUrl(base, query, { safeSearch = 'off', timeRange = '' } = {}) {
+  const p = new URLSearchParams({ q: query })
+  const adlt = safeSearch === 'strict' ? '1' : safeSearch === 'moderate' ? '0' : '-1'
+  p.set('adlt', adlt)
+  const df = { day: 'd', week: 'w', month: 'm', year: 'y' }[String(timeRange || '').toLowerCase()]
+  if (df) p.set('df', df)
+  return `${base}?${p}`
+}
 
 /**
  * DDG 搜索：依次尝试 lite / html 两个端点（任一被限流/改版时另一个兜底）。
  * 端点正常响应但 0 结果 → 返回 []（交上层决定回退）；全部请求异常 → 抛最后一个错误。
  */
-export async function ddgSearch(query, { limit = 5, fetcher, fetchOpts, timeout = 15000 } = {}) {
+export async function ddgSearch(query, { limit = 5, fetcher, fetchOpts, timeout = 15000, safeSearch = 'off', timeRange = '' } = {}) {
   const f = fetcher || globalThis.fetch
   if (!f) throw new Error('ddgSearch 需要 fetcher 或 globalThis.fetch')
   let anyOk = false
@@ -132,7 +147,7 @@ export async function ddgSearch(query, { limit = 5, fetcher, fetchOpts, timeout 
       if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function' && !opts.signal) {
         opts.signal = AbortSignal.timeout(timeout)
       }
-      const res = await f(ep.url(query), opts)
+      const res = await f(ddgQueryUrl(ep.base, query, { safeSearch, timeRange }), opts)
       // 仅显式失败才算失败（注入的 mock fetcher 可能不带 ok 字段）
       if (res.ok === false || (typeof res.status === 'number' && res.status >= 400)) {
         lastErr = new Error(`DDG HTTP ${res.status ?? 'error'}`)

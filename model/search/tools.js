@@ -1,6 +1,8 @@
 /** Agent 工具 —— 包装 SearchManager 为 ToolRegistry 兼容工具 */
 import { formatResults, formatExtract } from './base.js'
 
+const ENGINES = ['auto', 'bing', 'ddg', 'anysearch', 'exa', 'tavily', 'keenable', 'firecrawl', 'parallel', 'you', 'searxng', 'brave', 'perplexity']
+
 function pick(obj, keys) {
   const o = {}
   for (const k of keys) if (obj[k] != null) o[k] = obj[k]
@@ -11,9 +13,9 @@ export function makeSearchTools(manager, defaults = {}) {
   return [
     {
       name: 'web_search',
-      description: '联网搜索（多源自动路由：Tavily/Exa/Perplexity/Brave → SearXNG → 本地 DDG 兜底）。输入查询词，返回排序后的相关结果 + 可选 AI 答案；用于获取实时信息或超出知识范围的内容。核验关键事实时用 queries 一次并行发 2~4 个不同角度（官方一手/不同措辞/找反证），结果按 URL 去重合并；部分查询失败会显式提示覆盖缺口，不要据此断言"只有一种说法"。若所有搜索源都不可用，会返回结构化错误并附 _alternatives（可改用 web_crawl/web_extract 直连网页或浏览器自动化），不要只反复重试本工具。',
+      description: '联网搜索（免费引擎优先 + 自动回退：Bing / DDG / AnySearch / Exa(keyless) / Tavily(keyless) / Keenable / Firecrawl / Parallel / You.com / SearXNG；配置 key 后可用 Brave / Perplexity 及增强额度）。输入查询词，返回排序后的相关结果 + 可选 AI 答案；用于获取实时信息或超出知识范围的内容。核验关键事实时用 queries 一次并行发 2~4 个不同角度（官方一手/不同措辞/找反证），结果按 URL 去重合并；部分查询失败会显式提示覆盖缺口。若所有搜索源都不可用，会返回结构化错误并附 _alternatives，不要只反复重试本工具。',
       category: 'query',
-      meta: { summary: '联网搜索（多源自动回退）', capabilities: ['net', 'net.search'] },
+      meta: { summary: '联网搜索（免费引擎优先/自动回退）', capabilities: ['net', 'net.search'] },
       parameters: {
         type: 'object',
         properties: {
@@ -22,15 +24,20 @@ export function makeSearchTools(manager, defaults = {}) {
             type: 'array', items: { type: 'string' }, maxItems: 4,
             description: '并行多角度查询（2~4 条：同一事实换措辞/换来源/官方一手/反方观点/辟谣反证），与 query 二选一；结果自动去重合并',
           },
+          engine: { type: 'string', enum: ENGINES, description: '指定首选引擎（auto=按语言自动选；失败仍自动回退其它引擎）' },
           include_domains: { type: 'array', items: { type: 'string' }, description: '只在指定域名内搜索（如官方站点，用于核对一手来源）' },
           exclude_domains: { type: 'array', items: { type: 'string' }, description: '排除指定域名（如已知内容农场）' },
-          max_results: { type: 'integer', description: '返回结果数（默认 5-10）' },
+          max_results: { type: 'integer', description: '返回结果数（默认 8）' },
           topic: { type: 'string', description: '搜索类别（general/news/finance）' },
           time_range: { type: 'string', enum: ['day', 'week', 'month', 'year'], description: '时间过滤' },
+          safe_search: { type: 'string', enum: ['off', 'moderate', 'strict'], description: '安全搜索（Bing/DDG 支持）' },
         },
       },
       async execute(params = {}) {
-        const opts = { ...defaults, ...pick(params, ['max_results', 'topic', 'time_range', 'search_depth', 'include_domains', 'exclude_domains', 'country']) }
+        const opts = {
+          ...defaults,
+          ...pick(params, ['max_results', 'topic', 'time_range', 'search_depth', 'include_domains', 'exclude_domains', 'country', 'engine', 'safe_search']),
+        }
         const queries = []
         if (Array.isArray(params.queries)) {
           for (const q of params.queries) { const s = String(q || '').trim(); if (s) queries.push(s) }
@@ -61,7 +68,7 @@ export function makeSearchTools(manager, defaults = {}) {
     },
     {
       name: 'web_extract',
-      description: '从指定 URL 提取干净的正文内容。输入 URL 列表，返回清洗后的正文。核对关键来源/交叉验证时用它读一手页面正文（搜索摘要可能断章取义）；多个来源分别提取后对比。搜索接口不可用时可直接用它读已知 URL；失败会返回结构化错误与替代建议。',
+      description: '从指定 URL 提取干净的正文内容（当前提取源为 Tavily，需在配置中填写 tavily.apiKey；未配置时请改用 web_crawl 工具）。核对关键来源/交叉验证时用它读一手页面正文；搜索接口不可用时也可直接读已知 URL。',
       category: 'query',
       meta: { summary: '从 URL 提取网页正文', resultCap: 12000, capabilities: ['net', 'net.fetch'] },
       parameters: {

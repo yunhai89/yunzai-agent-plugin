@@ -6,7 +6,13 @@ export function createDDGProvider({ fetcher, timeout = 15000 } = {}) {
     name: 'ddg',
     available: () => true,
     async search(query, options = {}) {
-      const results = await ddgSearch(query, { limit: options.max_results || 5, fetcher, timeout })
+      const results = await ddgSearch(query, {
+        limit: options.max_results || 5,
+        fetcher,
+        timeout,
+        safeSearch: options.safe_search || options.safeSearch || 'off',
+        timeRange: options.time_range || options.timeRange || '',
+      })
       return {
         provider: 'ddg', query,
         answer: null,

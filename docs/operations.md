@@ -23,7 +23,7 @@
 
 ### 🔍 SearXNG（自建免费搜索后端）安装
 
-搜索（`web_search`/`#研究`）若无 Tavily/Exa 等 key，可自建 SearXNG（免费、无 key、隐私）。
+搜索（`web_search`/`#研究`）默认使用免费引擎（Bing / DDG / AnySearch / Exa keyless / Tavily keyless / Keenable / Firecrawl / Parallel / You.com），也可自建 SearXNG（免费、无 key、隐私）。
 
 > ⚠️ **必须给实例开启 JSON 格式**：SearXNG 默认只输出 HTML，而插件走的是 JSON API。未开启时请求 `format=json` 会被实例拒绝，日志报 `SearXNG HTTP 403`。
 
@@ -61,7 +61,7 @@ search:
 ```
 
 > 生产建议给 SearXNG 加 reverse proxy + auth（见 [SearXNG 文档](https://docs.searxng.org)）。插件按其 JSON API 调用，无需额外适配。
-> 无 key 且未部署 SearXNG 时会回退 DuckDuckGo 抓取；部分网络（如国内）访问不了 DuckDuckGo，此时只能靠 SearXNG 或搜索 API Key。
+> 免费引擎已覆盖 Bing / AnySearch / Exa keyless / Tavily keyless / Keenable / Firecrawl / Parallel / You.com；DDG 和 SearXNG 仍可作补充。部分网络（如国内）访问不了 DuckDuckGo 时，会自动回退到可用的免费引擎或你配置的 key。
 
 ---
 

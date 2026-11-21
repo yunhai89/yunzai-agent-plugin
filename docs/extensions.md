@@ -16,6 +16,7 @@
 社区外置工具与技能集中收集在 **[trss-agent-tools](https://gitee.com/YunXi-67/trss-agent-tools)**（[GitHub 镜像](https://github.com/yunhai89/trss-agent-tools)），云崽插件索引库风格、欢迎 PR 提交你的工具/技能：
 
 - 把工具包目录整个复制到本插件 `tools/`、技能复制到 `skills/` 即可使用（示例：QQ 音乐 `qqmusic`）。
+- 插件已内置若干外置工具包：B 站 `bilibili`、QQ 音乐 `qqmusic`、萌娘百科 [`moegirl`](moegirl.md)（词条/全文搜索、词条正文、社区帖子/动态；只读）。
 - 工具包内提供固定模板 `tool.config.js`（`info`：标题/介绍/作者/版本/图标 + 配置 schema）；插件运行时自动读取，web 面板「系统 → 外置工具」按 schema 动态渲染，**新增工具无需改前端**。
 - 用户配置统一存 `agent.tools.<包名>`，复用配置热加载；运行时用 `getToolConfig('<包名>')` 读取。详见 [开发指南.md](../开发指南.md) 与收集仓 [CONTRIBUTING.md](https://gitee.com/YunXi-67/trss-agent-tools/blob/master/CONTRIBUTING.md)。
 

@@ -34,7 +34,8 @@ function lookupPersona(personaStore, id) {
 export function resolveHumanizePersona(cfg, { personaStore = null, botNickname = '' } = {}) {
   const persona = (cfg && cfg.persona) || {}
   const found = persona.fromPersonaId ? lookupPersona(personaStore, persona.fromPersonaId) : null
-  const libraryPrompt = found ? String(composePersonaSystemPrompt(found) || '').trim() : ''
+  const librarySource = String(found?.systemPrompt || '').trim()
+  const libraryPrompt = librarySource ? String(composePersonaSystemPrompt(found) || '').trim() : ''
   const customPrompt = String(persona.prompt || '').trim()
 
   // 人设库命中时名称随库走（即使面板残留旧的 persona.name）；否则走原有身份解析链

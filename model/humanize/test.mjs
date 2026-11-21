@@ -419,7 +419,8 @@ await test('persona：人设库优先于自定义卡，名称/正文同源', asy
   const r = resolveHumanizePersona({
     persona: { name: '旧名', prompt: '自定义正文', fromPersonaId: 'lib1' },
   }, { personaStore: store, botNickname: '云崽Bot' })
-  ok(r.prompt === '库里的人设正文', '人设库正文优先于自定义卡')
+  ok(r.prompt.includes('库里的人设正文'), '人设库正文优先于自定义卡')
+  ok(r.prompt.includes('人设连续性'), '人设库正文带连续性约束')
   ok(r.name === '林小汐', '名称随人设库（不再用旧 persona.name）')
   ok(r.source === 'persona', '来源标记 persona')
 

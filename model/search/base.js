@@ -20,6 +20,7 @@ function truncate(s, n) {
 export function formatResults(result, { maxResults = 10, maxContent = 500 } = {}) {
   if (!result) return '(无搜索结果)'
   const parts = []
+  if (result.note) parts.push(`ℹ️ ${result.note}`)
   const answers = Array.isArray(result.answers) ? result.answers : (result.answer ? [{ query: result.query, answer: result.answer }] : [])
   for (const a of answers) {
     if (a?.answer) parts.push(`💡 ${Array.isArray(result.answers) && a.query ? `[${a.query}] ` : ''}${a.answer}`)

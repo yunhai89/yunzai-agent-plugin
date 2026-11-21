@@ -10,7 +10,7 @@
 
 一个插件，从「能回话」到「能干活、能记住、能进化」的完整闭环。
 
-<img src="https://img.shields.io/badge/version-v1.52.0-blueviolet" alt="Version">
+<img src="https://img.shields.io/badge/version-v1.54.0-blueviolet" alt="Version">
 <img src="https://img.shields.io/badge/license-MIT-green" alt="License">
 <img src="https://img.shields.io/badge/platform-Yunzai-9cf" alt="Yunzai Plugin">
 <img src="https://img.shields.io/badge/AI-Agent-7c3aed" alt="AI Agent">
@@ -30,7 +30,7 @@
 
 一个跑在 Yunzai / Miao-Yunzai 里的 AI Agent 插件：把大模型对话、工具调用、长期记忆、人设、多模态、MCP、群管、沙箱和 Web 管理面板做成一套完整运行时。
 
-- **对话与工具**：ReAct 多轮、并行工具、全量工具常驻（缓存优先）、结果截断、预算与终止器。
+- **对话与工具**：ReAct 多轮、并行工具、免费引擎联网搜索（Bing / DDG / AnySearch / Exa / Tavily 等，含回退/缓存/冷却）、全量工具常驻（缓存优先）、结果截断、预算与终止器。
 - **模型接入**：OpenAI / Anthropic / Gemini 三协议；厂商 + 模型引用制；跨厂商回退。
 - **记忆与人设**：`MEMORY.md` / `USER.md`、长期记忆召回、用户画像、知识库 RAG、人设资料库与人设导入（`.txt/.md` + `aha-character-card` 角色卡片）。
 - **官方机器人**：自实现 QQ 官方适配器（AppID + AppSecret），支持 Markdown / inline keyboard / 被动回复。
@@ -188,6 +188,7 @@ agent:
 | [指令一览](docs/commands.md) | 全部聊天、管理、运维指令 |
 | [配置参考](docs/configuration.md) | `agent.*` 全量配置说明 |
 | [人设导入与角色卡片](docs/persona-cards.md) | `.txt/.md` 导入、`aha-character-card/1.x` 卡片与人设合成 |
+| [萌娘百科外置工具](docs/moegirl.md) | 词条/全文搜索、词条正文、社区帖子与动态流 |
 | [工具进化](docs/tool-evolution.md) | 生成 → 验证 → 审批 → 版本化 |
 | [记忆体系与上下文缓存](docs/memory-and-context.md) | MEMORY/USER、召回、压缩、缓存经济性 |
 | [安全与信任边界](docs/security.md) | RBAC、审批、注入防御、沙箱边界 |

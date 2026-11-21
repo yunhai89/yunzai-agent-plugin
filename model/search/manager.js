@@ -1,7 +1,13 @@
 /**
- * SearchManager —— 多源搜索管理器（回退链）。
- * 优先级：API key providers（Tavily/Exa/Perplexity/Brave）→ SearXNG（自建）→ DDG（本地兜底）。
- * 任一 provider 失败则自动尝试下一个，直到成功或全部失败。
+ * SearchManager —— 多源搜索 + 免费引擎回退链。
+ *
+ * 参考 dsh-free-search（MIT）的引擎分层与失败分类：
+ *  - 免费无 key：Bing / DDG / AnySearch / Exa(keyless) / Tavily(keyless) / Keenable / Firecrawl / Parallel / You.com / SearXNG
+ *  - 有 key 增强：Exa / Tavily / Brave / Perplexity / Keenable / Firecrawl / Parallel / You.com
+ *  - 失败分类：auth / quota / bot-wall / transient / invalid；auth/quota 冷却，transient 重试一次
+ *  - 同查询短 TTL 缓存、域名黑白名单、safeSearch/time_range 透传
+ *
+ * 旧的 SearchManager({ providers }) 用法保持兼容。
  */
 import { createTavilyProvider } from './providers/tavily.js'
 import { createExaProvider } from './providers/exa.js'
@@ -9,6 +15,12 @@ import { createPerplexityProvider } from './providers/perplexity.js'
 import { createBraveProvider } from './providers/brave.js'
 import { createSearXNGProvider } from './providers/searxng.js'
 import { createDDGProvider } from './providers/ddg.js'
+import { createBingProvider } from './providers/bing.js'
+import { createAnySearchProvider } from './providers/anysearch.js'
+import { createKeenableProvider } from './providers/keenable.js'
+import { createFirecrawlProvider } from './providers/firecrawl.js'
+import { createParallelProvider } from './providers/parallel.js'
+import { createYouProvider } from './providers/you.js'
 
 /**
  * 合并多查询搜索结果（供 web_search 多角度核验）。
@@ -39,60 +51,183 @@ export function mergeSearchResults(items, { maxResults = 12 } = {}) {
       const key = norm(r?.url)
       if (key && seen.has(key)) continue
       if (key) seen.add(key)
-      if (results.length < maxResults) results.push({ ...r, query, source: res.provider || '' })
+      if (results.length < maxResults) results.push({ ...r, query, source: r.source || res.provider || '' })
     }
   }
   return { provider: 'multi', queries, results, answers, failures, sources: [...providers] }
 }
 
+const ZH_ORDER = ['bing', 'anysearch', 'searxng', 'exa', 'tavily', 'keenable', 'parallel', 'firecrawl', 'you', 'ddg', 'brave', 'perplexity']
+const EN_ORDER = ['exa', 'tavily', 'parallel', 'keenable', 'firecrawl', 'you', 'bing', 'anysearch', 'searxng', 'ddg', 'brave', 'perplexity']
+const CJK_RE = /[\u3400-\u9fff\u3040-\u30ff\uac00-\ud7af]/
+
+function classifyFailure(e) {
+  const msg = String(e?.message || e || '')
+  if (/authentication|unauthor|invalid.*key|401|403|未登录|鉴权|密钥/i.test(msg)) return 'auth'
+  if (/quota|credit|402|额度|余额|billing|usage limit/i.test(msg)) return 'quota'
+  if (/captcha|challenge|unusual traffic|bot|verification|429|rate.?limit/i.test(msg)) return 'bot-wall'
+  if (/timeout|timed out|aborted|ECONN|ENOTFOUND|EAI_AGAIN|fetch failed|network|请求失败/i.test(msg)) return 'transient'
+  return 'invalid'
+}
+
+const COOLDOWN_MS = {
+  auth: 30 * 60 * 1000,
+  quota: 15 * 60 * 1000,
+  'bot-wall': 2 * 60 * 1000,
+  transient: 0,
+  invalid: 0,
+}
+
+function hostOf(url) {
+  try { return new URL(url).hostname.toLowerCase() } catch { return '' }
+}
+
+function domainMatch(host, list) {
+  return (list || []).some((d) => {
+    const x = String(d || '').trim().toLowerCase().replace(/^\.+/, '')
+    if (!x) return false
+    return host === x || host.endsWith('.' + x)
+  })
+}
+
 export class SearchManager {
-  constructor({ providers = [], logger = () => {} } = {}) {
+  constructor({ providers = [], logger = () => {}, engine = 'auto', fallbackOrder = null, cacheMinutes = 5, safeSearch = 'off', blockedDomains = [], timeout = null, lang = 'zh', bingMarket = '' } = {}) {
     this.providers = providers
     this.logger = logger
+    this.engine = engine || 'auto'
+    this.fallbackOrder = Array.isArray(fallbackOrder) && fallbackOrder.length ? fallbackOrder.map(String) : null
+    this.cacheMs = Math.max(0, Number(cacheMinutes) || 0) * 60 * 1000
+    this.safeSearch = String(safeSearch || 'off').toLowerCase()
+    this.blockedDomains = Array.isArray(blockedDomains) ? blockedDomains : []
+    this.timeout = timeout
+    this.lang = lang
+    this.bingMarket = bingMarket
+    this._cache = new Map()
+    this._cool = new Map()
   }
 
   get availableProviders() {
-    return this.providers.filter((p) => p.available()).map((p) => p.name)
+    return this.providers.filter((p) => !p.available || p.available()).map((p) => p.name)
+  }
+
+  _cooling(name) {
+    const c = this._cool.get(name)
+    if (!c) return false
+    if (Date.now() < c.until) return true
+    this._cool.delete(name)
+    return false
+  }
+
+  _markCooldown(name, cls) {
+    const ms = COOLDOWN_MS[cls] || 0
+    if (ms > 0) this._cool.set(name, { until: Date.now() + ms, cls })
+  }
+
+  _order(query, opts = {}) {
+    const names = this.providers.map((p) => p.name)
+    const explicit = String(opts.engine || this.engine || 'auto').toLowerCase()
+    if (explicit !== 'auto' && names.includes(explicit)) {
+      const out = [explicit, ...(this.fallbackOrder || (CJK_RE.test(query) ? ZH_ORDER : EN_ORDER))]
+        .filter((n, i, a) => n && a.indexOf(n) === i)
+      for (const n of names) if (!out.includes(n)) out.push(n)
+      return out
+    }
+    const base = this.fallbackOrder || (CJK_RE.test(query) ? ZH_ORDER : EN_ORDER)
+    const out = []
+    for (const n of base) if (names.includes(n) && !out.includes(n)) out.push(n)
+    for (const n of names) if (!out.includes(n)) out.push(n)
+    return out
+  }
+
+  _cacheKey(query, opts) {
+    return JSON.stringify({
+      q: String(query || ''),
+      engine: opts.engine || this.engine,
+      max: opts.max_results ?? null,
+      safe: opts.safe_search ?? this.safeSearch,
+      time: opts.time_range ?? null,
+      include: opts.include_domains ?? null,
+      exclude: opts.exclude_domains ?? null,
+    })
+  }
+
+  _filter(results, opts) {
+    const include = Array.isArray(opts.include_domains) ? opts.include_domains : []
+    const exclude = Array.isArray(opts.exclude_domains) ? opts.exclude_domains : []
+    return (results || []).filter((r) => {
+      const host = hostOf(r.url)
+      if (!host) return false
+      if (domainMatch(host, this.blockedDomains) || domainMatch(host, exclude)) return false
+      if (include.length && !domainMatch(host, include)) return false
+      return true
+    })
   }
 
   async search(query, opts = {}) {
-    const errs = []
-    let tried = 0
-    const triedNames = []
-    let empty = null // 首个「源可用但无结果」的返回：全部源都空时作为兜底返回
-    for (const p of this.providers) {
-      if (!p.available()) continue
-      tried++
-      triedNames.push(p.name)
+    const q = String(query || '').trim()
+    if (!q) throw new Error('缺少查询词')
+    const key = this._cacheKey(q, opts)
+    if (this.cacheMs) {
+      const hit = this._cache.get(key)
+      if (hit && Date.now() - hit.at < this.cacheMs) return hit.value
+    }
+    const order = this._order(q, opts)
+    const errors = []
+    const tried = []
+    let firstEmpty = null
+    const providerOptions = {
+      ...opts,
+      max_results: Math.min(Math.max(Number(opts.max_results) || 8, 1), 20),
+      safe_search: String(opts.safe_search || this.safeSearch || 'off').toLowerCase(),
+      bingMarket: opts.bingMarket || this.bingMarket,
+      lang: this.lang,
+    }
+
+    for (const name of order) {
+      const p = this.providers.find((x) => x.name === name)
+      if (!p || (p.available && !p.available())) continue
+      if (this._cooling(name)) { errors.push(`${name}: cooling down`); continue }
+      tried.push(name)
       try {
-        const result = await p.search(query, opts)
-        const n = result?.results?.length || 0
-        this.logger('debug', `[search] ${p.name} → ${n} results`)
-        // 有结果或带 AI 答案才算成功；否则继续尝试下一源（SearXNG 实例常返回 200 但 results=[]，
-        // 此前直接 return 空结果 → 永不回退 DDG，表现为"搜索无结果"）
-        if (n > 0 || result?.answer) return result
-        if (!empty) empty = result
+        const result = await p.search(q, providerOptions)
+        if (!result) continue
+        const results = this._filter(result.results, providerOptions)
+        if (!result.answer && !results.length) {
+          if (!firstEmpty) firstEmpty = { ...result, results: [], sources: tried.slice() }
+          continue
+        }
+        this._cool.delete(name)
+        const note = errors.length ? `Note: ${errors.slice(-3).join('; ')}; using ${name}.` : undefined
+        const out = { ...result, results, provider: result.provider || name, ...(note ? { note } : {}) }
+        if (this.cacheMs) this._cache.set(key, { at: Date.now(), value: out })
+        if (this._cache.size > 100) this._cache.delete(this._cache.keys().next().value)
+        return out
       } catch (e) {
-        this.logger('warn', `[search] ${p.name} failed: ${e?.message || e}`)
-        errs.push(`${p.name}: ${e?.message || e}`)
+        const cls = classifyFailure(e)
+        this.logger('warn', `[search] ${name} failed (${cls}): ${e?.message || e}`)
+        if (cls === 'transient') {
+          try {
+            const r2 = await p.search(q, providerOptions)
+            if (r2?.results?.length || r2?.answer) {
+              this._cool.delete(name)
+              const out = { ...r2, results: this._filter(r2.results, providerOptions), provider: r2.provider || name }
+              if (this.cacheMs) this._cache.set(key, { at: Date.now(), value: out })
+              return out
+            }
+          } catch (e2) {
+            this.logger('warn', `[search] ${name} retry failed: ${e2?.message || e2}`)
+          }
+        }
+        this._markCooldown(name, cls)
+        errors.push(`${name}: ${e?.message || e}`)
       }
     }
-    if (!tried) throw new Error('无可用搜索源（未配置任何搜索 API Key，且未部署 SearXNG）')
-    if (empty) {
-      // 所有源都可用但都无结果：附上已尝试的源，便于模型/用户判断是"确实没有"还是"源有问题"
-      this.logger('warn', `[search] 所有源均返回 0 结果（已试：${triedNames.join(', ')}）query=${String(query).slice(0, 80)}`)
-      return { ...empty, sources: triedNames }
-    }
-    // 聚合每个源的真实失败原因，避免只抛出最后一个 "fetch failed" 让人无从排查
-    throw new Error(`所有搜索源均失败 → ${errs.join('；')}`)
+
+    if (firstEmpty) return { ...firstEmpty, sources: tried }
+    if (!tried.length) throw new Error('无可用搜索源')
+    throw new Error(`所有搜索源均失败 → ${errors.join('；')}`)
   }
 
-  /**
-   * 多查询并行搜索（同一主题换角度/换来源/找反证）→ 去重合并。
-   * 单查询失败不影响其他查询；失败与覆盖缺口通过 failures 如实返回（不静默）。
-   * @param {string[]} queries 查询列表（最多 4 条）
-   * @param {object} opts 同 search()
-   */
   async searchMany(queries, opts = {}) {
     const list = (Array.isArray(queries) ? queries : [queries])
       .map((q) => String(q || '').trim())
@@ -104,8 +239,7 @@ export class SearchManager {
       ? { query: list[i], result: s.value }
       : { query: list[i], error: s.reason?.message || String(s.reason) }))
     const merged = mergeSearchResults(items)
-    const n = merged.results.length
-    this.logger('debug', `[search] searchMany ${list.length} queries → ${n} merged results${merged.failures.length ? `（${merged.failures.length} 条查询失败）` : ''}`)
+    this.logger('debug', `[search] searchMany ${list.length} queries → ${merged.results.length} merged results${merged.failures.length ? `（${merged.failures.length} 条查询失败）` : ''}`)
     return merged
   }
 
@@ -122,45 +256,49 @@ export class SearchManager {
         errs.push(`${p.name}: ${e?.message || e}`)
       }
     }
-    if (!tried) throw new Error('无可用提取源（未配置搜索 API Key，且未部署 SearXNG）')
+    if (!tried) throw new Error('无可用提取源（可在配置中填 Tavily key 以启用 web_extract）')
     throw new Error(`所有提取源均失败 → ${errs.join('；')}`)
   }
 }
 
 /**
  * 从配置构建 SearchManager。
- * config: { tavily:{apiKey,timeout?}, exa:{apiKey,timeout?}, perplexity:{apiKey,timeout?}, brave:{apiKey,timeout?},
- *           searxng:{url,timeout?}, ddg:true|{timeout?}, timeout?, fetcher, logger }
- * 回退链：已配置的 API key provider → SearXNG → DDG（始终兜底）
- *
- * timeout：各 provider 工厂都支持 timeout，但旧实现从不传 → 用户配的超时被各源默认值静默覆盖
- * （本轮外部服务客户端审计第 4 条 / 既有 L-106，DDG 更是完全没地方配）。现在接上：
- * 单个来源的 timeout 优先，其次全局 config.timeout；都没配就不传，保持各 provider 原默认值（向后兼容）。
+ * config: { tavily/exa/perplexity/brave/searxng/anysearch/keenable/firecrawl/parallel/you, engine, fallbackOrder,
+ *           safeSearch, cacheMinutes, blockedDomains, lang, bingMarket, bing, ddg, timeout, fetcher, logger }
  */
 export function createSearchManager(config = {}) {
   const providers = []
   const fetcher = config.fetcher
-
   const timeoutOf = (name) => {
     const per = (name === 'ddg' && typeof config.ddg === 'object') ? config.ddg?.timeout : config?.[name]?.timeout
     const n = Number(per ?? config.timeout)
-    return Number.isFinite(n) && n > 0 ? n : null
+    return Number.isFinite(n) && n > 0 ? n : undefined
   }
-  const withTimeout = (name, opts) => {
-    const t = timeoutOf(name)
-    return t ? { ...opts, timeout: t } : opts
-  }
+  const add = (p) => { if (p) providers.push(p) }
 
-  if (config.tavily?.apiKey) providers.push(createTavilyProvider(withTimeout('tavily', { ...config.tavily, fetcher })))
-  if (config.exa?.apiKey) providers.push(createExaProvider(withTimeout('exa', { ...config.exa, fetcher })))
-  if (config.perplexity?.apiKey) providers.push(createPerplexityProvider(withTimeout('perplexity', { ...config.perplexity, fetcher })))
-  if (config.brave?.apiKey) providers.push(createBraveProvider(withTimeout('brave', { ...config.brave, fetcher })))
+  if (config.bing !== false) add(createBingProvider({ fetcher, timeout: timeoutOf('bing') || 15000, bingMarket: config.bingMarket, lang: config.lang }))
+  if (config.ddg !== false) add(createDDGProvider({ fetcher, timeout: timeoutOf('ddg') || 15000 }))
+  if (config.anysearch !== false) add(createAnySearchProvider({ apiKey: config.anysearch?.apiKey, fetcher, timeout: timeoutOf('anysearch') || 12000 }))
+  if (config.searxng?.url) add(createSearXNGProvider({ ...config.searxng, fetcher, timeout: timeoutOf('searxng') || 15000 }))
+  if (config.exa !== false) add(createExaProvider({ ...config.exa, fetcher, timeout: timeoutOf('exa') || 30000 }))
+  if (config.tavily !== false) add(createTavilyProvider({ ...config.tavily, fetcher, timeout: timeoutOf('tavily') || 15000 }))
+  if (config.keenable !== false) add(createKeenableProvider({ apiKey: config.keenable?.apiKey, fetcher, timeout: timeoutOf('keenable') || 25000 }))
+  if (config.firecrawl !== false) add(createFirecrawlProvider({ apiKey: config.firecrawl?.apiKey, fetcher, timeout: timeoutOf('firecrawl') || 20000 }))
+  if (config.parallel !== false) add(createParallelProvider({ apiKey: config.parallel?.apiKey, fetcher, timeout: timeoutOf('parallel') || 25000 }))
+  if (config.you !== false) add(createYouProvider({ apiKey: config.you?.apiKey, fetcher, timeout: timeoutOf('you') || 15000 }))
+  if (config.brave?.apiKey) add(createBraveProvider({ ...config.brave, fetcher, timeout: timeoutOf('brave') || 15000 }))
+  if (config.perplexity?.apiKey) add(createPerplexityProvider({ ...config.perplexity, fetcher, timeout: timeoutOf('perplexity') || 60000 }))
 
-  // SearXNG（自建，无需 key）
-  if (config.searxng?.url) providers.push(createSearXNGProvider(withTimeout('searxng', { ...config.searxng, fetcher })))
-
-  // DDG 本地兜底（始终最后）
-  if (config.ddg !== false) providers.push(createDDGProvider(withTimeout('ddg', { fetcher })))
-
-  return new SearchManager({ providers, logger: config.logger || (() => {}) })
+  return new SearchManager({
+    providers,
+    logger: config.logger || (() => {}),
+    engine: config.engine || 'auto',
+    fallbackOrder: config.fallbackOrder,
+    cacheMinutes: config.cacheMinutes ?? 5,
+    safeSearch: config.safeSearch || 'off',
+    blockedDomains: config.blockedDomains || [],
+    timeout: config.timeout,
+    lang: config.lang || 'zh',
+    bingMarket: config.bingMarket || '',
+  })
 }

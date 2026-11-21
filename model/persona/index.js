@@ -20,7 +20,7 @@ import { BUILTIN_PERSONAS } from './defaults.js'
 import { PersonaLore, normalizeLore, normalizeCanonical, normalizeSources, groundingText, assertSafeLore } from './lore.js'
 import { PersonaAdoptionQueue } from './adoptions.js'
 import { PERSONA_COMPLETION_SYSTEM, buildCompletionInput, parseCompletionOutput, buildLoreDraft, formatDraftSummary, isCompletionToolAllowed } from './completion.js'
-import { composePersonaSystemPrompt, cardGuidanceText } from './compose.js'
+import { composePersonaSystemPrompt, cardGuidanceText, personaBreakReminder, PERSONA_LOCK } from './compose.js'
 import { parsePersonaText, parseCharacterCard, buildPersonaImport, applyPersonaImport, IMPORT_MAX_TEXT_BYTES } from './import.js'
 
 export {
@@ -47,6 +47,8 @@ export {
   isCompletionToolAllowed,
   composePersonaSystemPrompt,
   cardGuidanceText,
+  personaBreakReminder,
+  PERSONA_LOCK,
   parsePersonaText,
   parseCharacterCard,
   buildPersonaImport,

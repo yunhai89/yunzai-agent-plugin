@@ -277,17 +277,34 @@ agent:
     historyCount: 15
   search:
     timeout: 0               # 搜索源超时（毫秒；0/未填=各源默认）。可给单源覆盖，如 tavily: { apiKey: "", timeout: 20000 }
+    engine: auto             # 首选引擎：auto/bing/ddg/anysearch/exa/tavily/keenable/firecrawl/parallel/you/searxng/brave/perplexity；失败会自动回退
+    safeSearch: off          # off | moderate | strict（Bing / DDG）
+    cacheMinutes: 5          # 相同查询进程内缓存分钟数；0=关闭
+    blockedDomains: []       # 域名黑名单（命中的结果不会返回）
+    lang: zh                 # 搜索语言（影响 Bing Accept-Language / auto 路由）
+    bingMarket: ""           # Bing 市场（留空=按 lang 自动；如 zh-CN）
+    bing: true               # Bing HTML 免费引擎
+    ddg: true                # DuckDuckGo 免费兜底
+    anysearch:
+      apiKey: ""             # 可选；匿名也有额度
     tavily:
-      apiKey: ""
+      apiKey: ""             # 可选；无 key 走 keyless 匿名额度
     exa:
-      apiKey: ""
+      apiKey: ""             # 可选；无 key 走公开 MCP 匿名额度
+    keenable:
+      apiKey: ""             # 可选；无 key 走匿名 MCP
+    firecrawl:
+      apiKey: ""             # 可选；无 key 走匿名额度（部分出口 IP 可能被拒绝）
+    parallel:
+      apiKey: ""             # 可选；无 key 走匿名 MCP
+    you:
+      apiKey: ""             # 可选；无 key 每日匿名额度
     perplexity:
       apiKey: ""
     brave:
       apiKey: ""
     searxng:
       url: ""
-    ddg: true
   research:
     permission: master
     maxRounds: 3

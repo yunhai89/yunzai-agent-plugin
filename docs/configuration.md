@@ -206,21 +206,33 @@ personaLore:        # 人设资料库（agent.personaLore；世界观/口癖等�
 >
 > 自建人设正文（systemPrompt）上限 **20000 字**。默认会拒绝含「忽略安全 / 禁止拒答 / 绕过审批」等越狱/注入指令的角色卡（报错 `persona_injection`）；若确认是自建可信内容且被误判，可临时开启 `skipInjectionCheck` 保存后再关闭——已保存内容不会再次扫描。开启期间内容会原样进入 system 身份层，风险自负。
 
-### `agent.search` —— 统一搜索 🧪早期
+### `agent.search` —— 统一搜索
 
-> 🧪 搜索为早期功能，效果取决于搜索源可用性。任填一个 key 即用该源；都不填回退 SearXNG，再兜底 DDG（始终可用）。
+> 免费引擎优先：Bing / DDG / AnySearch / Exa(keyless) / Tavily(keyless) / Keenable / Firecrawl / Parallel / You.com / SearXNG；配置 key 后可用 Brave / Perplexity 与更高额度。任一引擎失败会自动回退下一个，并按失败类别短时冷却。
 
-**防信息茧房的搜索纪律（内置于系统提示，无需配置）**：Agent 被告知"关键事实至少两个独立来源交叉验证、下结论前先找反证、争议话题并列双方依据、冲突不静默选一个"；`web_search` 支持一次并行发 2~4 个不同角度的 `queries`（换措辞/换来源/官方一手/找反证），结果按 URL 去重合并并标注来源与时间，部分查询失败会显式提示覆盖缺口；核对一手页面用 `web_extract` 读正文（摘要可能断章取义）。
+**防信息茧房的搜索纪律（内置于系统提示，无需配置）**：Agent 被告知"关键事实至少两个独立来源交叉验证、下结论前先找反证、争议话题并列双方依据、冲突不静默选一个"；`web_search` 支持一次并行发 2~4 个不同角度的 `queries`（换措辞/换来源/官方一手/找反证），结果按 URL 去重合并并标注来源与时间，部分查询失败会显式提示覆盖缺口；核对一手页面用 `web_extract`（需 Tavily key）或 `web_crawl` 读正文（摘要可能断章取义）。
 
 ```yaml
 search:
-  timeout: 0                 # 搜索源超时（毫秒）；0/未填=用各源默认。也可单源覆盖（tavily: { apiKey: "", timeout: 20000 }）
-  tavily:    { apiKey: "" }
-  exa:       { apiKey: "" }
+  timeout: 0                 # 搜索源超时（毫秒）；0/未填=用各源默认。也可单源覆盖（tavily: { timeout: 20000 }）
+  engine: auto               # 首选：auto/bing/ddg/anysearch/exa/tavily/keenable/firecrawl/parallel/you/searxng/brave/perplexity；失败仍回退
+  safeSearch: off            # off | moderate | strict（Bing / DDG）
+  cacheMinutes: 5            # 相同查询进程内缓存分钟数；0=关闭
+  blockedDomains: []         # 域名黑名单
+  lang: zh                   # 搜索语言（Bing Accept-Language / auto 路由）
+  bingMarket: ""             # 留空=按 lang；如 zh-CN
+  bing: true                 # Bing HTML 免费引擎
+  ddg: true                  # DuckDuckGo 免费兜底
+  anysearch: { apiKey: "" }  # 可留空走匿名额度
+  exa:       { apiKey: "" }  # 可留空走公开 MCP 匿名额度
+  tavily:    { apiKey: "" }  # 可留空走 keyless 匿名额度
+  keenable:  { apiKey: "" }  # 可留空走匿名 MCP
+  firecrawl: { apiKey: "" }  # 可留空走匿名额度（部分出口 IP 可能被拒绝）
+  parallel:  { apiKey: "" }  # 可留空走匿名 MCP
+  you:       { apiKey: "" }  # 可留空走每日匿名额度
   perplexity: { apiKey: "" }
   brave:     { apiKey: "" }
   searxng:   { url: "" }     # 如 http://localhost:8080
-  ddg: true                  # 本地 DDG 兜底（默认开）
 ```
 
 ### `agent.diagram` —— 示意图生成（diagram_render）

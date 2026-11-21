@@ -391,12 +391,21 @@ export function supportGuoba() {
 
         // —— 搜索服务 ——
         { label: '搜索服务（web_search / 深度研究）', component: 'SOFT_GROUP_BEGIN' },
-        { field: 'agent.search.tavily.apiKey', label: 'Tavily API Key', bottomHelpMessage: '任填一个即启用该源；都不填回退 SearXNG，再兜底 DDG', component: 'Input', componentProps: { placeholder: 'tvly-xxx' } },
-        { field: 'agent.search.exa.apiKey', label: 'Exa API Key', component: 'Input' },
+        { field: 'agent.search.engine', label: '首选搜索引擎', bottomHelpMessage: 'auto=按语言自动路由；失败仍自动回退其它引擎', component: 'Select', componentProps: { options: [{ label: '自动（推荐）', value: 'auto' }, { label: 'Bing', value: 'bing' }, { label: 'DuckDuckGo', value: 'ddg' }, { label: 'AnySearch', value: 'anysearch' }, { label: 'Exa', value: 'exa' }, { label: 'Tavily', value: 'tavily' }, { label: 'Keenable', value: 'keenable' }, { label: 'Firecrawl', value: 'firecrawl' }, { label: 'Parallel', value: 'parallel' }, { label: 'You.com', value: 'you' }, { label: 'SearXNG', value: 'searxng' }, { label: 'Brave', value: 'brave' }, { label: 'Perplexity', value: 'perplexity' }] } },
+        { field: 'agent.search.safeSearch', label: '安全搜索', bottomHelpMessage: 'off / moderate / strict（Bing / DDG）', component: 'Select', componentProps: { options: [{ label: '关闭', value: 'off' }, { label: '适中', value: 'moderate' }, { label: '严格', value: 'strict' }] } },
+        { field: 'agent.search.cacheMinutes', label: '搜索缓存(分钟)', bottomHelpMessage: '相同查询进程内缓存；0=关闭', component: 'InputNumber', componentProps: { min: 0, max: 60 } },
+        { field: 'agent.search.bing', label: 'Bing 免费引擎', component: 'Switch' },
+        { field: 'agent.search.ddg', label: 'DDG 免费兜底', bottomHelpMessage: '本地 DuckDuckGo，免 key、默认开', component: 'Switch' },
+        { field: 'agent.search.tavily.apiKey', label: 'Tavily API Key', bottomHelpMessage: '可留空走 keyless 匿名额度；填 key 提升限额', component: 'Input', componentProps: { placeholder: 'tvly-xxx' } },
+        { field: 'agent.search.exa.apiKey', label: 'Exa API Key', bottomHelpMessage: '可留空走公开 MCP 匿名额度', component: 'Input' },
+        { field: 'agent.search.anysearch.apiKey', label: 'AnySearch API Key', bottomHelpMessage: '可留空使用匿名额度', component: 'Input' },
+        { field: 'agent.search.keenable.apiKey', label: 'Keenable API Key', bottomHelpMessage: '可留空走匿名 MCP', component: 'Input' },
+        { field: 'agent.search.firecrawl.apiKey', label: 'Firecrawl API Key', bottomHelpMessage: '可留空走匿名额度；部分出口 IP 可能被拒绝', component: 'Input' },
+        { field: 'agent.search.parallel.apiKey', label: 'Parallel API Key', bottomHelpMessage: '可留空走匿名 MCP', component: 'Input' },
+        { field: 'agent.search.you.apiKey', label: 'You.com API Key', bottomHelpMessage: '可留空使用每日匿名额度', component: 'Input' },
         { field: 'agent.search.perplexity.apiKey', label: 'Perplexity API Key', component: 'Input' },
         { field: 'agent.search.brave.apiKey', label: 'Brave API Key', component: 'Input' },
         { field: 'agent.search.searxng.url', label: 'SearXNG 地址', bottomHelpMessage: '自建/公共 SearXNG 实例', component: 'Input', componentProps: { placeholder: 'http://localhost:8080' } },
-        { field: 'agent.search.ddg', label: 'DDG 兜底', bottomHelpMessage: '本地 DuckDuckGo，免 key、默认开（最后兜底）', component: 'Switch' },
 
         // —— 知识库与网页抓取 ——
         { label: '知识库与网页抓取', component: 'SOFT_GROUP_BEGIN' },

@@ -13,6 +13,12 @@ import {
   createBraveProvider,
   createSearXNGProvider,
   createDDGProvider,
+  createBingProvider,
+  createAnySearchProvider,
+  createKeenableProvider,
+  createFirecrawlProvider,
+  createParallelProvider,
+  createYouProvider,
   formatResults,
   formatExtract,
 } from './index.js'
@@ -129,6 +135,61 @@ await test('provider/ddg：本地兜底（始终可用）', async () => {
   eq(r.results[0].title, 'Example', 'title')
 })
 
+// ---------- 6b. 免费引擎 provider ----------
+await test('provider/bing：HTML SERP 解析 + bing 跳转链接解码', async () => {
+  const html = `<li class="b_algo"><h2><a href="https://www.bing.com/ck/a?u=a1aHR0cHM6Ly9leGFtcGxlLmNvbQ">Example</a></h2><p>snippet</p></li>`
+  const p = createBingProvider({ fetcher: mockHtmlFetch(html) })
+  const r = await p.search('example')
+  eq(r.provider, 'bing', 'provider')
+  eq(r.results[0].url, 'https://example.com', '解码 bing 跳转')
+  eq(r.results[0].title, 'Example', '标题')
+})
+
+await test('provider/anysearch：匿名 JSON 搜索', async () => {
+  const p = createAnySearchProvider({ fetcher: mockFetch({ code: 0, data: { results: [{ title: 'A', url: 'https://a.com', snippet: 'sa' }] } }) })
+  const r = await p.search('a')
+  eq(r.provider, 'anysearch', 'provider')
+  eq(r.results[0].content, 'sa', 'snippet')
+})
+
+await test('provider/exa：无 key 走 MCP', async () => {
+  const text = 'data: {"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"Title: A\\nURL: https://a.com\\nHighlights:\\nfoo"}]}}\n\n'
+  const p = createExaProvider({ fetcher: async () => ({ ok: true, status: 200, async text() { return text } }) })
+  const r = await p.search('a')
+  eq(r.provider, 'exa', 'provider')
+  eq(r.results[0].url, 'https://a.com', 'MCP URL')
+  eq(r.results[0].content, 'foo', 'MCP highlights')
+})
+
+await test('provider/tavily：无 key 走 keyless', async () => {
+  const p = createTavilyProvider({ fetcher: mockFetch({ results: [{ title: 'T', url: 'https://t.com', content: 'tc' }] }) })
+  const r = await p.search('t')
+  eq(r.provider, 'tavily', 'provider')
+  eq(r.results[0].content, 'tc', 'keyless 结果')
+  ok(!p.extract, '无 key 不提供 extract（避免假可用）')
+})
+
+await test('provider/keenable：无 key 走 MCP', async () => {
+  const text = 'data: {"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"Title: K\\nURL: https://k.com\\nSnippets:\\nks"}]}}\n\n'
+  const p = createKeenableProvider({ fetcher: async () => ({ ok: true, status: 200, async text() { return text } }) })
+  const r = await p.search('k')
+  eq(r.provider, 'keenable', 'provider')
+  eq(r.results[0].url, 'https://k.com', 'MCP URL')
+  eq(r.results[0].content, 'ks', 'MCP snippet')
+})
+
+await test('provider/firecrawl / you / parallel：免费解析', async () => {
+  const fc = createFirecrawlProvider({ fetcher: mockFetch({ data: { web: [{ title: 'F', url: 'https://f.com', description: 'fd' }] } }) })
+  eq((await fc.search('f')).results[0].content, 'fd', 'Firecrawl description')
+
+  const you = createYouProvider({ fetcher: mockFetch({ results: { web: [{ title: 'Y', url: 'https://y.com', snippets: ['ys'] }] } }) })
+  eq((await you.search('y')).results[0].content, 'ys', 'You.com snippets')
+
+  const parallelText = 'data: {"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"{\\"results\\":[{\\"url\\":\\"https://p.com\\",\\"title\\":\\"P\\",\\"excerpts\\":[\\"pe\\"]}]}"}]}}\n\n'
+  const par = createParallelProvider({ fetcher: async () => ({ ok: true, status: 200, async text() { return parallelText } }) })
+  eq((await par.search('p')).results[0].content, 'pe', 'Parallel excerpt')
+})
+
 // ---------- 7. 管理器回退链 ----------
 await test('manager：provider 失败 → 自动回退下一个', async () => {
   // tavily 抛错 → brave 成功
@@ -183,19 +244,32 @@ await test('ddgSearch：lite 端点空 → 尝试 html 端点', async () => {
   eq(calls, 2, '两个端点都尝试')
 })
 
-// ---------- 8. createSearchManager：无 key → DDG 兜底 ----------
-await test('createSearchManager：无 key → SearXNG → DDG', async () => {
-  // 无 key、无 searxng → 只有 DDG
+await test('manager：同查询缓存 + auth 失败冷却', async () => {
+  let calls1 = 0
+  const authFail = { name: 'authfail', available: () => true, async search() { calls1++; throw new Error('authentication failed (HTTP 401)') } }
+  const okP = { name: 'ok', available: () => true, async search() { return { provider: 'ok', query: 'q', results: [{ title: 'OK', url: 'https://ok.com', content: 'x' }] } } }
+  const mgr = new SearchManager({ providers: [authFail, okP], cacheMinutes: 5 })
+  const r1 = await mgr.search('q')
+  eq(r1.provider, 'ok', 'auth 失败回退')
+  ok(/authfail/.test(r1.note || ''), 'note 记录失败源')
+  await mgr.search('q')
+  eq(calls1, 1, '缓存命中后不再调用失败源')
+})
+
+// ---------- 8. createSearchManager：免费引擎默认启用 ----------
+await test('createSearchManager：无 key → 免费引擎 + DDG 兜底', async () => {
+  // 无 key、无 searxng → Bing/DDG/AnySearch/Exa/Tavily/Keenable/Firecrawl/Parallel/You 免费引擎
   const mgr1 = createSearchManager({ fetcher: mockHtmlFetch('<a class="result-link" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fx.com">X</a><td class="result-snippet">snip</td>') })
-  eq(mgr1.availableProviders, ['ddg'], '无 key → 只有 DDG')
+  ok(mgr1.availableProviders.includes('ddg') && mgr1.availableProviders.includes('bing'), '无 key 仍有免费引擎')
+  ok(mgr1.availableProviders.includes('anysearch') && mgr1.availableProviders.includes('exa') && mgr1.availableProviders.includes('tavily'), 'keyless 引擎可用')
 
-  // 有 searxng → searxng + DDG
+  // 有 searxng → 额外加入
   const mgr2 = createSearchManager({ searxng: { url: 'http://localhost:8080' }, fetcher: mockFetch({ results: [{ title: 'S', url: 'https://s.com', content: 'c' }] }) })
-  eq(mgr2.availableProviders, ['searxng', 'ddg'], 'SearXNG + DDG')
+  ok(mgr2.availableProviders.includes('searxng'), 'SearXNG 加入')
 
-  // 有 tavily key → tavily + DDG
+  // 有 tavily key → 仍是 tavily（不会重复）
   const mgr3 = createSearchManager({ tavily: { apiKey: 'tvly-x' }, fetcher: mockFetch({ results: [] }) })
-  eq(mgr3.availableProviders, ['tavily', 'ddg'], 'Tavily + DDG')
+  eq(mgr3.availableProviders.filter((x) => x === 'tavily').length, 1, 'Tavily 只注册一次')
 })
 
 // ---------- 9. 超时接上（本轮外部服务客户端审计第 4 条 / 既有 L-106）----------
@@ -210,18 +284,19 @@ await test('createSearchManager：timeout 真正传到各源', async () => {
   // Promise.race 里的 setTimeout 是 ref 计时器：AbortSignal.timeout 是 unref 的，
   // 单靠它进程会因事件循环空转提前退出（unsettled top-level await），故用 race 撑住事件循环。
   const waitMs = (ms) => new Promise((r) => setTimeout(r, ms))
-  const mgr1 = createSearchManager({ searxng: { url: 'http://s', timeout: 80 }, fetcher: hangFetcher(rec1) })
+  const onlySearxng = { bing: false, ddg: false, anysearch: false, exa: false, tavily: false, keenable: false, firecrawl: false, parallel: false, you: false }
+  const mgr1 = createSearchManager({ ...onlySearxng, searxng: { url: 'http://s', timeout: 80 }, fetcher: hangFetcher(rec1) })
   await Promise.race([mgr1.search('q').catch(() => {}), waitMs(1500)])
   ok(rec1.ms >= 50 && rec1.ms < 1200, `单源 timeout 生效（配 80ms，实测 ${rec1.ms}ms）`)
 
   const rec2 = {}
-  const mgr2 = createSearchManager({ timeout: 80, fetcher: hangFetcher(rec2) })
+  const mgr2 = createSearchManager({ ...onlySearxng, ddg: true, timeout: 80, fetcher: hangFetcher(rec2) })
   await Promise.race([mgr2.search('q').catch(() => {}), waitMs(3000)])
   ok(rec2.ms >= 50 && rec2.ms < 2000, `全局 timeout 对 DDG 兜底生效（实测 ${rec2.ms}ms）`)
 
   // 都没配 → 不传 timeout，保持各源原默认（DDG 15s：200ms 内不该被 abort）
   const rec3 = {}
-  const mgr3 = createSearchManager({ fetcher: hangFetcher(rec3) })
+  const mgr3 = createSearchManager({ ...onlySearxng, ddg: true, fetcher: hangFetcher(rec3) })
   mgr3.search('q').catch(() => {}) // 挂着的 promise 自带 catch，不 await
   await waitMs(200)
   ok(rec3.ms === undefined, '未配 timeout → 沿用 provider 默认值')
