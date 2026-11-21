@@ -76,6 +76,7 @@ const HOOKED_STRESS = new Set([
   'stress/e2e/official-id-clear.mjs', // PR0 契约：官方 ID 含冒号时 #清空所有记录 的现状（KNOWN-BUG）
   'stress/e2e/runtime-facade-wiring.mjs', // PR1：真实 apps runtime 装配/重建/关闭 Facade
   'stress/e2e/mastra-memory-wiring.mjs', // S7：memory.mode=mastra → rt.session/Agent/Web 同源
+  'stress/e2e/qqbot-adapter-e2e.mjs', // S11：真实 QQBot adapter → Chat → Mastra → send
   'stress/e2e/tool-adapter-wiring.mjs', // PR3a：真实 ToolRegistry → 只读 Mastra 工具集
   // 真实 Web router 测试需要 Yunzai 桩（apps/agent.js / lib 解析）
   'model/web/api.tevo.test.mjs',
