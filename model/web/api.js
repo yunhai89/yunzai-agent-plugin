@@ -18,6 +18,7 @@ import { getGroupWorld } from '../../apps/groupworld.js'
 import { listAccounts, upsertAccount, removeAccount, publicAccount, toAdapterAccount } from '../qqbot/accounts.js'
 import { ensureConsoleToken, formatConsoleUrls, detectLanIp, consoleTokenDir, consoleTokenTtlMs } from './auth.js'
 import { parseCron } from '../agent/schedule.js'
+import { applyPersonaImport } from '../persona/import.js'
 import { redactConfig, JEV_KEY_MASK } from './redact.js'
 import { listLogFiles, readLogFile, aggregateStats, queryLogFiles, buildCachePayload } from './logs.js'
 import { clearDevLogs, resolveDevLogDir } from '../../utils/DevLog.js'
@@ -1051,6 +1052,25 @@ router.delete('/kb/:id/schedule', asyncHandler(async (req, res) => {
   const r = await getRt(res); if (!r) return
   const result = await r.knowledge.cancelRefresh(req.params.id)
   return ok(res, result)
+}))
+
+// POST /api/personas/import —— 从本地 .txt/.md 人设正文 / .json 角色卡片导入
+// body: { personaFile?: { filename, content }, cardFile?: { filename, content }, overwrite?: boolean }
+// 前端用 File.text() 读取后以 JSON 提交；不引入 multipart 依赖。
+router.post('/personas/import', asyncHandler(async (req, res) => {
+  const r = await getRt(res); if (!r) return
+  if (!r.personaStore) return fail(res, CODE.BAD, '人设库未启用')
+  try {
+    const result = applyPersonaImport(r.personaStore, req.body || {}, {
+      overwrite: (req.body || {}).overwrite,
+      creator: req.master,
+    })
+    const action = result.created ? '已导入' : '已更新'
+    return ok(res, result, `${action}「${result.persona.name}」${result.persona.card ? '（含角色卡片）' : ''}`)
+  } catch (e) {
+    const code = e?.code === 'persona_builtin' ? CODE.READONLY : CODE.BAD
+    return fail(res, code, e?.message || String(e))
+  }
 }))
 
 // POST /api/personas —— 新建自定义人设

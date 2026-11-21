@@ -12,6 +12,7 @@
 
 import { resolvePersonaIdentity } from './default-config.js'
 import { DEFAULT_HUMANIZE_PERSONA } from './default-persona.js'
+import { composePersonaSystemPrompt } from '../persona/compose.js'
 
 /** 从 PersonaStore 取人设；store 缺失/抛错/未命中一律返回 null，不影响默认人设 */
 function lookupPersona(personaStore, id) {
@@ -33,7 +34,7 @@ function lookupPersona(personaStore, id) {
 export function resolveHumanizePersona(cfg, { personaStore = null, botNickname = '' } = {}) {
   const persona = (cfg && cfg.persona) || {}
   const found = persona.fromPersonaId ? lookupPersona(personaStore, persona.fromPersonaId) : null
-  const libraryPrompt = String(found?.systemPrompt || '').trim()
+  const libraryPrompt = found ? String(composePersonaSystemPrompt(found) || '').trim() : ''
   const customPrompt = String(persona.prompt || '').trim()
 
   // 人设库命中时名称随库走（即使面板残留旧的 persona.name）；否则走原有身份解析链

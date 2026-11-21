@@ -4,6 +4,8 @@
  * 设计要点（对齐 MemoryStore/SessionStore 的库解耦原则）：
  *  - 内置人设只读（BUILTIN_PERSONAS）；自定义人设落盘为 dir/<id>.json。
  *  - list/get 合并内置与自定义；增删改只作用于自定义。
+ *  - card 可选：从 aha-character-card/1.x 导入的结构化角色卡片，随人设一起保存；
+ *    运行时由 compose.js 合成 systemPrompt，不把整张卡每轮塞进上下文。
  *  - id 为 slug（小写、中文保留、空格转 -），全局唯一（与内置冲突时拒绝）。
  *  - 不依赖插件 Config/Log，由 apps 注入 dir。
  */
@@ -11,6 +13,7 @@
 import fs from 'node:fs'
 import path from 'node:path'
 import { BUILTIN_PERSONAS } from './defaults.js'
+import { composePersonaSystemPrompt } from './compose.js'
 import { assessPersonaPrompt } from '../agent/guard.js'
 
 // 第 7 轮 M4：人设原本无任何条数/长度上限 —— 单用户可无限刷盘，list()/resolve() 每轮全目录解析
@@ -19,6 +22,9 @@ const MAX_CUSTOM_PERSONAS = 500
 export const PERSONA_MAX_NAME_LEN = 40
 // v1.32.0：自建角色卡正文上限 8000 → 20000（长设定/世界观角色卡常超 8k；仍保留写盘上限防刷盘）
 export const PERSONA_MAX_PROMPT_LEN = 20000
+// 角色卡片是结构化附件（aha-character-card/1.x）：完整保存在人设 JSON 的 card 字段。
+// 整张卡不会原样塞进 system；只抽取导入映射与运行时补充约束，仍限制体积防刷盘。
+export const PERSONA_MAX_CARD_BYTES = 256 * 1024
 const MAX_TEXT_LEN = 500
 const LIST_TTL_MS = 5000 // list() 缓存窗口（写入即失效）
 
@@ -48,6 +54,14 @@ export function assertPersonaSize(p) {
   if (String(p.description || '').length > MAX_TEXT_LEN) throw new Error(`人设简介过长（> ${MAX_TEXT_LEN} 字）`)
   if (String(p.greeting || '').length > MAX_TEXT_LEN) throw new Error(`人设问候语过长（> ${MAX_TEXT_LEN} 字）`)
   if (String(p.avatar || '').length > MAX_TEXT_LEN) throw new Error(`人设头像地址过长（> ${MAX_TEXT_LEN} 字）`)
+  if (p.card != null) {
+    if (typeof p.card !== 'object' || Array.isArray(p.card)) throw new Error('角色卡片必须是对象')
+    let json = ''
+    try { json = JSON.stringify(p.card) } catch { throw new Error('角色卡片无法序列化') }
+    if (Buffer.byteLength(json, 'utf8') > PERSONA_MAX_CARD_BYTES) {
+      throw new Error(`角色卡片过大（> ${(PERSONA_MAX_CARD_BYTES / 1024).toFixed(0)} KB）`)
+    }
+  }
 }
 
 /** 名称 → slug id */
@@ -78,6 +92,7 @@ export function normalizePersona(input, { builtin = false, creator } = {}) {
     avatar: String(input.avatar || ''),
     greeting: String(input.greeting || ''),
     systemPrompt,
+    card: input.card && typeof input.card === 'object' && !Array.isArray(input.card) ? input.card : null,
     builtin,
     creator: input.creator || creator || null,
     createdAt: input.createdAt || Date.now(),
@@ -181,8 +196,8 @@ export class PersonaStore {
   /** 新增自定义人设；id 与内置/已有冲突则报错 */
   add(input, { creator } = {}) {
     const p = normalizePersona(input, { builtin: false, creator })
-    assertSafePersonaPrompt(p.systemPrompt, { skip: this.skipInjectionCheck })
     assertPersonaSize(p)
+    assertSafePersonaPrompt(composePersonaSystemPrompt(p), { skip: this.skipInjectionCheck })
     if (this._customFiles().length >= MAX_CUSTOM_PERSONAS) {
       throw new Error(`自定义人设数量已达上限（${MAX_CUSTOM_PERSONAS} 个），请先 #删除人设 再新建`)
     }
@@ -201,8 +216,10 @@ export class PersonaStore {
     if (!existing) throw new Error(`人设「${id}」不存在`)
     if (existing.builtin) throw new Error(`内置人设「${existing.name}」不可修改`)
     const merged = normalizePersona({ ...existing, ...patch, id: existing.id, createdAt: existing.createdAt }, { builtin: false })
-    assertSafePersonaPrompt(merged.systemPrompt, { skip: this.skipInjectionCheck })
+    const nameConflict = this.getExact(merged.name)
+    if (nameConflict && nameConflict.id !== existing.id) throw new Error(`人设名称「${merged.name}」已存在`)
     assertPersonaSize(merged)
+    assertSafePersonaPrompt(composePersonaSystemPrompt(merged), { skip: this.skipInjectionCheck })
     fs.writeFileSync(this._fileOf(existing.id), JSON.stringify(merged, null, 2))
     this._invalidate()
     return merged

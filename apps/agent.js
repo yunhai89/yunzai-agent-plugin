@@ -74,7 +74,7 @@ import { createSearchManager, makeSearchTools } from '../model/search/index.js'
 import {
   PersonaStore, PersonaService, PersonaLore, PersonaAdoptionQueue,
   PERSONA_MAX_NAME_LEN, PERSONA_MAX_PROMPT_LEN,
-  groundingText, PERSONA_COMPLETION_SYSTEM, buildCompletionInput,
+  groundingText, composePersonaSystemPrompt, PERSONA_COMPLETION_SYSTEM, buildCompletionInput,
   parseCompletionOutput, buildLoreDraft, formatDraftSummary, isCompletionToolAllowed,
 } from '../model/persona/index.js'
 import { VisionService, describeImages, resolveVisionBaseURL, resolveVisionRoute } from '../model/vision/index.js'
@@ -1948,7 +1948,8 @@ async function resolvePersonaGrounding(rt, ctx, queryText) {
     if (!persona) return none
     const lore = rt.personaLore?.get?.(persona.id)
     const active = lore && lore.status === 'active' ? lore : null
-    const systemPrompt = [persona.systemPrompt, active ? groundingText(active) : ''].filter(Boolean).join('\n\n') || undefined
+    const basePrompt = composePersonaSystemPrompt(persona)
+    const systemPrompt = [basePrompt, active ? groundingText(active) : ''].filter(Boolean).join('\n\n') || undefined
     let context
     if (active) {
       const hits = await rt.personaLore.retrieve(active.id, queryText, 3).catch(() => [])
@@ -4251,11 +4252,16 @@ export class Chat extends plugin {
     const p = rt.personaStore.get(target)
     if (!p) return this.e.reply(`未找到人设「${input}」`), true
     const tags = p.tags?.length ? ` | 标签：${p.tags.join('、')}` : ''
+    const card = p.card && typeof p.card === 'object' ? p.card : null
+    const cardMeta = card?.meta && typeof card.meta === 'object' ? card.meta : {}
+    const cardLine = card
+      ? ` | 角色卡：${card.spec || '未标 spec'}${cardMeta.name_en ? ` · ${cardMeta.name_en}` : ''}${cardMeta.version ? ` · v${cardMeta.version}` : ''}`
+      : ''
     await this.e.reply([
-      `#${p.id} ${p.name}${p.builtin ? '（内置）' : '（自定义）'}${tags}`,
+      `#${p.id} ${p.name}${p.builtin ? '（内置）' : '（自定义）'}${tags}${cardLine}`,
       p.description,
-      '—— 人设内容 ——',
-      p.systemPrompt,
+      card ? '—— 人设内容（含角色卡补充）——' : '—— 人设内容 ——',
+      composePersonaSystemPrompt(p),
     ].join('\n'))
     return true
   }

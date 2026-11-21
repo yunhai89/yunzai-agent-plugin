@@ -205,7 +205,7 @@ export function buildPersonaListHtml({ user = '', personas = [], activeId = null
         .map((p, i) => `<div class="persona ${p.id === activeId ? 'active' : ''}">
           <div class="persona-ava">${esc((p.name || '?').slice(0, 1))}</div>
           <div class="persona-body">
-            <div class="persona-name">${esc(p.name)}${p.id === activeId ? '<span class="tag">当前</span>' : ''}<span class="tag">${p.builtin ? '内置' : '自定义'}</span></div>
+            <div class="persona-name">${esc(p.name)}${p.id === activeId ? '<span class="tag">当前</span>' : ''}<span class="tag">${p.builtin ? '内置' : '自定义'}</span>${p.card ? '<span class="tag">角色卡</span>' : ''}</div>
             <div class="persona-desc">${esc(p.description || '')}</div>
           </div>
           <div class="persona-id">#${i + 1}</div>

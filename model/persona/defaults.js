@@ -1,6 +1,6 @@
 /**
  * 内置人设（builtin personas）—— 随插件分发，只读。
- * 自定义人设由用户经 #新建人设 创建，落盘到 data 目录。
+ * 自定义人设由用户经 #新建人设 或 Web 人设库导入（.txt/.md/.json）创建，落盘到 data 目录。
  *
  * 每个人设的 systemPrompt 作为 Agent 的"身份层"，替换默认 systemPrompt；
  * 工具指引/记忆/防护仍照常追加（见 Agent._assembleSystem）。

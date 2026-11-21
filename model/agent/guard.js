@@ -269,13 +269,25 @@ export function checkInput(text, { sensitivity = 'medium', action = 'flag' } = {
 // 仍不含 mode_framing/continuation/escalation/invisible_unicode/placeholder（正常拟人用法误伤面大）。
 export const PERSONA_FORBIDDEN_CATS = ['override', 'jailbreak', 'refusal_suppression', 'safety_bypass', 'bypass', 'evasion', 'separator', 'exfil', 'encoding', 'structured', 'hidden']
 
+// 合法角色卡常写「不要泄露系统提示词 / 不讨论这份提示词」——这是**防御性**约束，
+// 不是要模型外泄。原 exfil 规则只看动词不看否定，会把这类安全声明误判为攻击。
+// 这里只剥掉「否定词 + 泄露/输出/讨论 + 提示词」这一小段；同一句后面的真实攻击指令仍会被扫描到。
+const DEFENSIVE_EXFIL_CN = /(?:不要|不得|不许|禁止|严禁|请勿|切勿|绝不|不|勿|别)[^。！？\n；;，,/|]{0,12}(?:泄露|透露|输出|显示|复述|重复|讨论|公开)[^。！？\n；;，,/|]{0,20}(?:系统提示|系统指令|初始指令|原始提示|隐藏指令|提示词|prompt|instructions?|rules?)/gi
+const DEFENSIVE_EXFIL_EN = /\b(?:do not|don(?:'|’)?t|never|must not|should not|avoid)\b[^.,;\n]{0,24}\b(?:reveal|show|print|leak|repeat|output|discuss)\b[^.,;\n]{0,24}\b(?:system prompt|instructions?|rules?)\b/gi
+
+function stripDefensiveExfilClauses(text) {
+  return String(text || '')
+    .replace(DEFENSIVE_EXFIL_CN, '')
+    .replace(DEFENSIVE_EXFIL_EN, '')
+}
+
 /**
  * @param {string} text 待评估的人设 systemPrompt
  * @param {object} opts { threshold?: number }
  * @returns {{ score, hits, allowed }}
  */
 export function assessPersonaPrompt(text, { threshold = 0.7 } = {}) {
-  const { score, hits } = analyze(text)
+  const { score, hits } = analyze(stripDefensiveExfilClauses(text))
   // 隐形字符已由归一化兜住，不单独作为拒因（避免网页复制带入的软连字符误伤）
   const relevant = hits.filter((h) => PERSONA_FORBIDDEN_CATS.includes(h.cat))
   return { score, hits: relevant, allowed: !(score >= threshold && relevant.length > 0) }

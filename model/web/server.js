@@ -27,7 +27,7 @@ export async function startServer() {
 
   const app = express()
   app.disable('x-powered-by')
-  app.use(express.json({ limit: '1mb' }))
+  app.use(express.json({ limit: '2mb' }))
   app.use('/api', authMiddleware, buildApiRouter())
   // index.html 始终现读 + 注入资源版本 + 不缓存：避免发版后浏览器命中旧 HTML/旧 assets
   const indexPath = path.join(webDir, 'index.html')

@@ -13,6 +13,7 @@
 ## 配置与运行时
 
 - [配置参考](configuration.md) —— `agent.*` 全量配置说明
+- [人设导入与角色卡片](persona-cards.md) —— `.txt/.md` 导入、`aha-character-card/1.x` 卡片与合成规则
 - [工具进化](tool-evolution.md) —— 生成 → 验证 → 审批 → 版本化
 - [记忆体系与上下文缓存](memory-and-context.md) —— MEMORY/USER、召回、压缩、缓存经济性
 - [安全与信任边界](security.md) —— RBAC、审批、注入防御、沙箱边界

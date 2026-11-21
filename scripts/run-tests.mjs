@@ -76,6 +76,7 @@ const HOOKED_STRESS = new Set([
   // 真实 Web router 测试需要 Yunzai 桩（apps/agent.js / lib 解析）
   'model/web/api.tevo.test.mjs',
   'model/web/api.persona-lore.test.mjs',
+  'model/web/api.persona-import.test.mjs', // 人设本地文件导入：真实 router + 真实 PersonaStore（需 Yunzai 桩）
   'model/web/api.clearcache.test.mjs', // 清空 Token 缓存统计：真实 router + 真实 UsageStats + 桩 runtime
   'model/web/api.qqbot.test.mjs', // QQBot 账号 API：真实 router + 桩适配器/Config
   'model/web/api.web-console.test.mjs', // 启动默认地址 API：真实 router + 真实 auth 中间件
