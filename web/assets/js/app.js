@@ -340,7 +340,7 @@
         </nav>
         <div class="rail-foot">
           <span class="st-dot"></span><span>面板运行中</span>
-          <span class="rail-ver mono">v1.51.1</span>
+          <span class="rail-ver mono">v1.54.0</span>
         </div>
       </aside>
 
