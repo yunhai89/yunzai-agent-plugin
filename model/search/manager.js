@@ -78,6 +78,70 @@ const COOLDOWN_MS = {
   invalid: 0,
 }
 
+const QUALITY_GATED = new Set(['bing', 'ddg', 'anysearch', 'searxng'])
+const QUERY_STOP = /[\s，。！？、,.!?:：;；()（）\[\]【】"'“”‘’/\\|-]+/
+
+/** 中文/英文查询的粗粒度词元：中文取 2-gram，英文取长度 ≥3 的词 */
+function queryTokens(q) {
+  const s = String(q || '').toLowerCase()
+  const out = new Set()
+  for (const w of s.split(QUERY_STOP)) {
+    const t = w.trim()
+    if (!t) continue
+    if (CJK_RE.test(t)) {
+      for (let i = 0; i + 1 < t.length; i++) out.add(t.slice(i, i + 2))
+    } else if (t.length >= 3) out.add(t)
+  }
+  return [...out]
+}
+
+/**
+ * 结果质量评估：只用于自动模式下的免费 HTML/聚合引擎。
+ * Bing 在中文长查询上经常把词拆成单字，返回字典/首页等泛结果；只要质量分低就继续试下一个引擎。
+ */
+export function assessSearchQuality(provider, result, query = '') {
+  const results = Array.isArray(result?.results) ? result.results : []
+  if (result?.answer) return { score: 100, poor: false, reason: null }
+  if (!results.length) return { score: 0, poor: true, reason: 'empty' }
+  const domains = new Set()
+  let snippetChars = 0
+  let titleChars = 0
+  const text = []
+  for (const r of results) {
+    const host = hostOf(r?.url)
+    if (host) domains.add(host)
+    const title = String(r?.title || '')
+    const body = String(r?.content || r?.snippet || '')
+    titleChars += title.length
+    snippetChars += body.length
+    text.push(`${title} ${body}`.toLowerCase())
+  }
+  const hay = text.join('\n')
+  const toks = queryTokens(query)
+  const hit = toks.filter((t) => hay.includes(t)).length
+  const overlap = toks.length ? hit / toks.length : 1
+  const requiredHits = toks.length >= 4 ? Math.min(3, Math.ceil(toks.length * 0.4)) : 1
+  const score = Math.round(
+    Math.min(1, results.length / 5) * 30 +
+    Math.min(1, domains.size / 3) * 25 +
+    Math.min(1, (snippetChars / results.length) / 50) * 20 +
+    overlap * 25,
+  )
+  const reasons = []
+  if (results.length < 3) reasons.push(`only_${results.length}_results`)
+  if (domains.size < 2) reasons.push('single_domain')
+  if (snippetChars / results.length < 12) reasons.push('thin_snippets')
+  if (titleChars / results.length < 6) reasons.push('short_titles')
+  if (toks.length && overlap === 0) reasons.push('no_query_overlap')
+  if (requiredHits > 1 && hit < requiredHits) reasons.push('weak_query_overlap')
+  const gated = QUALITY_GATED.has(String(provider || '').toLowerCase())
+  const hardPoor = (toks.length >= 2 && hit < requiredHits)
+    || domains.size < 2
+    || ((snippetChars / results.length) < 12 && overlap < 0.2)
+  const finalScore = hardPoor && score >= 45 ? 39 : score
+  return { score: finalScore, poor: gated && (finalScore < 45 || hardPoor), reason: reasons.join(',') || (finalScore < 45 ? `score_${finalScore}` : null) }
+}
+
 function hostOf(url) {
   try { return new URL(url).hostname.toLowerCase() } catch { return '' }
 }
@@ -175,6 +239,9 @@ export class SearchManager {
     const errors = []
     const tried = []
     let firstEmpty = null
+    let bestPoor = null
+    const explicit = String(opts.engine || this.engine || 'auto').toLowerCase()
+    const qualityGate = explicit === 'auto'
     const providerOptions = {
       ...opts,
       max_results: Math.min(Math.max(Number(opts.max_results) || 8, 1), 20),
@@ -194,6 +261,14 @@ export class SearchManager {
         const results = this._filter(result.results, providerOptions)
         if (!result.answer && !results.length) {
           if (!firstEmpty) firstEmpty = { ...result, results: [], sources: tried.slice() }
+          continue
+        }
+        const quality = assessSearchQuality(name, { ...result, results }, q)
+        if (qualityGate && quality.poor) {
+          const poor = { ...result, results, provider: result.provider || name }
+          if (!bestPoor || quality.score > bestPoor.score) bestPoor = { score: quality.score, value: poor }
+          errors.push(`${name}: poor quality (${quality.reason || `score_${quality.score}`})`)
+          this.logger('warn', `[search] ${name} 结果质量差 (${quality.score})：${quality.reason || '-'}，继续尝试下一个引擎`)
           continue
         }
         this._cool.delete(name)
@@ -223,6 +298,10 @@ export class SearchManager {
       }
     }
 
+    if (bestPoor) {
+      const note = `Note: 所有可用引擎结果质量偏低；已返回最佳结果（${errors.slice(-5).join('; ')}）。`
+      return { ...bestPoor.value, sources: tried, note, quality: bestPoor.score }
+    }
     if (firstEmpty) return { ...firstEmpty, sources: tried }
     if (!tried.length) throw new Error('无可用搜索源')
     throw new Error(`所有搜索源均失败 → ${errors.join('；')}`)

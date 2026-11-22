@@ -585,7 +585,10 @@ async function buildRuntime() {
 }
 
 async function _buildRuntime(scope) {
-  const cfg = Config.get().agent || {}
+  const rootCfg = Config.get() || {}
+  const cfg = rootCfg.agent || {}
+  // Web「调试日志」顶层开关：强制 debug/trace 输出到后台（Yunzai logger 默认 info 会过滤）。
+  Log.setDebug(rootCfg.debug === true)
   // 每次运行时重建（含 #agent重载）清空 crawl4ai 可用性探测缓存：
   // 用户跑完 scripts/install-crawl4ai.sh 后发 #agent重载 即可立即启用真浏览器抓取
   try { resetCrawl4aiProbe() } catch { /* noop */ }
@@ -1716,8 +1719,9 @@ function invalidateRuntime() {
 
 // 热加载：配置文件变更 → 失效运行时单例，下次对话用新配置重建（无需重启框架）
 Config.onChange(() => {
+  Log.setDebug(Config.get().debug === true)
   invalidateRuntime()
-  Log.info('[config] 配置已热加载，运行时将在下次对话重建')
+  Log.info(`[config] 配置已热加载，运行时将在下次对话重建（debug=${Config.get().debug === true ? 'on' : 'off'}）`)
 })
 Config.startWatch() // 应用入口启动配置文件监听（不在 Config import 时启动，免得测试进程不退出）
 

@@ -256,6 +256,38 @@ await test('manager：同查询缓存 + auth 失败冷却', async () => {
   eq(calls1, 1, '缓存命中后不再调用失败源')
 })
 
+// ---------- 7.5 质量门禁：Bing 差结果自动换引擎 ----------
+await test('质量门禁：Bing 泛结果 → 自动换 anysearch', async () => {
+  const poorBing = {
+    name: 'bing', available: () => true,
+    async search() {
+      return { provider: 'bing', query: 'q', results: [
+        { title: '星（汉语文字）', url: 'https://baike.baidu.com/item/星', content: '星字的释义。' },
+        { title: '星 - 维基词典', url: 'https://zh.wiktionary.org/wiki/星', content: '星的读音。' },
+        { title: '星星', url: 'https://baike.baidu.com/item/星星', content: '星星的意思。' },
+        { title: '星', url: 'https://www.zdic.net/hans/星', content: '汉字。' },
+        { title: '星字组词', url: 'https://www.zdic.net/hans/星', content: '组词。' },
+      ] }
+    },
+  }
+  const good = {
+    name: 'anysearch', available: () => true,
+    async search() {
+      return { provider: 'anysearch', query: 'q', results: [
+        { title: '星穹铁道 4.8 版本前瞻汇总', url: 'https://example.com/a', content: '星穹铁道 4.8 版本前瞻：新角色与活动。' },
+        { title: '崩坏星穹铁道 4.8 前瞻直播', url: 'https://example.org/b', content: '4.8 版本前瞻直播时间与兑换码。' },
+        { title: '星穹铁道 4.8 卡池', url: 'https://example.net/c', content: '4.8 版本卡池与版本活动汇总。' },
+      ] }
+    },
+  }
+  const mgr = new SearchManager({ providers: [poorBing, good], fallbackOrder: ['bing', 'anysearch'] })
+  const r = await mgr.search('星穹铁道 4.8 版本 前瞻')
+  eq(r.provider, 'anysearch', '差结果后回退 anysearch')
+  ok(/poor quality/.test(r.note || ''), 'note 记录 Bing 质量差')
+  const forced = await mgr.search('星穹铁道 4.8 版本 前瞻', { engine: 'bing' })
+  eq(forced.provider, 'bing', '显式 engine=bing 时尊重用户选择')
+})
+
 // ---------- 8. createSearchManager：免费引擎默认启用 ----------
 await test('createSearchManager：无 key → 免费引擎 + DDG 兜底', async () => {
   // 无 key、无 searxng → Bing/DDG/AnySearch/Exa/Tavily/Keenable/Firecrawl/Parallel/You 免费引擎

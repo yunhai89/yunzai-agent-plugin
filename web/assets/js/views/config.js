@@ -1317,7 +1317,7 @@
             <cfg-row name="多用户数据隔离" desc="开启后按 (群,用户) 隔离记忆与会话">
               <v-switch v-model="form.isolation.enable"/>
             </cfg-row>
-            <cfg-row name="调试日志" desc="顶层 debug：true=强制开启全链路 devLog（工具入参/每轮 token/搜索词），排查问题用；等价 agent.devLog.enable=true">
+            <cfg-row name="调试日志" desc="顶层 debug：true=后台 debug/trace 以 [DEBUG] 前缀输出，并强制开启全链路 devLog（工具入参/每轮 token/搜索词）">
               <v-switch v-model="form.debug"/>
             </cfg-row>
 

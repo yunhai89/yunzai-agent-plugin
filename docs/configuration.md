@@ -41,7 +41,7 @@
 
 | 字段 | 说明 |
 | --- | --- |
-| `debug` | `true` 等价于**强制开启全链路 devLog**（工具入参/每轮 token/搜索词等）；真正的日志开关是 `agent.devLog.enable`（默认开；仅 `devLog.enable=false` 且 `debug` 未开时才静默）。Web 配置中心「基础设置」与锅巴都有开关，也可直接改 yaml |
+| `debug` | `true` 时后台 debug/trace 以 `[DEBUG]` 前缀强制输出（不受 Yunzai logger 的 info 级别过滤），并强制开启全链路 devLog（工具入参/每轮 token/搜索词等）。Web 配置中心「基础设置」与锅巴都有开关，也可直接改 yaml |
 
 ### `agent` —— 对话与模型
 

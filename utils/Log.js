@@ -5,6 +5,7 @@
  */
 
 const TAG = 'agents-plugin'
+let FORCE_DEBUG = false
 
 /** ANSI 颜色（控制台彩色日志用；非终端或被 logger 转义时原样显示，无害） */
 export const ANSI = Object.freeze({
@@ -12,6 +13,19 @@ export const ANSI = Object.freeze({
 })
 
 function log(level, ...args) {
+  // Web「调试日志」开启时，Yunzai 的 logger level 仍可能是 info，Bot.makeLog('debug')
+  // 会被框架过滤。这里把 debug/trace 强制走 info 通道并加 [DEBUG] 前缀，
+  // 保证后台确实能看到调试输出；关闭后恢复原级别过滤。
+  if (FORCE_DEBUG && (level === 'debug' || level === 'trace')) {
+    try {
+      if (typeof Bot !== 'undefined' && typeof Bot.makeLog === 'function') {
+        return Bot.makeLog('info', ['[DEBUG]', ...(args.length === 1 ? args : [args])], TAG, true)
+      }
+    } catch (e) { /* fall through */ }
+    const lg = typeof logger !== 'undefined' ? logger : console
+    const fn = lg?.info || console.log
+    return fn.call(lg, `[${TAG}][DEBUG]`, ...args)
+  }
   try {
     if (typeof Bot !== 'undefined' && typeof Bot.makeLog === 'function') {
       return Bot.makeLog(level, args.length === 1 ? args[0] : args, TAG)
@@ -26,6 +40,9 @@ function log(level, ...args) {
 }
 
 const Log = {
+  /** Web 调试日志：true 时 debug/trace 强制输出（info 通道 + [DEBUG] 前缀）。 */
+  setDebug: (on) => { FORCE_DEBUG = on === true },
+  isDebug: () => FORCE_DEBUG,
   trace: (...a) => log('trace', ...a),
   debug: (...a) => log('debug', ...a),
   info: (...a) => log('info', ...a),
