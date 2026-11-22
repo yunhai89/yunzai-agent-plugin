@@ -1,5 +1,7 @@
 # Web 管理面板
 
+> 前端：React 19 + TypeScript + Vite + Tailwind CSS v4 + Motion。源码在 `web-src/`，构建产物 `web/` 随插件分发；终端用户不需要构建。
+
 > 本文是主 README 的拆分文档。返回 [README](../README.md)。
 
 ## 🖥️ Web 管理面板

@@ -28,7 +28,8 @@ model/                纯逻辑层（零 Yunzai 依赖，可离线测试）
   ├─ multiagent|mcp|skill|schedule  协作与扩展
   ├─ humanize|groupworld|selfstate  群聊智能三件套
   └─ render            浅色主题 + markdown→图片
-web/                  Web 管理面板前端（22 个视图，无构建步骤；index.html + assets/js/views/*）
+web/                  Web 管理面板构建产物（提交入库，Express 直接托管）
+web-src/              React 19 + TypeScript + Vite 前端源码（22 个视图）
 config/               default_config/（模型默认值真源） + config.yaml（用户配置，gitignore）
 scripts/              测试运行器、配置对账、环境安装脚本
 skills/               技能说明书（SKILL.md 生态）

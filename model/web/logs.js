@@ -254,7 +254,7 @@ export function aggregateStats(dir, { since = 0, topK = 5 } = {}) {
  * /api/overview 的 cache 载荷组装（纯函数，供 api.js 调用；测试可直接断言）。
  * 字段白名单在此单一维护——曾因 api.js 手写解构白名单漏掉 observedOutput，
  * 聚合层的输出 token 到达不了前端（缓存卡「输出 tokens」恒 0 的第二处接线断点）。
- * 新增字段必须同时对照 web/assets/js/views/dashboard.js 的 cacheStats computed。
+ * 新增字段必须同时对照 web-src/src/pages/DashboardPage.tsx 的 cacheStats computed。
  */
 export function buildCachePayload(stats) {
   return {

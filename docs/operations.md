@@ -125,7 +125,7 @@ search:
 cd plugins/agents-plugin
 npm test                      # 离线测试全套（130+ 文件 / 6000+ 断言，不联网、不需要 API Key）
 node model/<模块>/test.mjs    # 单模块自检（如 model/qqbot/test.mjs）
-node web/dev/smoke.mjs        # 前端模板编译 + 视图 setup 冒烟
-node web/dev/config-search-check.mjs
+pnpm web:typecheck             # React / TS 类型检查
+pnpm web:build                 # 构建到 web/（提交构建产物）
 node scripts/run-tests.mjs --help 2>/dev/null || true
 ```

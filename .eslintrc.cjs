@@ -29,7 +29,8 @@ module.exports = {
   parserOptions: { ecmaVersion: 2022, sourceType: 'module' },
   ignorePatterns: [
     'node_modules/',
-    'web/',          // 前端代码（浏览器 ESM），单独配置
+    'web/',          // 前端构建产物
+    'web-src/',      // React/TS 前端源码，由 tsc + vite 检查
     'data/',
     'temp/',
     'resources/',

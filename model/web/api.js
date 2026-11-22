@@ -1,6 +1,6 @@
 /**
  * Web 面板 API 路由（GET 只读部分；写接口见 C 阶段补充）。
- * 形状严格对齐 web/assets/js/mock.js（事实标准，非文档 TS）：
+ * 形状严格对齐前端数据层（web-src/src/lib/api.ts 与 web-src/src/pages）：
  *  - recall/conversations 返回裸数组；memories = {usedChars,limitChars,entries}
  *  - config 出口过 redactConfig（MaskedValue）
  * 文件型端点（config/scopes/logs）不依赖 runtime；KV/runtime 型调 getRuntime，失败返 5000。
@@ -218,7 +218,14 @@ router.get('/personas', asyncHandler(async (req, res) => {
 // GET /api/skills —— 技能列表
 router.get('/skills', asyncHandler(async (req, res) => {
   const r = await getRt(res); if (!r) return
-  return ok(res, r.skills.list())
+  // RegExp 经 JSON 序列化会变成 {}，前端无法展示；统一转成字符串来源（flags 保留在运行时）。
+  return ok(res, r.skills.list().map((s) => ({
+    ...s,
+    when: {
+      ...s.when,
+      regex: (s.when?.regex || []).map((re) => re instanceof RegExp ? String(re) : String(re)),
+    },
+  })))
 }))
 
 // GET /api/tools —— 已注册工具列表（内置 + tools/ 自定义 + MCP，供配置中心"常驻工具"勾选）

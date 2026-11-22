@@ -505,6 +505,8 @@ await test('crawlUrl SSRF 门禁：默认拒绝内网目标（不启浏览器/�
   let fetchN = 0
   const r = await crawlUrl('http://127.0.0.1:8080/private', {
     engine: 'crawl4ai',
+    allowPrivateHosts: false, // 不依赖本机 config.yaml 的抓取策略
+
     _avail: async () => ({ ok: true }),
     _c4ai: async () => { c4ai++; return { success: true } },
     _fetch: async () => { fetchN++; return { success: true } },

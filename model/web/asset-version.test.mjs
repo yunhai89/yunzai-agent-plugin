@@ -17,6 +17,19 @@ const HTML = [
   '<a href="https://example.com/x.js"></a>',
 ].join('\n')
 
+const VITE_HTML = [
+  '<script type="module" crossorigin src="./assets/index-CtQMOqM_.js"></script>',
+  '<link rel="stylesheet" crossorigin href="./assets/index-L44cSPC3.css">',
+  '<script type="module" src="/assets/chunk.js"></script>',
+].join('\n')
+
+test('Vite 构建产物 ./assets 与 /assets 也版本化', () => {
+  const out = versionAssetUrls(VITE_HTML, '1.55.0')
+  ok(out.includes('src="./assets/index-CtQMOqM_.js?v=1.55.0"'), './assets JS 版本化')
+  ok(out.includes('href="./assets/index-L44cSPC3.css?v=1.55.0"'), './assets CSS 版本化')
+  ok(out.includes('src="/assets/chunk.js?v=1.55.0"'), '/assets JS 版本化')
+})
+
 test('本地 assets/vendor 追加 ?v=版本', () => {
   const out = versionAssetUrls(HTML, '1.13.4')
   ok(out.includes('href="assets/css/main.css?v=1.13.4"'), 'css 版本化')

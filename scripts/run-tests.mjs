@@ -20,7 +20,6 @@ const root = fileURLToPath(new URL('..', import.meta.url))
 const SKIP_DIRS = new Set(['node_modules', '.git', 'data', 'temp', 'resources', 'out'])
 // 这些是人工/网络入口或模块装载钩子，不是可直接执行的离线测试。
 // 前端自检里依赖浏览器/DOM 的文件不在此跑（由人工或 CI 浏览器环境执行）
-const SKIP_WEBDEV_FILES = new Set(['render-check.mjs'])
 const SKIP_STRESS_FILES = new Set(['real-llm.mjs', 'run-real.mjs', 'e2e-fullchain.mjs', 'hooks.mjs'])
 
 function find(dir, out, { stress = false, webdev = false } = {}) {
@@ -42,7 +41,6 @@ const tests = []
 find(join(root, 'model'), tests)
 find(join(root, 'apps'), tests) // 入口层离线自检（apps/*.test.mjs，如更新日志转发）
 find(join(root, 'tools'), tests) // 外置工具离线自检（tools/<包>/*.test.mjs）
-find(join(root, 'web', 'dev'), tests, { webdev: true }) // 前端纯逻辑自检（web/dev/*.mjs，无需浏览器）
 const stressTests = []
 find(join(root, 'stress'), stressTests, { stress: true })
 tests.sort()
