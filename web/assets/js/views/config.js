@@ -1431,12 +1431,12 @@
                 <div v-for="(fb, i) in form.fallbackModels" :key="i" class="mem-row">
                   <div class="row g10 wrap" style="flex:1">
                     <span class="pill p-line mono" style="min-width:26px;justify-content:center">{{ i + 1 }}</span>
-                    <input class="inp" style="width:190px" v-model="fb.model" placeholder="模型 ID">
-                    <select class="sel" style="width:130px" v-model="fb.protocol"><option v-for="o in OPT.protocol" :value="o[0]">{{ o[1] }}</option></select>
-                    <input class="inp mono" style="width:170px" v-model="fb.baseURL" placeholder="baseURL">
-                    <input class="inp mono" style="width:150px" v-model="fb.apiKey" placeholder="apiKey">
+                    <input class="inp" style="width:190px" v-model="fb.model" aria-label="回退模型 ID" placeholder="模型 ID">
+                    <select class="sel" style="width:130px" v-model="fb.protocol" aria-label="回退模型协议"><option v-for="o in OPT.protocol" :value="o[0]">{{ o[1] }}</option></select>
+                    <input class="inp mono" style="width:170px" v-model="fb.baseURL" aria-label="回退模型 baseURL" placeholder="baseURL">
+                    <input class="inp mono" style="width:150px" v-model="fb.apiKey" aria-label="回退模型 API Key" placeholder="apiKey">
                   </div>
-                  <button class="bic dg" @click="delFallback(i)"><v-icon name="trash"/></button>
+                  <button class="bic dg" title="删除回退模型" aria-label="删除回退模型" @click="delFallback(i)"><v-icon name="trash"/></button>
                 </div>
               </TransitionGroup>
             </div>
@@ -1870,7 +1870,7 @@
                     <span class="mut2" style="font-size:11px">名称（可选）</span>
                     <input class="inp" style="width:150px" v-model="a.name" placeholder="如 主号">
                   </label>
-                  <button class="bic dg" style="margin-left:auto" @click="delQqAccount(i)"><v-icon name="trash"/></button>
+                  <button class="bic dg" style="margin-left:auto" title="删除机器人账号" aria-label="删除机器人账号" @click="delQqAccount(i)"><v-icon name="trash"/></button>
                 </div>
               </TransitionGroup>
             </div>

@@ -226,7 +226,7 @@
             <span class="mut2" style="font-size:11px">{{ fmt.ago(p.createdAt) }}创建</span>
             <div class="row g6" @click.stop>
               <button class="bic" @click="openEdit(p, i)" :title="p.builtin ? '内置只读' : '编辑'"><v-icon name="edit"/></button>
-              <button class="bic dg" @click="del(p, i)"><v-icon name="trash"/></button>
+              <button class="bic dg" title="删除人设" aria-label="删除人设" @click="del(p, i)"><v-icon name="trash"/></button>
             </div>
           </div>
         </div>

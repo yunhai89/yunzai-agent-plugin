@@ -1,11 +1,24 @@
 /**
- * 应用外壳：hash 路由 + 潮汐观测台导航 + 登录门 + 命令面板
+ * 应用外壳：hash 路由 + 深场观测台导航 + 登录门 + 命令面板
  *
- * 视觉语言见 web/assets/css/main.css 顶部注释：玻璃观察舱、深海环境光、
- * 编辑感衬线标题与数据等宽字体。所有业务逻辑保持原样，只替换外壳与呈现。
+ * 视觉语言见 web/assets/css/main.css 顶部注释：冷光极光、分层光学玻璃、
+ * 精密仪表与等宽遥测。所有业务逻辑保持原样，只替换外壳与呈现。
  */
 (function () {
   const { createApp, ref, computed, onMounted, onUnmounted, nextTick } = Vue
+
+  /* 键盘焦点陷阱：Tab / Shift+Tab 在浮层内循环 */
+  function trapTab(e) {
+    if (e.key !== 'Tab') return
+    const root = e.currentTarget
+    if (!root || !root.querySelectorAll) return
+    const items = [...root.querySelectorAll('a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+      .filter((el) => el.offsetParent !== null || el === document.activeElement)
+    if (!items.length) return
+    const first = items[0], last = items[items.length - 1]
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+  }
 
   /* 审批门待审数 = 工具确认（内存）+ 人设采纳待审（持久） */
   const pendingApprovals = () => (window.MOCK?.confirms || []).length + (window.MOCK?.personaAdoptions || []).filter((p) => p.status === 'pending').length
@@ -85,6 +98,16 @@
       const valid = computed(() => !!window.VIEWS[route.value])
       if (!valid.value) route.value = 'dashboard'
       const menuOpen = ref(false)
+      const moreBtn = ref(null)
+      const focusMain = () => nextTick(() => { try { document.getElementById('main')?.focus?.({ preventScroll: true }) } catch { /* noop */ } })
+      const closeMenu = () => {
+        menuOpen.value = false
+        nextTick(() => { try { moreBtn.value?.focus?.({ preventScroll: true }) } catch { /* noop */ } })
+      }
+      const toggleMenu = () => {
+        menuOpen.value = !menuOpen.value
+        if (menuOpen.value) nextTick(() => { try { document.querySelector('.nav-sheet-item')?.focus?.() } catch { /* noop */ } })
+      }
       const go = (id) => {
         if (!window.VIEWS[id]) return
         /* 先切 route 再改 hash：点击同一个 tick 就启动新视图，避免等 hashchange
@@ -97,6 +120,7 @@
         location.hash = '#/' + id
         menuOpen.value = false
         paletteOpen.value = false
+        focusMain()
       }
       const view = computed(() => window.VIEWS[route.value])
       const title = computed(() => TITLES[route.value] || ['', ''])
@@ -111,6 +135,17 @@
         const d = new Date()
         clock.value = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
       }
+
+      /* —— 光照切换：深场 / 日光 —— */
+      const theme = ref(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark')
+      const applyTheme = (next) => {
+        theme.value = next === 'light' ? 'light' : 'dark'
+        document.documentElement.dataset.theme = theme.value
+        const meta = document.querySelector('meta[name="theme-color"]')
+        if (meta) meta.setAttribute('content', theme.value === 'light' ? '#eaf1f6' : '#04070d')
+        try { localStorage.setItem('agents-theme', theme.value) } catch { /* noop */ }
+      }
+      const toggleTheme = () => applyTheme(theme.value === 'light' ? 'dark' : 'light')
 
       /* —— 命令面板：一个页面搜索，键盘可达 —— */
       const paletteOpen = ref(false)
@@ -214,6 +249,7 @@
         menuOpen.value = false
         paletteOpen.value = false
         window.scrollTo({ top: 0 })
+        focusMain()
       }
       window.addEventListener('hashchange', onHashChange)
 
@@ -232,8 +268,8 @@
       })
 
       return {
-        route, go, view, title, groupName, NAV, DOCK, menuOpen, loggedIn, loginInput, doLogin, logout,
-        clock,
+        route, go, view, title, groupName, NAV, DOCK, menuOpen, closeMenu, toggleMenu, moreBtn, loggedIn, loginInput, doLogin, logout,
+        clock, theme, toggleTheme, trapTab,
         paletteOpen, paletteQuery, paletteIndex, paletteInput, paletteGroups, paletteMatches,
         openPalette, closePalette, paletteMove, paletteChoose,
       }
@@ -243,11 +279,10 @@
       <section class="gate-aside">
         <div class="gate-brand">
           <span class="gate-brand-mark"><brand-mark/></span>
-          <span class="gate-brand-name">agents-plugin</span>
+          <span class="gate-brand-name" translate="no">agents-plugin</span>
           <span class="gate-brand-tag">runtime</span>
         </div>
         <div class="gate-copy">
-          <span class="gate-kicker"><span class="live-dot"></span>本地面板 · 仅限主人</span>
           <h1 class="gate-title">运行时<br>控制台</h1>
           <p class="gate-lead">查看模型、记忆和工具如何运作，审批高风险操作，调整 Agent 的行为。所有数据都留在你自己的服务器上。</p>
           <div class="gate-facts">
@@ -256,7 +291,7 @@
             <span class="gate-fact"><v-icon name="shield"/><b>E2B</b> 沙箱与审批</span>
           </div>
         </div>
-        <div class="gate-foot"><span>TRSS-Yunzai</span><span>/</span><span>agent runtime</span></div>
+        <div class="gate-foot"><span translate="no">TRSS-Yunzai</span><span>/</span><span>agent runtime</span></div>
       </section>
       <section class="gate-panel">
         <div class="gate-card">
@@ -269,7 +304,7 @@
           </div>
           <label class="f-label" for="login-token">访问令牌</label>
           <input id="login-token" class="inp mono" v-model="loginInput" placeholder="粘贴 48 位令牌或完整登录链接" autocomplete="off" spellcheck="false" @keyup.enter="doLogin"/>
-          <button class="btn b-pri gate-login" @click="doLogin"><v-icon name="key"/><span>进入控制台</span></button>
+          <button class="btn b-pri gate-login" type="button" @click="doLogin"><v-icon name="key"/><span>进入控制台</span></button>
           <p class="gate-hint">私聊 bot 发送 <code>#agent登录</code> 获取带令牌的地址；也可以直接粘贴整条链接。</p>
           <div class="gate-quiet">令牌 24 小时滑动续期。首次部署时，启动日志和 <code>data/web/console-url.txt</code> 里也有默认地址。</div>
           <p class="gate-legal">仅限授权主人。配置与数据只保存在你自己的服务器</p>
@@ -277,33 +312,35 @@
       </section>
     </div>
     <div v-else class="shell">
+      <a class="skip-link" href="#main">跳到主内容</a>
+      <div class="sr-only" aria-live="polite" aria-atomic="true">已切换到 {{ title[0] }}</div>
       <aside class="rail">
         <div class="rail-head">
           <span class="brand-badge"><brand-mark/></span>
           <div>
-            <div class="brand-t">agents-plugin</div>
+            <div class="brand-t" translate="no">agents-plugin</div>
             <div class="brand-s">运行控制台</div>
           </div>
         </div>
         <div class="rail-scope">
           <span class="st-dot"></span>
-          <span>TRSS-Yunzai</span>
+          <span translate="no">TRSS-Yunzai</span>
           <span class="rail-scope-sep">/</span>
           <span class="mono">local</span>
         </div>
         <nav class="rail-nav" aria-label="主导航">
           <template v-for="g in NAV" :key="g.group">
             <div class="nav-sec">{{ g.group }}</div>
-            <div v-for="it in g.items" :key="it.id" class="nav-link" :class="{ on: route === it.id }" :title="it.name" role="button" tabindex="0"
-              @click="go(it.id)" @keydown.enter.prevent="go(it.id)" @keydown.space.prevent="go(it.id)">
+            <a v-for="it in g.items" :key="it.id" class="nav-link" :class="{ on: route === it.id }"
+              :href="'#/' + it.id" :title="it.name" :aria-current="route === it.id ? 'page' : null" @click="go(it.id)">
               <v-icon :name="it.icon"/><span>{{ it.name }}</span>
               <span v-if="it.badge && it.badge()" class="nav-badge">{{ it.badge() }}</span>
-            </div>
+            </a>
           </template>
         </nav>
         <div class="rail-foot">
           <span class="st-dot"></span><span>面板运行中</span>
-          <span class="rail-ver mono">v1.50.0</span>
+          <span class="rail-ver mono">v1.51.1</span>
         </div>
       </aside>
 
@@ -312,9 +349,18 @@
           <button class="crown-search" type="button" aria-label="搜索页面" @click="openPalette">
             <v-icon name="search"/><span class="crown-search-text">搜索页面与功能</span><kbd>Ctrl K</kbd>
           </button>
+          <div class="crown-context" aria-hidden="true">
+            <span>FIELD</span><i>/</i><b>{{ title[0] }}</b>
+          </div>
           <div class="crown-right">
             <span class="crown-status"><span class="live-dot"></span>运行时在线</span>
             <span class="crown-clock">{{ clock }}</span>
+            <button class="crown-btn" type="button" @click="toggleTheme"
+              :aria-label="theme === 'light' ? '切换到深色主题' : '切换到浅色主题'"
+              :aria-pressed="theme === 'light'"
+              :title="theme === 'light' ? '切换到深色主题' : '切换到浅色主题'">
+              <v-icon :name="theme === 'light' ? 'moon' : 'sun'"/>
+            </button>
             <button class="crown-exit" type="button" @click="logout" title="退出登录">
               <v-icon name="logout"/><span>退出</span>
             </button>
@@ -323,15 +369,21 @@
 
         <header class="m-top">
           <span class="m-brand"><brand-mark/></span>
-          <div class="m-tt">agents-plugin</div>
+          <div class="m-tt" translate="no">agents-plugin</div>
           <div class="m-acts">
             <button class="m-x" type="button" aria-label="搜索页面" @click="openPalette"><v-icon name="search"/></button>
+            <button class="m-x" type="button" @click="toggleTheme"
+              :aria-label="theme === 'light' ? '切换到深色主题' : '切换到浅色主题'"
+              :aria-pressed="theme === 'light'"
+              :title="theme === 'light' ? '切换到深色主题' : '切换到浅色主题'">
+              <v-icon :name="theme === 'light' ? 'moon' : 'sun'"/>
+            </button>
             <button class="m-x" type="button" aria-label="退出登录" @click="logout"><v-icon name="logout"/></button>
           </div>
         </header>
 
         <div class="viewport">
-          <main class="page">
+          <main class="page" id="main" tabindex="-1">
             <div class="page-frame">
               <!-- 新旧视图同时在场做交叉淡入淡出；旧页绝对定位，不阻塞新页挂载/取数 -->
               <Transition name="page">
@@ -343,44 +395,44 @@
       </div>
 
       <nav class="dock" aria-label="快捷导航">
-        <div v-for="d in DOCK" :key="d.id" class="dock-i" :class="{ on: route === d.id }" role="button" tabindex="0"
-          @click="go(d.id)" @keydown.enter.prevent="go(d.id)" @keydown.space.prevent="go(d.id)">
+        <a v-for="d in DOCK" :key="d.id" class="dock-i" :class="{ on: route === d.id }"
+          :href="'#/' + d.id" :aria-current="route === d.id ? 'page' : null" @click="go(d.id)">
           <span v-if="d.badge && d.badge()" class="dock-badge">{{ d.badge() }}</span>
           <v-icon :name="d.icon"/><span>{{ d.name }}</span>
-        </div>
-        <div class="dock-i" :class="{ on: menuOpen }" role="button" tabindex="0"
-          @click="menuOpen = !menuOpen" @keydown.enter.prevent="menuOpen = !menuOpen" @keydown.space.prevent="menuOpen = !menuOpen">
+        </a>
+        <button ref="moreBtn" class="dock-i" type="button" :class="{ on: menuOpen }" :aria-expanded="menuOpen" aria-controls="nav-sheet"
+          @click="toggleMenu">
           <v-icon name="grid"/><span>更多</span>
-        </div>
+        </button>
       </nav>
 
       <Transition name="fade">
-        <div v-if="menuOpen" class="nav-sheet-back" @click="menuOpen = false"></div>
+        <div v-if="menuOpen" class="nav-sheet-back" @click="closeMenu"></div>
       </Transition>
       <Transition name="sheet">
-        <div v-if="menuOpen" class="nav-sheet">
+        <nav v-if="menuOpen" class="nav-sheet" id="nav-sheet" aria-label="全部页面" @keydown="trapTab" @keydown.esc.prevent="closeMenu">
           <div class="nav-sheet-head">
             <div class="nav-sheet-brand"><span class="brand-badge"><brand-mark/></span><div class="nav-sheet-title">agents-plugin · 全部页面</div></div>
-            <button class="mdl-x" type="button" aria-label="关闭菜单" @click="menuOpen = false"><v-icon name="x"/></button>
+            <button class="mdl-x" type="button" aria-label="关闭菜单" @click="closeMenu"><v-icon name="x"/></button>
           </div>
           <div class="nav-sheet-body">
             <template v-for="g in NAV" :key="g.group">
               <div class="nav-sheet-sec">{{ g.group }}</div>
               <div class="nav-sheet-grid">
-                <div v-for="it in g.items" :key="it.id" class="nav-sheet-item" :class="{ on: route === it.id }" role="button" tabindex="0"
-                  @click="go(it.id)" @keydown.enter.prevent="go(it.id)" @keydown.space.prevent="go(it.id)">
+                <a v-for="it in g.items" :key="it.id" class="nav-sheet-item" :class="{ on: route === it.id }"
+                  :href="'#/' + it.id" :aria-current="route === it.id ? 'page' : null" @click="go(it.id)">
                   <span v-if="it.badge && it.badge()" class="nav-badge">{{ it.badge() }}</span>
                   <v-icon :name="it.icon"/><span>{{ it.name }}</span>
-                </div>
+                </a>
               </div>
             </template>
           </div>
-        </div>
+        </nav>
       </Transition>
 
       <Transition name="fade">
         <div v-if="paletteOpen" class="cmd-back" @click.self="closePalette">
-          <div class="cmd" role="dialog" aria-modal="true" aria-label="搜索页面">
+          <div class="cmd" role="dialog" aria-modal="true" aria-label="搜索页面" @keydown="trapTab">
             <div class="cmd-search">
               <v-icon name="search"/>
               <input ref="paletteInput" v-model="paletteQuery" class="cmd-input" placeholder="搜索页面或功能…" aria-label="搜索页面"

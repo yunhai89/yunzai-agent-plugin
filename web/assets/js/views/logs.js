@@ -244,16 +244,16 @@
             <div><div class="ct-t">会话日志文件</div><div class="ct-s">data/logs/ · 敏感度:高</div></div>
           </div>
           <div class="row g6 wrap" style="margin-top:12px">
-            <input type="date" class="inp" v-model="filter.from" style="width:auto"/>
+            <input type="date" class="inp" v-model="filter.from" aria-label="起始日期" style="width:auto"/>
             <span class="mut2">~</span>
-            <input type="date" class="inp" v-model="filter.to" style="width:auto"/>
+            <input type="date" class="inp" v-model="filter.to" aria-label="结束日期" style="width:auto"/>
           </div>
           <div class="row g6 wrap" style="margin-top:8px">
-            <select class="sel" v-model="filter.event" style="width:auto;min-width:108px">
+            <select class="sel" v-model="filter.event" aria-label="事件类型" style="width:auto;min-width:108px">
               <option value="">全部事件</option>
               <option v-for="(meta, key) in EV" :key="key" :value="key">{{ meta.name }}</option>
             </select>
-            <input class="inp" v-model="filter.q" placeholder="关键词(时间/报错/工具名)" style="flex:1;min-width:120px"/>
+            <input class="inp" type="search" v-model="filter.q" aria-label="日志关键词" placeholder="关键词(时间/报错/工具名)" style="flex:1;min-width:120px"/>
           </div>
           <div class="row g6" style="margin-top:8px">
             <button class="btn b-pri b-sm" @click="runFilter" style="flex:1"><v-icon name="search"/>查询</button>

@@ -5,6 +5,19 @@
 (function () {
   const { defineComponent, h, ref, reactive } = Vue
 
+  /* 键盘焦点陷阱：Tab / Shift+Tab 在弹窗内循环 */
+  function trapTab(e) {
+    if (e.key !== 'Tab') return
+    const root = e.currentTarget
+    if (!root || !root.querySelectorAll) return
+    const items = [...root.querySelectorAll('a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+      .filter((el) => el.offsetParent !== null || el === document.activeElement)
+    if (!items.length) return
+    const first = items[0], last = items[items.length - 1]
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus() }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus() }
+  }
+
   /* ---------------- 工具函数 ---------------- */
   const fmt = {
     /** 相对时间:刚刚 / N分钟前 / N小时前 / N天前 / 日期 */
@@ -130,16 +143,16 @@
     },
   })
 
-  /* ---------------- <brand-mark> 产品标记：Agent 节点 ---------------- */
+  /* ---------------- <brand-mark> 产品标记：Agent 核 / 轨道 ---------------- */
   const BrandMark = defineComponent({
     name: 'BrandMark',
     template: `
     <svg class="brand-mark-svg" viewBox="0 0 32 32" fill="none" aria-hidden="true">
-      <circle cx="16" cy="16" r="10.6" stroke="currentColor" stroke-width="1.35" opacity=".85"/>
-      <circle cx="16" cy="16" r="5.4" stroke="currentColor" stroke-width="1" opacity=".28"/>
-      <path d="M4.8 18.2c3.5-5 7.4-5 10.8 0s7.1 5 10.5 0" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
-      <circle cx="16" cy="16" r="2.5" fill="currentColor"/>
-      <circle cx="25.4" cy="9.1" r="1.1" fill="currentColor" opacity=".7"/>
+      <circle cx="16" cy="16" r="9.6" stroke="currentColor" stroke-width="1.25" opacity=".82"/>
+      <ellipse cx="16" cy="16" rx="12.6" ry="4.9" transform="rotate(-25 16 16)" stroke="currentColor" stroke-width="1.05" opacity=".42"/>
+      <path d="M10.2 20.8c2.8-1.4 4.2-4.8 5.8-9.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" opacity=".9"/>
+      <circle cx="16" cy="16" r="2.55" fill="currentColor"/>
+      <circle cx="26" cy="9.6" r="1.15" fill="currentColor" opacity=".8"/>
     </svg>`,
   })
 
@@ -160,17 +173,33 @@
     components: { VIcon },
     props: { title: String, width: { type: String, default: '' }, icon: { type: String, default: '' }, center: { type: Boolean, default: false } },
     emits: ['close'],
+    setup() {
+      const { onMounted, onUnmounted, nextTick } = Vue
+      let prevOverflow = ''
+      let prevFocus = null
+      onMounted(() => {
+        try { prevFocus = document.activeElement } catch { prevFocus = null }
+        prevOverflow = document.body.style.overflow
+        document.body.style.overflow = 'hidden'
+        nextTick(() => { try { document.querySelector('.mdl [data-autofocus], .mdl .mdl-x')?.focus?.() } catch { /* noop */ } })
+      })
+      onUnmounted(() => {
+        document.body.style.overflow = prevOverflow
+        try { prevFocus?.focus?.({ preventScroll: true }) } catch { /* noop */ }
+      })
+      return { trapTab }
+    },
     template: `
     <Teleport to="body">
       <Transition name="modal" appear>
         <div class="ovl" :class="{ center }" @click.self="$emit('close')">
-          <div class="mdl" :style="width ? {width} : {}">
+          <div class="mdl" :style="width ? {width} : {}" role="dialog" aria-modal="true" :aria-label="title || '对话框'" @keydown="trapTab">
             <div class="mdl-h">
               <slot name="head">
                 <span v-if="icon" class="mdl-ico"><v-icon :name="icon"/></span>
                 <span class="mdl-t">{{ title }}</span>
               </slot>
-              <button class="mdl-x" @click="$emit('close')"><v-icon name="x"/></button>
+              <button class="mdl-x" type="button" aria-label="关闭" title="关闭" @click="$emit('close')"><v-icon name="x"/></button>
             </div>
             <div class="mdl-b"><slot/></div>
             <div class="mdl-f" v-if="$slots.foot"><slot name="foot"/></div>
@@ -284,12 +313,16 @@
     confirmText: '确定', cancelText: '取消', busy: false, action: null,
   })
   let _dlgSeq = 0 // 同日多次调用：旧 commit 不得关掉新对话
+  let _dlgPrevFocus = null
 
   const _dlgClose = () => {
     dialogState.open = false
     _restoreScroll()
+    try { _dlgPrevFocus?.focus?.({ preventScroll: true }) } catch { /* noop */ }
+    _dlgPrevFocus = null
   }
   const _dlgShow = () => {
+    try { _dlgPrevFocus = document.activeElement } catch { _dlgPrevFocus = null }
     dialogState.open = true
     _lockScroll()
     const t = setTimeout(_focusDialog, 60) // 等 Teleport + 过渡挂载后聚焦
@@ -353,13 +386,13 @@
       }
       onMounted(() => document.addEventListener('keydown', onKey))
       onUnmounted(() => document.removeEventListener('keydown', onKey))
-      return { dialogState, dialogCancel, dialogCommit }
+      return { dialogState, dialogCancel, dialogCommit, trapTab }
     },
     template: `
     <Teleport to="body">
       <Transition name="modal" appear>
         <div v-if="dialogState.open" class="ovl center" @click.self="dialogCancel">
-          <div class="mdl dlg" role="dialog" aria-modal="true" :aria-label="dialogState.title">
+          <div class="mdl dlg" role="dialog" aria-modal="true" :aria-label="dialogState.title" @keydown="trapTab">
             <div class="mdl-h">
               <span v-if="dialogState.icon" class="mdl-ico" :class="dialogState.danger ? 'dg' : ''"><v-icon :name="dialogState.icon"/></span>
               <span class="mdl-t">{{ dialogState.title }}</span>
@@ -374,7 +407,7 @@
                 <input v-else data-autofocus class="inp" :class="{ mono: dialogState.prompt.mono }" v-model="dialogState.value"
                   :placeholder="dialogState.prompt.placeholder || ''" @keyup.enter="dialogCommit"/>
               </label>
-              <div v-if="dialogState.hint" class="dlg-hint">{{ dialogState.hint }}</div>
+              <div v-if="dialogState.hint" class="dlg-hint" role="alert">{{ dialogState.hint }}</div>
             </div>
             <div class="mdl-f">
               <button v-if="dialogState.cancelText !== false" type="button" class="btn b-line" :disabled="dialogState.busy" @click="dialogCancel">{{ dialogState.cancelText || '取消' }}</button>
@@ -454,7 +487,7 @@
     },
     template: `
     <Teleport to="body">
-      <div class="tst-w">
+      <div class="tst-w" aria-live="polite" aria-atomic="false">
         <TransitionGroup name="toast">
           <div v-for="t in toastState.list" :key="t.id" class="tst" :class="t.type">
             <span class="tst-ico"><v-icon :name="icons[t.type] || 'info'"/></span><span>{{ t.msg }}</span>
@@ -576,6 +609,7 @@
         const show = ref(false)
         const pinned = ref(false)
         const iconEl = ref(null)
+        const rowEl = ref(null)
         const pos = ref({ top: 0, left: 0, width: 0 })
         const isLong = computed(() => String(props.desc || '').trim().length > DESC_INLINE_MAX)
         let hideTimer = null
@@ -603,6 +637,12 @@
         const onDoc = () => { pinned.value = false; show.value = false }
         const onViewport = () => { if (show.value) updatePos() }
         onMounted(() => {
+          const label = String(props.name || '').trim()
+          if (label && rowEl.value?.querySelectorAll) {
+            rowEl.value.querySelectorAll('input, select, textarea').forEach((el) => {
+              if (!el.getAttribute('aria-label') && !el.getAttribute('aria-labelledby') && !el.labels?.length) el.setAttribute('aria-label', label)
+            })
+          }
           if (!isLong.value) return // 短说明直接展示、无气泡，不挂全局监听（避免上百行空监听）
           document.addEventListener('click', onDoc)
           window.addEventListener('scroll', onViewport, true)
@@ -614,10 +654,10 @@
           window.removeEventListener('scroll', onViewport, true)
           window.removeEventListener('resize', onViewport)
         })
-        return { show, pos, iconEl, isLong, doShow, doHide, toggle }
+        return { show, pos, iconEl, rowEl, isLong, doShow, doHide, toggle }
       },
       template: `
-      <div class="cf-item" data-cf-row="1" :data-cf-name="name" :data-cf-desc="desc" :class="{full: full, dg: danger}">
+      <div class="cf-item" ref="rowEl" data-cf-row="1" :data-cf-name="name" :data-cf-desc="desc" :class="{full: full, dg: danger}">
         <div class="info">
           <div class="name">
             {{ name }}<span v-if="danger" class="pill p-rose" style="margin-left:7px;font-size:10px;padding:3px 8px">高危</span>
