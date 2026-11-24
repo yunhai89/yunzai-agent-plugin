@@ -210,7 +210,7 @@ personaLore:        # 人设资料库（agent.personaLore；世界观/口癖等�
 
 > 免费引擎优先：Bing / DDG / AnySearch / Exa(keyless) / Tavily(keyless) / Keenable / Firecrawl / Parallel / You.com / SearXNG；配置 key 后可用 Brave / Perplexity 与更高额度。任一引擎失败会自动回退下一个，并按失败类别短时冷却。
 
-**防信息茧房的搜索纪律（内置于系统提示，无需配置）**：Agent 被告知"关键事实至少两个独立来源交叉验证、下结论前先找反证、争议话题并列双方依据、冲突不静默选一个"；`web_search` 支持一次并行发 2~4 个不同角度的 `queries`（换措辞/换来源/官方一手/找反证），结果按 URL 去重合并并标注来源与时间，部分查询失败会显式提示覆盖缺口；核对一手页面用 `web_extract`（需 Tavily key）或 `web_crawl` 读正文（摘要可能断章取义）。
+**防信息茧房的搜索纪律（内置于系统提示，无需配置）**：Agent 被告知"关键事实至少两个独立来源交叉验证、下结论前先找反证、争议话题并列双方依据、冲突不静默选一个"；`web_search` 支持一次并行发 2~4 个不同角度的 `queries`（换措辞/换来源/官方一手/找反证），结果按 URL 去重合并并标注来源与时间，部分查询失败会显式提示覆盖缺口。**结果不理想时，模型可主动用 `engine` 换单个源，或用 `engines` 一次并行指定 2~4 个源（如 `["bing","ddg","exa"]`）重搜；工具会去重合并多源结果，并回传每个源的质量/失败状态和可用源列表，供模型继续换源或结合多轮结果作答。** 核对一手页面用 `web_extract`（需 Tavily key）或 `web_crawl` 读正文（摘要可能断章取义）。
 
 ```yaml
 search:

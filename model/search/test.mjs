@@ -288,6 +288,54 @@ await test('质量门禁：Bing 泛结果 → 自动换 anysearch', async () => 
   eq(forced.provider, 'bing', '显式 engine=bing 时尊重用户选择')
 })
 
+// ---------- 7d. 显式多源：engines 并行、去重、状态回传 ----------
+await test('manager：engines 显式多源并行、跨源去重、回传各源状态', async () => {
+  const calls = []
+  const p1 = {
+    name: 'p1', available: () => true,
+    async search(q) {
+      calls.push('p1')
+      return { provider: 'p1', query: q, results: [
+        { title: 'A', url: 'https://a.com', content: 'q 相关内容一' },
+        { title: 'B', url: 'https://b.com', content: 'q 相关内容二' },
+      ] }
+    },
+  }
+  const p2 = {
+    name: 'p2', available: () => true,
+    async search(q) {
+      calls.push('p2')
+      return { provider: 'p2', query: q, results: [
+        { title: 'A2', url: 'https://a.com/', content: 'q 重复' },
+        { title: 'C', url: 'https://c.com', content: 'q 相关内容三' },
+      ] }
+    },
+  }
+  const p3 = { name: 'p3', available: () => true, async search() { calls.push('p3'); return { provider: 'p3', results: [] } } }
+  const mgr = new SearchManager({ providers: [p1, p2, p3], fallbackOrder: ['p3'] })
+  const r = await mgr.searchEngines('q', ['p1', 'p2'], { max_results: 8 })
+  eq(calls.sort().join(','), 'p1,p2', '只调用指定源，不自动回退 p3')
+  eq(r.results.length, 3, '跨源 URL 去重（A/B/C）')
+  eq(r.provider, 'multi', '多源成功 provider=multi')
+  eq(r.providers.map((p) => `${p.name}:${p.ok}:${p.count}`), ['p1:true:2', 'p2:true:2'], '各源状态')
+  eq(r.results.find((x) => x.url.includes('c.com')).source, 'p2', '结果标注来源')
+  ok(r.available_engines.includes('p1') && r.available_engines.includes('p3'), '回传可换的可用源')
+})
+
+await test('manager：engines 部分失败 → 不换未指定源，失败/状态可见', async () => {
+  const p1 = { name: 'p1', available: () => true, async search(q) { return { provider: 'p1', query: q, results: [{ title: 'A', url: 'https://a.com', content: 'c' }] } } }
+  const p2 = { name: 'p2', available: () => true, async search() { throw new Error('403 auth failed') } }
+  let p3calls = 0
+  const p3 = { name: 'p3', available: () => true, async search() { p3calls++; return { provider: 'p3', results: [{ title: 'Z', url: 'https://z.com', content: 'c' }] } } }
+  const mgr = new SearchManager({ providers: [p1, p2, p3], fallbackOrder: ['p3'] })
+  const r = await mgr.searchEngines('q', ['p1', 'p2'])
+  eq(r.results.length, 1, '成功源结果保留')
+  eq(r.providers.find((p) => p.name === 'p2')?.ok, false, '失败源状态可见')
+  ok(r.failures.length === 1 && /p2/.test(r.failures[0].error), '失败原因单列')
+  eq(p3calls, 0, '未指定的 p3 不被调用')
+  eq(r.note, undefined, '部分失败不重复写 note（由 providers/failures 明示）')
+})
+
 // ---------- 8. createSearchManager：免费引擎默认启用 ----------
 await test('createSearchManager：无 key → 免费引擎 + DDG 兜底', async () => {
   // 无 key、无 searxng → Bing/DDG/AnySearch/Exa/Tavily/Keenable/Firecrawl/Parallel/You 免费引擎
@@ -340,6 +388,17 @@ await test('formatResults / formatExtract', async () => {
   ok(text.includes('42') && text.includes('A') && text.includes('https://a.com') && text.includes('引用'), 'formatResults')
   ok(formatResults({ results: [] }).startsWith('(无搜索结果'), '空结果带可执行提示')
   ok(/更换关键词|重试/.test(formatResults({ results: [] })), '空结果提示重试')
+  const multi = formatResults({
+    provider: 'multi', quality: 80,
+    results: [{ title: 'A', url: 'https://a.com', content: 'c', source: 'bing' }],
+    providers: [{ name: 'bing', ok: true, count: 1, quality: 80 }, { name: 'ddg', ok: false, error: 'timeout' }],
+    failures: [{ query: 'q', error: 'ddg: timeout' }],
+    available_engines: ['bing', 'ddg', 'exa'],
+  })
+  ok(multi.includes('🔁 搜索源') && multi.includes('ddg:失败'), '多源状态可见')
+  ok(multi.includes('可用搜索源') && multi.includes('exa'), '失败时给出可换源')
+  const low = formatResults({ results: [{ title: 'A', url: 'https://a.com', content: 'c' }], quality: 20, providers: [{ name: 'bing', ok: true, count: 1, quality: 20 }] })
+  ok(low.includes('结果质量偏低'), '低质量提示换源')
   const ext = formatExtract({ results: [{ url: 'https://x.com', raw_content: '正文' }] })
   ok(ext.includes('正文'), 'formatExtract')
 })
@@ -394,6 +453,47 @@ await test('makeSearchTools：web_extract 失败 → 结构化 error', async () 
   const r = await extract.execute({ urls: ['https://x.com'] })
   eq(r.error, 'extract_unavailable', '提取失败结构化返回')
   ok(String(r.reason).includes('所有提取源均失败'), '保留真实原因')
+})
+
+await test('makeSearchTools：engines 显式多源透传 + 状态可见 + 全失败 alternatives', async () => {
+  let seen = null
+  const mgr = {
+    availableProviders: ['bing', 'ddg', 'exa'],
+    async searchEngines(q, engines, opts) {
+      seen = { q, engines, opts }
+      return {
+        provider: 'multi',
+        results: [{ title: 'A', url: 'https://a.com', content: '正文', source: 'bing' }],
+        answers: [],
+        failures: [{ query: q, error: 'ddg: timeout' }],
+        providers: [{ name: 'bing', ok: true, count: 1, quality: 80 }, { name: 'ddg', ok: false, count: 0, error: 'timeout' }],
+        available_engines: ['bing', 'ddg', 'exa'],
+      }
+    },
+    async search() { throw new Error('should not call search') },
+    async searchMany() { throw new Error('should not call searchMany') },
+  }
+  const [search] = makeSearchTools(mgr)
+  ok(search.parameters.properties.engines?.items?.enum?.includes('bing'), 'schema 声明 engines')
+  const text = await search.execute({ query: 'x', engines: ['bing', 'ddg'] })
+  eq(seen.engines, ['bing', 'ddg'], 'engines 透传到 searchEngines')
+  ok(text.includes('🔁 搜索源') && text.includes('ddg:失败'), '多源状态进入模型可见文本')
+
+  const failMgr = {
+    availableProviders: ['bing', 'ddg', 'exa'],
+    async searchEngines() {
+      return {
+        provider: 'multi', results: [], answers: [],
+        failures: [{ query: 'x', error: 'bing: timeout' }],
+        providers: [{ name: 'bing', ok: false, error: 'timeout' }, { name: 'ddg', ok: false, error: 'timeout' }],
+        available_engines: ['bing', 'ddg', 'exa'],
+      }
+    },
+  }
+  const [failSearch] = makeSearchTools(failMgr)
+  const err = await failSearch.execute({ query: 'x', engines: ['bing', 'ddg'] })
+  eq(err.error, 'search_unavailable', '指定源全失败 → 结构化错误')
+  ok(Array.isArray(err.alternatives) && err.alternatives.includes('exa') && !err.alternatives.includes('bing'), 'alternatives 只给未指定的可用源')
 })
 
 // ---------- 11. DDG 解析健壮性（改版兼容）----------

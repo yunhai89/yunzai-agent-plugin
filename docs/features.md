@@ -40,7 +40,7 @@
 | 终端执行 | E2B 沙箱（Firecracker microVM）；all-users；出口全放通/白名单可收紧；fail-closed | ⚠️ 可选高危 |
 | 浏览器自动化 | Stagehand：goto / observe / extract / act；本地 or Browserbase 云 | 🧪 |
 | 网页抓取 | `web_crawl`：crawl4ai 真浏览器（默认，自动装浏览器）或纯 HTTP 降级，反爬升级 | ✅ |
-| 联网搜索 | `web_search`：Bing/DDG/AnySearch/Exa/Tavily/Keenable/Firecrawl/Parallel/You.com/SearXNG 免费优先，失败分类冷却、缓存、域名过滤、安全搜索 | ✅ |
+| 联网搜索 | `web_search`：Bing/DDG/AnySearch/Exa/Tavily/Keenable/Firecrawl/Parallel/You.com/SearXNG 免费优先，失败分类冷却、缓存、域名过滤、安全搜索；结果不理想时模型可用 `engines` 并行换 2~4 个源重搜，按 URL 去重合并并回传各源质量/失败状态 | ✅ |
 | 萌娘百科 | 词条/全文搜索、词条摘要/正文、社区帖子搜索/详情、首页动态流（gRPC + MediaWiki 只读接口） | ✅ |
 | 文档与媒体 | PDF/Word/Excel 解析、图片/音频/视频处理、yt-dlp 下载 | ✅ |
 

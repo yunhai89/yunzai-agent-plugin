@@ -25,6 +25,17 @@ export function formatResults(result, { maxResults = 10, maxContent = 500 } = {}
   for (const a of answers) {
     if (a?.answer) parts.push(`💡 ${Array.isArray(result.answers) && a.query ? `[${a.query}] ` : ''}${a.answer}`)
   }
+  // 多源搜索状态：让模型看见每个源是否成功/质量如何，作为“换源重搜”的依据。
+  if (Array.isArray(result.providers) && (result.providers.length > 1 || result.providers.some((p) => p && p.ok === false))) {
+    const status = result.providers.map((p) => {
+      if (!p) return ''
+      if (p.ok) return `${p.name}:${p.count ?? 0}条${p.quality != null ? `(质量${p.quality})` : ''}`
+      return `${p.name}:失败${p.error ? `(${p.error})` : ''}${p.cooldownReason ? `[冷却:${p.cooldownReason}]` : ''}`
+    }).filter(Boolean).join(' | ')
+    if (status) parts.push(`🔁 搜索源：${status}`)
+  }
+  const lowQuality = result.quality != null && Number(result.quality) < 45
+  if (lowQuality) parts.push(`⚠️ 结果质量偏低（${result.quality}），可换 engine 或 engines 重搜，不要直接据此下结论。`)
   if (result.results?.length) {
     const items = result.results.slice(0, maxResults).map((r, i) => {
       const meta = [
@@ -40,6 +51,10 @@ export function formatResults(result, { maxResults = 10, maxContent = 500 } = {}
   // 多查询合并时：部分查询失败必须显式提示覆盖缺口（否则模型可能把"只查到一边"当成"只有一边"）
   if (result.failures?.length) {
     parts.push(`⚠️ 部分查询未成功，结论需考虑覆盖缺口：${result.failures.map((f) => `「${f.query}」${f.error}`).join('；')}`)
+  }
+  const hasProviderFailure = Array.isArray(result.providers) && result.providers.some((p) => p && p.ok === false)
+  if (Array.isArray(result.available_engines) && result.available_engines.length && (result.failures?.length || hasProviderFailure || lowQuality)) {
+    parts.push(`可用搜索源：${result.available_engines.slice(0, 12).join(', ')}（结果不理想可换 engine/engines 重试）`)
   }
   if (parts.length) return parts.join('\n\n')
   // 所有源都返回空：给出可执行提示，避免模型直接断言"搜不到/没有相关信息"而放弃

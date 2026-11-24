@@ -80,6 +80,20 @@ const COOLDOWN_MS = {
 
 const QUALITY_GATED = new Set(['bing', 'ddg', 'anysearch', 'searxng'])
 const QUERY_STOP = /[\s，。！？、,.!?:：;；()（）\[\]【】"'“”‘’/\\|-]+/
+const MAX_EXPLICIT_ENGINES = 4
+
+/** 归一显式搜索源列表：小写、去重、去 auto/空值、最多 4 个 */
+export function normalizeEngineList(v) {
+  const list = Array.isArray(v) ? v : (v == null || v === '' ? [] : [v])
+  const out = []
+  for (const x of list) {
+    const name = String(x || '').trim().toLowerCase()
+    if (!name || name === 'auto' || out.includes(name)) continue
+    out.push(name)
+    if (out.length >= MAX_EXPLICIT_ENGINES) break
+  }
+  return out
+}
 
 /** 中文/英文查询的粗粒度词元：中文取 2-gram，英文取长度 ≥3 的词 */
 function queryTokens(q) {
@@ -174,6 +188,37 @@ export class SearchManager {
     return this.providers.filter((p) => !p.available || p.available()).map((p) => p.name)
   }
 
+  /** 供工具回传给模型的源状态：可用性 + 是否冷却 + 冷却原因。 */
+  get providerStatus() {
+    const out = []
+    for (const p of this.providers) {
+      if (p.available && !p.available()) continue
+      const cooling = this._cooling(p.name)
+      const c = this._cool.get(p.name)
+      out.push({
+        name: p.name,
+        cooling,
+        ...(cooling && c ? { cooldownUntil: c.until, cooldownReason: c.cls } : {}),
+      })
+    }
+    return out
+  }
+
+  /** 可供模型换源重试的源（排除冷却中的）。 */
+  get retryableProviders() {
+    return this.providerStatus.filter((p) => !p.cooling).map((p) => p.name)
+  }
+
+  _providerOptions(opts = {}) {
+    return {
+      ...opts,
+      max_results: Math.min(Math.max(Number(opts.max_results) || 8, 1), 20),
+      safe_search: String(opts.safe_search || this.safeSearch || 'off').toLowerCase(),
+      bingMarket: opts.bingMarket || this.bingMarket,
+      lang: this.lang,
+    }
+  }
+
   _cooling(name) {
     const c = this._cool.get(name)
     if (!c) return false
@@ -238,28 +283,28 @@ export class SearchManager {
     const order = this._order(q, opts)
     const errors = []
     const tried = []
+    const attempts = []
     let firstEmpty = null
     let bestPoor = null
     const explicit = String(opts.engine || this.engine || 'auto').toLowerCase()
     const qualityGate = explicit === 'auto'
-    const providerOptions = {
-      ...opts,
-      max_results: Math.min(Math.max(Number(opts.max_results) || 8, 1), 20),
-      safe_search: String(opts.safe_search || this.safeSearch || 'off').toLowerCase(),
-      bingMarket: opts.bingMarket || this.bingMarket,
-      lang: this.lang,
-    }
+    const providerOptions = this._providerOptions(opts)
 
     for (const name of order) {
       const p = this.providers.find((x) => x.name === name)
       if (!p || (p.available && !p.available())) continue
-      if (this._cooling(name)) { errors.push(`${name}: cooling down`); continue }
+      if (this._cooling(name)) {
+        errors.push(`${name}: cooling down`)
+        attempts.push({ name, ok: false, cooling: true, error: 'cooling down' })
+        continue
+      }
       tried.push(name)
       try {
         const result = await p.search(q, providerOptions)
         if (!result) continue
         const results = this._filter(result.results, providerOptions)
         if (!result.answer && !results.length) {
+          attempts.push({ name, ok: false, count: 0, error: 'empty' })
           if (!firstEmpty) firstEmpty = { ...result, results: [], sources: tried.slice() }
           continue
         }
@@ -268,12 +313,18 @@ export class SearchManager {
           const poor = { ...result, results, provider: result.provider || name }
           if (!bestPoor || quality.score > bestPoor.score) bestPoor = { score: quality.score, value: poor }
           errors.push(`${name}: poor quality (${quality.reason || `score_${quality.score}`})`)
+          attempts.push({ name, ok: false, poor: true, count: results.length, quality: quality.score, error: quality.reason || `score_${quality.score}` })
           this.logger('warn', `[search] ${name} 结果质量差 (${quality.score})：${quality.reason || '-'}，继续尝试下一个引擎`)
           continue
         }
         this._cool.delete(name)
+        attempts.push({ name, ok: true, count: results.length, quality: quality.score })
         const note = errors.length ? `Note: ${errors.slice(-3).join('; ')}; using ${name}.` : undefined
-        const out = { ...result, results, provider: result.provider || name, ...(note ? { note } : {}) }
+        const out = {
+          ...result, results, provider: result.provider || name,
+          quality: quality.score, providers: attempts, available_engines: this.retryableProviders,
+          ...(note ? { note } : {}),
+        }
         if (this.cacheMs) this._cache.set(key, { at: Date.now(), value: out })
         if (this._cache.size > 100) this._cache.delete(this._cache.keys().next().value)
         return out
@@ -285,7 +336,13 @@ export class SearchManager {
             const r2 = await p.search(q, providerOptions)
             if (r2?.results?.length || r2?.answer) {
               this._cool.delete(name)
-              const out = { ...r2, results: this._filter(r2.results, providerOptions), provider: r2.provider || name }
+              const results2 = this._filter(r2.results, providerOptions)
+              const quality2 = assessSearchQuality(name, { ...r2, results: results2 }, q)
+              attempts.push({ name, ok: true, retried: true, count: results2.length, quality: quality2.score })
+              const out = {
+                ...r2, results: results2, provider: r2.provider || name,
+                quality: quality2.score, providers: attempts, available_engines: this.retryableProviders,
+              }
               if (this.cacheMs) this._cache.set(key, { at: Date.now(), value: out })
               return out
             }
@@ -295,16 +352,84 @@ export class SearchManager {
         }
         this._markCooldown(name, cls)
         errors.push(`${name}: ${e?.message || e}`)
+        attempts.push({ name, ok: false, error: e?.message || String(e), errorClass: cls })
       }
     }
 
     if (bestPoor) {
-      const note = `Note: 所有可用引擎结果质量偏低；已返回最佳结果（${errors.slice(-5).join('; ')}）。`
-      return { ...bestPoor.value, sources: tried, note, quality: bestPoor.score }
+      const note = `Note: 所有可用引擎结果质量偏低；已返回最佳结果（${errors.slice(-5).join('; ')}）。结果不理想时可换 engine/engines 重搜。`
+      return {
+        ...bestPoor.value, sources: tried, note, quality: bestPoor.score,
+        providers: attempts, available_engines: this.retryableProviders,
+      }
     }
-    if (firstEmpty) return { ...firstEmpty, sources: tried }
-    if (!tried.length) throw new Error('无可用搜索源')
-    throw new Error(`所有搜索源均失败 → ${errors.join('；')}`)
+    if (firstEmpty) {
+      return { ...firstEmpty, sources: tried, providers: attempts, available_engines: this.retryableProviders }
+    }
+    if (!tried.length) {
+      throw Object.assign(new Error('无可用搜索源'), { code: 'search_unavailable', attempts, alternatives: this.retryableProviders })
+    }
+    throw Object.assign(new Error(`所有搜索源均失败 → ${errors.join('；')}`), {
+      code: 'search_unavailable', attempts, alternatives: this.retryableProviders,
+    })
+  }
+
+  /**
+   * 显式多源搜索：只查询调用方指定的 engines（不再自动回退），并行后按 URL 去重合并。
+   * 用途：模型发现默认结果不理想时，主动换几个源重搜并把结果结合起来。
+   * 返回额外字段：providers（每源状态/质量）、available_engines（可换的其它源）。
+   */
+  async searchEngines(query, engines, opts = {}) {
+    const q = String(query || '').trim()
+    if (!q) throw new Error('缺少查询词')
+    const names = normalizeEngineList(engines)
+    if (!names.length) return this.search(q, opts)
+    const providerOptions = this._providerOptions(opts)
+    const settled = await Promise.all(names.map(async (name) => {
+      try {
+        const p = this.providers.find((x) => x.name === name)
+        if (!p) throw Object.assign(new Error(`未知或未启用的搜索源：${name}`), { code: 'unknown_engine' })
+        if (p.available && !p.available()) throw Object.assign(new Error(`搜索源不可用：${name}`), { code: 'engine_unavailable' })
+        if (this._cooling(name)) throw Object.assign(new Error(`搜索源冷却中：${name}`), { code: 'engine_cooling' })
+        const result = await p.search(q, providerOptions)
+        const results = this._filter(result?.results, providerOptions)
+        const quality = assessSearchQuality(name, { ...result, results }, q)
+        const count = results.length
+        const ok = !!(result?.answer || count)
+        this._cool.delete(name)
+        return {
+          name, ok, count, quality: quality.score,
+          result: { ...(result || {}), results, provider: result?.provider || name },
+          ...(ok ? {} : { error: 'empty' }),
+        }
+      } catch (e) {
+        const cls = classifyFailure(e)
+        this._markCooldown(name, cls)
+        return { name, ok: false, count: 0, quality: null, error: e?.message || String(e), errorClass: cls }
+      }
+    }))
+    const items = settled.map((s) => (s.ok
+      ? { query: q, result: s.result }
+      : { query: q, error: `${s.name}: ${s.error || '无结果'}` }))
+    const merged = mergeSearchResults(items, {
+      maxResults: Math.min(Math.max(Number(opts.max_results) || 8, 8), 20),
+    })
+    const okItems = settled.filter((s) => s.ok)
+    const providers = settled.map((s) => ({
+      name: s.name, ok: s.ok, count: s.count,
+      quality: s.quality,
+      ...(s.ok ? {} : { error: s.error || 'empty', ...(s.errorClass ? { errorClass: s.errorClass } : {}) }),
+    }))
+    const failed = providers.filter((p) => !p.ok).map((p) => p.name)
+    return {
+      ...merged,
+      provider: okItems.length === 1 ? okItems[0].name : 'multi',
+      quality: okItems.length ? Math.max(...okItems.map((s) => Number(s.quality) || 0)) : 0,
+      providers,
+      available_engines: this.retryableProviders,
+      // 部分失败已由 providers/failures 明示；这里只在全部失败时给一句汇总，避免重复占上下文。
+      note: okItems.length ? undefined : `指定的搜索源均未返回可用结果：${failed.join(', ')}；可换 engines 或改写查询重试。`,
+    }
   }
 
   async searchMany(queries, opts = {}) {
@@ -313,12 +438,35 @@ export class SearchManager {
       .filter(Boolean)
       .slice(0, 4)
     if (!list.length) throw new Error('缺少查询词（queries 为空）')
-    const settled = await Promise.allSettled(list.map((q) => this.search(q, opts)))
+    const engines = normalizeEngineList(opts.engines)
+    const runOne = engines.length
+      ? (q) => this.searchEngines(q, engines, opts)
+      : (q) => this.search(q, opts)
+    const settled = await Promise.allSettled(list.map(runOne))
     const items = settled.map((s, i) => (s.status === 'fulfilled'
       ? { query: list[i], result: s.value }
       : { query: list[i], error: s.reason?.message || String(s.reason) }))
     const merged = mergeSearchResults(items)
-    this.logger('debug', `[search] searchMany ${list.length} queries → ${merged.results.length} merged results${merged.failures.length ? `（${merged.failures.length} 条查询失败）` : ''}`)
+    if (engines.length) {
+      // 聚合每条查询的每源状态：count 求和、quality 取最高、任一成功即 ok。
+      const byName = new Map()
+      for (const s of settled) {
+        if (s.status !== 'fulfilled' || !Array.isArray(s.value?.providers)) continue
+        for (const p of s.value.providers) {
+          const cur = byName.get(p.name) || { name: p.name, ok: false, count: 0, quality: null }
+          cur.ok = cur.ok || p.ok === true
+          cur.count += Number(p.count) || 0
+          if (p.quality != null) cur.quality = Math.max(Number(cur.quality) || 0, Number(p.quality) || 0)
+          if (!p.ok && !cur.error) { cur.error = p.error || 'empty'; if (p.errorClass) cur.errorClass = p.errorClass }
+          byName.set(p.name, cur)
+        }
+      }
+      merged.engines = engines
+      merged.providers = [...byName.values()]
+      merged.available_engines = this.retryableProviders
+      if (merged.providers.length) merged.quality = Math.max(...merged.providers.map((p) => Number(p.quality) || 0))
+    }
+    this.logger('debug', `[search] searchMany ${list.length} queries${engines.length ? ` × ${engines.join('/')}` : ''} → ${merged.results.length} merged results${merged.failures.length ? `（${merged.failures.length} 条查询失败）` : ''}`)
     return merged
   }
 

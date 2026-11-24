@@ -269,6 +269,7 @@ await test('SEARCH_VERIFICATION：防信息茧房（多面获取/交叉验证/�
   ok(SEARCH_VERIFICATION.includes('辟谣'), '给出找反证的具体做法')
   ok(SEARCH_VERIFICATION.includes('不要静默选一个'), '冲突必须并列而非静默选择')
   ok(SEARCH_VERIFICATION.includes('queries'), '与 web_search 多查询参数呼应')
+  ok(SEARCH_VERIFICATION.includes('engines') && SEARCH_VERIFICATION.includes('换 `engine`'), '结果不理想时要求换源重搜')
   // 常驻注入：有身份时必须带上该段；空入参仍为空
   const sys = buildAgentSystemPrompt({ identity: '你是助手' })
   ok(sys.includes('## 搜索与核验') && sys.includes('信息茧房'), 'buildAgentSystemPrompt 注入搜索纪律段')

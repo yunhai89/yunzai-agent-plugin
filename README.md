@@ -30,7 +30,7 @@
 
 一个跑在 Yunzai / Miao-Yunzai 里的 AI Agent 插件：把大模型对话、工具调用、长期记忆、人设、多模态、MCP、群管、沙箱和 Web 管理面板做成一套完整运行时。
 
-- **对话与工具**：ReAct 多轮、并行工具、免费引擎联网搜索（Bing / DDG / AnySearch / Exa / Tavily 等，含回退/缓存/冷却）、全量工具常驻（缓存优先）、结果截断、预算与终止器。
+- **对话与工具**：ReAct 多轮、并行工具、免费引擎联网搜索（Bing / DDG / AnySearch / Exa / Tavily 等，含回退/缓存/冷却/模型换源重搜）、全量工具常驻（缓存优先）、结果截断、预算与终止器。
 - **模型接入**：OpenAI / Anthropic / Gemini 三协议；厂商 + 模型引用制；跨厂商回退。
 - **记忆与人设**：`MEMORY.md` / `USER.md`、长期记忆召回、用户画像、知识库 RAG、人设资料库与人设导入（`.txt/.md` + `aha-character-card` 角色卡片）。
 - **官方机器人**：自实现 QQ 官方适配器（AppID + AppSecret），支持 Markdown / inline keyboard / 被动回复。
