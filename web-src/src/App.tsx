@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { Loader2 } from 'lucide-react'
 import { AppShell } from '@/components/AppShell'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { LoginGate } from '@/components/LoginGate'
 import { useAuth, SignalsProvider } from '@/lib/auth'
 import { BrandMark } from '@/components/Brand'
@@ -38,6 +39,7 @@ export function App() {
 
   return (
     <SignalsProvider>
+      <ErrorBoundary label="app">
       <Suspense fallback={<RouteFallback />}>
       <Routes>
         <Route element={<AppShell />}>
@@ -68,6 +70,7 @@ export function App() {
         </Route>
       </Routes>
       </Suspense>
+      </ErrorBoundary>
     </SignalsProvider>
   )
 }

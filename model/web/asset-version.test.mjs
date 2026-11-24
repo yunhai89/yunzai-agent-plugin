@@ -1,5 +1,6 @@
 /**
- * 静态资源版本化回归：index.html 本地资源 URL 必须带 ?v=版本（防发版后旧 JS 缓存致页面异常）。
+ * 静态资源版本化回归：CSS/vendor/经典 script 带 ?v=版本；module 入口必须保持原 URL
+ * （带查询串会加载两份入口与两份 React，懒加载页面整页空白）。
  * 运行：node model/web/asset-version.test.mjs
  */
 import { versionAssetUrls } from './asset-version.js'
@@ -23,11 +24,11 @@ const VITE_HTML = [
   '<script type="module" src="/assets/chunk.js"></script>',
 ].join('\n')
 
-test('Vite 构建产物 ./assets 与 /assets 也版本化', () => {
+test('Vite module 入口/chunk 不加 ?v（防入口加载两份、双份 React）', () => {
   const out = versionAssetUrls(VITE_HTML, '1.55.0')
-  ok(out.includes('src="./assets/index-CtQMOqM_.js?v=1.55.0"'), './assets JS 版本化')
-  ok(out.includes('href="./assets/index-L44cSPC3.css?v=1.55.0"'), './assets CSS 版本化')
-  ok(out.includes('src="/assets/chunk.js?v=1.55.0"'), '/assets JS 版本化')
+  ok(!out.includes('index-CtQMOqM_.js?v='), 'module 入口保持原 URL')
+  ok(out.includes('href="./assets/index-L44cSPC3.css?v=1.55.0"'), 'CSS 仍版本化（缓存失效）')
+  ok(!out.includes('/assets/chunk.js?v='), 'module chunk 保持原 URL')
 })
 
 test('本地 assets/vendor 追加 ?v=版本', () => {

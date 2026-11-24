@@ -40,6 +40,12 @@ export async function startServer() {
   }
   app.get(['/', '/index.html'], (req, res, next) => sendIndex(res, next))
   app.use(express.static(webDir))
+  // 静态资源缺失不能回 index.html（那会以 text/html 返回 JS，浏览器只报 MIME 错、后台无日志）。
+  app.use((req, res, next) => {
+    if (req.method !== 'GET' || !/^\/(assets|vendor)\//.test(req.path)) return next()
+    Log.warn('[web] 静态资源缺失', req.path, `referer=${req.get('referer') || '-'}`)
+    return res.status(404).type('text/plain').send('Not found')
+  })
   // SPA 兜底（支持 ?token= 直进首页）；/api 未匹配已在 router 内返 JSON 404
   app.use((req, res, next) => {
     if (req.method !== 'GET' || req.path.startsWith('/api')) return next()

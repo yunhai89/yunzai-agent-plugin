@@ -29,7 +29,8 @@ for (const raw of assets) {
   ok(fs.existsSync(file), `资源存在：${rel}`)
 }
 const versioned = versionAssetUrls(html, '1.0.0-test')
-ok(/assets\/[^"']+\.js\?v=1\.0\.0-test/.test(versioned), '版本查询串能追加到 Vite JS 产物')
+ok(/assets\/[^"']+\.css\?v=1\.0\.0-test/.test(versioned), '版本查询串能追加到 Vite CSS 产物')
+ok(!/assets\/[^"']+\.js\?v=/.test(versioned), 'module JS 入口不加查询串（防双份 React）')
 
 const files = fs.readdirSync(path.join(web, 'assets'))
 ok(files.some((f) => f.endsWith('.woff2')), '本地字体随构建产物分发')

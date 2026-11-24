@@ -120,6 +120,18 @@ async function getGw(res) {
 
 // ───────────────── 文件型（不依赖 runtime） ─────────────────
 
+// POST /api/client-error —— 前端渲染异常上报（只记本地 DevLog，不落令牌/配置）
+router.post('/client-error', asyncHandler(async (req, res) => {
+  const b = req.body || {}
+  const message = String(b.message || '').slice(0, 2000)
+  const stack = String(b.stack || '').slice(0, 8000)
+  const componentStack = String(b.componentStack || '').slice(0, 4000)
+  const url = String(b.url || '').slice(0, 500)
+  const ua = String(req.get('user-agent') || b.userAgent || '').slice(0, 300)
+  Log.error('[web] 前端异常', `label=${String(b.label || '-').slice(0, 80)}`, message, `url=${url}`, `ua=${ua}`, stack, componentStack ? `component=${componentStack}` : '')
+  return ok(res, { logged: true })
+}))
+
 // GET /api/config —— 全量配置（脱敏后；顶层 debug 一并下发，供面板「调试日志」开关）
 router.get('/config', asyncHandler(async (req, res) => {
   const data = Config.get()
@@ -256,17 +268,37 @@ router.get('/conversations', asyncHandler(async (req, res) => {
   return ok(res, list)
 }))
 
-// GET /api/sessions?convId=&userId=&groupId= —— 会话消息
+// GET /api/sessions?sid= —— 按短会话 ID 读取消息；兼容旧 convId/userId/groupId
 router.get('/sessions', asyncHandler(async (req, res) => {
-  const { convId, userId } = req.query
-  if (!convId || !userId) return fail(res, CODE.BAD, '缺少 convId/userId')
   const r = await getRt(res); if (!r) return
+  const sid = String(req.query.sid || '').trim()
+  if (sid) {
+    const ref = typeof r.session.resolveConversationRef === 'function'
+      ? await r.session.resolveConversationRef(sid).catch(() => null)
+      : (await r.session.listAllConversations().catch(() => [])).find((c) => String(c.shortId || '').toLowerCase() === sid.toLowerCase())
+    if (!ref) return fail(res, CODE.NOTFOUND, '未找到该会话')
+    const groupId = ref.scopeGroupId || 'private'
+    const messages = await r.session.getConversation(ref.scopeUserId, groupId, ref.id).catch(() => [])
+    const meta = await r.session.getConversationMeta(ref.scopeUserId, groupId, ref.id).catch(() => null)
+    return ok(res, {
+      sid: ref.shortId || sid,
+      id: String(ref.id),
+      title: ref.title || meta?.title || '',
+      scopeGroupId: ref.scopeGroupId || '',
+      updatedAt: meta?.updatedAt || ref.updatedAt || Date.now(),
+      messages,
+    })
+  }
+  const { convId, userId } = req.query
+  if (!convId || !userId) return fail(res, CODE.BAD, '缺少 sid 或 convId/userId')
   const groupId = req.query.groupId || 'private'
   const messages = await r.session.getConversation(userId, groupId, convId).catch(() => [])
   const meta = await r.session.getConversationMeta(userId, groupId, convId).catch(() => null)
   return ok(res, {
-    key: r.session.convKey(userId, groupId, convId),
-    scopeUserId: userId,
+    sid: meta?.shortId || '',
+    id: String(convId),
+    title: meta?.title || '',
+    scopeGroupId: groupId === 'private' ? '' : groupId,
     updatedAt: meta?.updatedAt || Date.now(),
     messages,
   })

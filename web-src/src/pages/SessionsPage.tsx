@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
-import { Bot, ChevronRight, MessagesSquare, UserRound, Wrench } from 'lucide-react'
+import { Bot, ChevronRight, MessagesSquare, Wrench } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAsync, useReloadEvent } from '@/lib/hooks'
 import { fmtAgo, safeJson } from '@/lib/format'
 import { EmptyState, ErrorState, PageHeader, SearchInput, Skeleton, Tag } from '@/components/ui'
 import { cn } from '@/lib/cn'
 
-type Conv = { id: string; title?: string; count?: number; preview?: string; updatedAt?: number; scopeUserId?: string; scopeGroupId?: string | null }
+type Conv = { id: string; shortId?: string; title?: string; count?: number; preview?: string; updatedAt?: number; scopeUserId?: string; scopeGroupId?: string | null }
+const convKey = (c: Conv) => c.shortId || c.id
 type Msg = { role: string; content?: any; reasoning?: string; name?: string; tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[] }
 
 function text(v: any): string {
@@ -17,26 +18,26 @@ function text(v: any): string {
 
 export function SessionsPage() {
   const convs = useAsync(() => api.get('/conversations'), [])
-  const [activeId, setActiveId] = useState('')
+  const [activeKey, setActiveKey] = useState('')
   const [q, setQ] = useState('')
 
   const list = (convs.data || []) as Conv[]
   useEffect(() => {
-    if (!activeId && list.length) setActiveId(list[0].id)
-    if (activeId && !list.some((c) => c.id === activeId) && list.length) setActiveId(list[0].id)
-  }, [list, activeId])
-  const conv = list.find((c) => c.id === activeId)
+    if (!activeKey && list.length) setActiveKey(convKey(list[0]))
+    if (activeKey && !list.some((c) => convKey(c) === activeKey) && list.length) setActiveKey(convKey(list[0]))
+  }, [list, activeKey])
+  const conv = list.find((c) => convKey(c) === activeKey)
   const session = useAsync(() => {
-    if (!conv) return Promise.resolve({ key: '', messages: [] })
-    return api.get('/sessions', { convId: conv.id, userId: conv.scopeUserId, groupId: conv.scopeGroupId || 'private' })
-  }, [conv?.id])
+    if (!conv) return Promise.resolve({ sid: '', messages: [] })
+    return api.get('/sessions', { sid: convKey(conv) })
+  }, [conv?.id, conv?.shortId])
 
-  useReloadEvent(() => { void convs.reload(); if (activeId) void session.reload() })
+  useReloadEvent(() => { void convs.reload(); if (activeKey) void session.reload() })
 
   const shown = useMemo(() => {
     const s = q.trim().toLowerCase()
     if (!s) return list
-    return list.filter((c) => `${c.title || ''} ${c.preview || ''} ${c.scopeUserId || ''}`.toLowerCase().includes(s))
+    return list.filter((c) => `${c.title || ''} ${c.preview || ''} ${convKey(c)} ${c.scopeUserId || ''}`.toLowerCase().includes(s))
   }, [list, q])
 
   const messages = (session.data?.messages || []) as Msg[]
@@ -49,7 +50,7 @@ export function SessionsPage() {
         meta={<><span>{list.length} 个会话</span><span className="h-3 w-px bg-ink/10" /><span>按更新时间排序</span></>}
       />
 
-      {(convs.error || session.error) && <div className="mb-4"><ErrorState message={convs.error || session.error} onRetry={() => { void convs.reload(); if (activeId) void session.reload() }} /></div>}
+      {(convs.error || session.error) && <div className="mb-4"><ErrorState message={convs.error || session.error} onRetry={() => { void convs.reload(); if (activeKey) void session.reload() }} /></div>}
 
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
         <section className="panel flex max-h-[calc(100dvh-190px)] flex-col overflow-hidden xl:sticky xl:top-[76px]">
@@ -61,12 +62,12 @@ export function SessionsPage() {
             {convs.loading && !convs.data ? <div className="space-y-2 p-2">{[0, 1, 2, 3].map((i) => <Skeleton key={i} className="h-16" />)}</div>
               : shown.length === 0 ? <EmptyState icon={<MessagesSquare />} title={q ? '没有匹配的会话' : '暂无对话'}>产生一次对话后会出现在这里。</EmptyState>
                 : shown.map((c) => (
-                  <button key={c.id} className={cn('mb-1 w-full rounded-[10px] px-3 py-2.5 text-left transition', activeId === c.id ? 'bg-white/75 shadow-[0_6px_18px_-16px_rgba(10,60,56,.6)]' : 'hover:bg-white/40')} onClick={() => setActiveId(c.id)}>
+                  <button key={convKey(c)} className={cn('mb-1 w-full rounded-[10px] px-3 py-2.5 text-left transition', activeKey === convKey(c) ? 'bg-white/75 shadow-[0_6px_18px_-16px_rgba(10,60,56,.6)]' : 'hover:bg-white/40')} onClick={() => setActiveKey(convKey(c))}>
                     <div className="flex items-start justify-between gap-2"><span className="line-clamp-1 text-[12px] font-medium">{c.title || '未命名会话'}</span>{c.count ? <Tag tone="lagoon">{c.count}</Tag> : null}</div>
                     <p className="mt-0.5 line-clamp-1 text-[10.5px] text-ink-3">{c.preview || '—'}</p>
                     <div className="mt-1 flex items-center justify-between gap-2 text-[9.5px] text-ink-4">
                       <span>更新 {fmtAgo(c.updatedAt)}</span>
-                      <span className="mono">{c.scopeGroupId ? `群 ${c.scopeGroupId}` : '私聊'}</span>
+                      <span className="mono">{convKey(c)}</span>
                     </div>
                   </button>
                 ))}
@@ -77,9 +78,9 @@ export function SessionsPage() {
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line-soft px-5 py-3.5">
             <div className="min-w-0">
               <h2 className="truncate text-[13.5px] font-semibold">{conv?.title || '会话回放'}</h2>
-              <div className="mono mt-0.5 truncate text-[9.5px] text-ink-3">{session.data?.key || conv?.id || '—'}</div>
+              <div className="mono mt-0.5 truncate text-[9.5px] text-ink-3">{session.data?.sid || convKey(conv || { id: '' }) || '—'}</div>
             </div>
-            {session.data?.scopeUserId && <Tag tone="lagoon"><UserRound size={10} />{session.data.scopeUserId}</Tag>}
+            <Tag tone="lagoon">{conv?.scopeGroupId ? '群聊' : '私聊'}</Tag>
           </div>
           <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-5 py-4">
             {session.loading && !session.data ? <div className="space-y-3">{[0, 1, 2].map((i) => <Skeleton key={i} className="h-20" />)}</div>

@@ -2062,7 +2062,7 @@ export class Chat extends plugin {
         { reg: '^#LLM进化$', fnc: 'llmEvolve', permission: 'master' },
         // —— 所有用户 ——
         { reg: '^#聊天列表$', fnc: 'chatList' },
-        { reg: '^#进入聊天\\s*(\\d+)', fnc: 'enterChat' },
+        { reg: '^#进入聊天\\s*([0-9a-zA-Z]+)', fnc: 'enterChat' },
         { reg: '^#new$', fnc: 'newChat' },
         { reg: '^#记忆$', fnc: 'showMemory' },
         { reg: '^#忘掉\\s+(.+)', fnc: 'forget' },
@@ -2276,6 +2276,7 @@ export class Chat extends plugin {
     // per-会话日志文件名所需信息；uid 用 scopeUserId 保证"同会话同文件"（群共享时为 __group__）
     let __convMeta = null
     try { __convMeta = await rt.session.getConversationMeta(ctx.scopeUserId, ctx.groupId, ctx.conversationId) } catch { /* noop */ }
+    ctx.conversationShortId = __convMeta?.shortId || null
     ctx.devScope = { gid: ctx.groupId || 'private', uid: ctx.scopeUserId, convId: ctx.conversationId, createdAt: __convMeta?.createdAt || Date.now() }
     devScope = ctx.devScope
     devLog('trigger', {
@@ -2724,7 +2725,7 @@ export class Chat extends plugin {
           }
           const img = await renderReplyImage(cleanBody, {
           scale: cfg.reply?.renderScale ?? 3,
-          footer: `会话 #${ctx.conversationId} · 对话 ${traceId.slice(0, 8)}`,
+          footer: `会话 ${ctx.conversationShortId || `#${ctx.conversationId}`} · 对话 ${traceId.slice(0, 8)}`,
           extraCss: REPLY_CSS,
           chat: {
             userText: text,
@@ -2904,21 +2905,28 @@ export class Chat extends plugin {
     const ctx = ctxOf(this.e)
     const list = await rt.session.listConversations(ctx.scopeUserId, ctx.groupId)
     const activeId = await rt.session.getActiveConversation(ctx.scopeUserId, ctx.groupId)
-    const html = buildChatListHtml({ user: ctx.userId, conversations: list, activeId })
+    const activeShortId = list.find((c) => String(c.id) === String(activeId))?.shortId || activeId
+    const html = buildChatListHtml({ user: ctx.userId, conversations: list, activeId: activeShortId })
     // render.card=false：弱服务器直接走文本回退（此前只有 #帮助 尊重该开关，列表仍会截图，配置互搏审计 F26）
     const img = Config.get().agent?.render?.card === false ? null : await screenshot('agents-plugin/chat-list', html)
     if (img) return this.e.reply(img), true
-    const lines = list.map((c) => `#${c.id} ${c.title}（${c.count}条）${c.id === activeId ? ' [当前]' : ''}`)
+    const isActive = (c) => String(c.id) === String(activeId) || String(c.shortId || c.id) === String(activeId)
+    const lines = list.map((c) => `#${c.shortId || c.id} ${c.title}（${c.count}条）${isActive(c) ? ' [当前]' : ''}`)
     await this.e.reply(['聊天列表', ...lines].join('\n'))
     return true
   }
 
   async enterChat() {
-    const id = this.e.msg.match(/\d+/)?.[0]
+    const input = this.e.msg.match(/^#进入聊天\s*([0-9a-zA-Z]+)/)?.[1]
     const rt = await getRuntime()
     const ctx = ctxOf(this.e)
-    const ok = await rt.session.setActiveConversation(ctx.scopeUserId, ctx.groupId, id)
-    await this.e.reply(ok ? `已切换到对话 #${id}` : `未找到对话 #${id}，发送 #聊天列表 查看`)
+    const ref = input
+      ? await rt.session.resolveConversationRef(input, { userId: ctx.scopeUserId, groupId: ctx.groupId }).catch(() => null)
+      : null
+    const id = ref?.id || input
+    const ok = id ? await rt.session.setActiveConversation(ctx.scopeUserId, ctx.groupId, id) : false
+    const label = ref?.shortId || input || ''
+    await this.e.reply(ok ? `已切换到会话 #${label}` : `未找到会话 #${label || ''}，发送 #聊天列表 查看`)
     return true
   }
 
@@ -2926,7 +2934,7 @@ export class Chat extends plugin {
     const rt = await getRuntime()
     const ctx = ctxOf(this.e)
     const conv = await rt.session.createConversation(ctx.scopeUserId, ctx.groupId)
-    await this.e.reply(`已新建对话 #${conv.id}（${conv.title}），后续消息在此对话中继续`)
+    await this.e.reply(`已新建会话 #${conv.shortId || conv.id}（${conv.title}），后续消息在此会话中继续`)
     return true
   }
 
@@ -3272,7 +3280,7 @@ export class Chat extends plugin {
     let header = `# agents-plugin 错误上报\n# 用户：${ctx.userId}（群：${ctx.groupId || '私聊'}）\n# 描述：${desc || '(无)'}\n# 时间：${ts.toLocaleString('zh-CN')}\n# 会话数：${collected.length}\n`
     let body = ''
     for (const { conv, file } of collected) {
-      body += `\n===== 会话 #${conv.id} ${conv.title || ''} | createdAt ${conv.createdAt} | updatedAt ${conv.updatedAt} | file ${file} =====\n`
+      body += `\n===== 会话 ${conv.shortId || `#${conv.id}`} ${conv.title || ''} | createdAt ${conv.createdAt} | updatedAt ${conv.updatedAt} | file ${file} =====\n`
       try { body += fs.readFileSync(path.join(devDir, file), 'utf8') } catch (e) { body += `(读取失败: ${e?.message})\n` }
     }
     try { fs.mkdirSync(Config.path.temp, { recursive: true }); fs.writeFileSync(bundlePath, header + body) }

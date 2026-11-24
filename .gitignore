@@ -33,9 +33,9 @@ CODEBUDDY.md
 # 临时检查脚本（下划线开头为 dev 专用，不入库；离线测试 test.mjs 入库以支持 CI，审计 §10）
 **/_*.mjs
 
-# 运行时产物
+# 运行时产物（只忽略仓库根目录的 data/；web-src/src/data/nav.ts 是前端必需源码）
 temp/
-data/
+/data/
 
 # 表情包资源（用户 git clone 而来，体积大，不入库）
 resources/stickers/
@@ -57,7 +57,7 @@ Screenshot_*.png
 .crawl4ai-browsers/
 
 # 无损压缩原文归档（运行时数据，不入库）
-data/context-archive/
+/data/context-archive/
 
 # Python 编译缓存
 __pycache__/

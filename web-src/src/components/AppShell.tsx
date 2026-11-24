@@ -8,6 +8,7 @@ import { ALL_NAV, NAV } from '@/data/nav'
 import { useAuth, useSignals } from '@/lib/auth'
 import { cn } from '@/lib/cn'
 import { BrandMark } from '@/components/Brand'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Button, Kbd } from '@/components/ui'
 import { useAsync, useHotkey } from '@/lib/hooks'
 import { api } from '@/lib/api'
@@ -265,7 +266,9 @@ export function AppShell() {
               exit={{ opacity: 0, y: -4 }}
               transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             >
-              <Outlet />
+              <ErrorBoundary key={pageKey} label={pageKey}>
+                <Outlet />
+              </ErrorBoundary>
             </motion.div>
           </AnimatePresence>
         </main>

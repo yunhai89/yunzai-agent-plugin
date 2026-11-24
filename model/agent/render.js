@@ -178,22 +178,25 @@ export function buildHelpHtml({ title = 'agents-plugin 帮助', subtitle = '', s
 }
 
 /**
- * 聊天列表图：conversations = [{ id, title, count, updatedAt, preview }]
+ * 聊天列表图：conversations = [{ id, shortId, title, count, updatedAt, preview }]
+ * 展示短会话 ID（shortId）；旧数据没有 shortId 时回退内部数字 id。
  */
 export function buildChatListHtml({ user = '', conversations = [], activeId = null } = {}) {
+  const label = (c) => c.shortId || c.id
+  const isActive = (c) => String(c.id) === String(activeId) || String(label(c)) === String(activeId)
   const body = conversations.length
     ? conversations
-        .map((c) => `<div class="conv ${c.id === activeId ? 'active' : ''}">
-          <div class="conv-id">#${esc(c.id)}</div>
+        .map((c) => `<div class="conv ${isActive(c) ? 'active' : ''}">
+          <div class="conv-id">#${esc(label(c))}</div>
           <div class="conv-body">
-            <div class="conv-title">${esc(c.title)}${c.id === activeId ? '<span class="tag">当前</span>' : ''}</div>
+            <div class="conv-title">${esc(c.title)}${isActive(c) ? '<span class="tag">当前</span>' : ''}</div>
             <div class="conv-preview">${esc(c.preview || '（暂无消息）')}</div>
           </div>
           <div class="conv-meta">${esc(c.count)} 条<br>${esc(fmtTime(c.updatedAt))}</div>
         </div>`)
         .join('')
     : '<div class="empty">还没有对话，@机器人 或 #new 开始第一段对话</div>'
-  return buildHtml({ title: '聊天列表', subtitle: user ? `用户 ${esc(user)}` : '', bodyHtml: body, footer: '#进入聊天 + id 切换 · #new 新建对话', extraCss: LIST_CSS })
+  return buildHtml({ title: '聊天列表', subtitle: user ? `用户 ${esc(user)}` : '', bodyHtml: body, footer: '#进入聊天 + 会话ID 切换 · #new 新建对话', extraCss: LIST_CSS })
 }
 
 /**

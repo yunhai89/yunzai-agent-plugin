@@ -10,6 +10,7 @@
  */
 
 import { createKeyedLock } from './store/lock.js'
+import { shortConversationId } from './conversation-id.js'
 
 export class SessionStore {
   constructor({ kv, prefix = 'Yz:agent:sess:', window = 400, ttl = 86400, cacheMax = 500 } = {}) { // window=绝对安全上限（曾 20 每轮滑窗 bust 缓存）
@@ -182,6 +183,20 @@ export class SessionStore {
     return id
   }
 
+  _convShortId(userId, groupId, convId) {
+    return shortConversationId({
+      scopeUserId: userId, scopeGroupId: groupId && groupId !== 'private' ? groupId : '', conversationId: convId,
+    })
+  }
+
+  /** 旧会话补写短 ID / scope 身份（短 ID 确定性生成；scope 落盘后 Web 全局列表不再从键猜身份）。 */
+  _ensureConvMeta(c, userId, groupId, convId) {
+    if (!c.shortId) c.shortId = this._convShortId(userId, groupId, convId)
+    if (c.scopeUserId == null) c.scopeUserId = String(userId)
+    if (c.scopeGroupId == null) c.scopeGroupId = groupId && groupId !== 'private' ? String(groupId) : ''
+    return c
+  }
+
   /** 新建对话并设为活跃（加锁：并发首条消息不再生成重复 id/重复对话） */
   async createConversation(userId, groupId, title) {
     return this._withLock(this.activeKey(userId, groupId), () => this._createConversationLocked(userId, groupId, title))
@@ -191,6 +206,9 @@ export class SessionStore {
     const id = await this._nextConvId(userId, groupId)
     const conv = {
       id,
+      shortId: this._convShortId(userId, groupId, id),
+      scopeUserId: String(userId),
+      scopeGroupId: groupId && groupId !== 'private' ? String(groupId) : '',
       title: title || `对话 ${id}`,
       messages: [],
       createdAt: Date.now(),
@@ -228,11 +246,14 @@ export class SessionStore {
       if (!c) continue
       out.push({
         id: c.id,
+        shortId: c.shortId || this._convShortId(userId, groupId, c.id),
         title: c.title || `对话 ${c.id}`,
         count: (c.messages || []).length,
         updatedAt: c.updatedAt || c.createdAt || 0,
         createdAt: c.createdAt || 0,
         preview: preview(c.messages || []),
+        scopeUserId: String(userId),
+        scopeGroupId: groupId && groupId !== 'private' ? String(groupId) : '',
       })
     }
     return out.sort((a, b) => Number(a.id) - Number(b.id))
@@ -246,22 +267,51 @@ export class SessionStore {
     for (const k of keys) {
       const c = await this.kv.get(k).catch(() => null)
       if (!c) continue
-      // 键形态：...conv:<gid>:<uid>:<convId>（gid='private' 或数字；末两段为 uid/convId）
+      // 键形态：...conv:<gid>:<scopeUserId>:<convId>。
+      // ⚠ scopeUserId 本身可能含冒号（QQ 官方为 `<self_id>:<openid>`），不能按末两段切；
+      // 首段是 gid、末段是 convId，中间整体才是 scopeUserId。
       const parts = k.slice(`${this.prefix}conv:`.length).split(':')
-      const userId = parts[parts.length - 2] || ''
-      const groupId = parts.slice(0, -2).join(':') || 'private'
+      const parsedGroup = parts[0] || 'private'
+      let parsedUser = parts.length >= 3 ? parts.slice(1, -1).join(':') : ''
+      // v1.26.30 前的群共享旧键是字面量 `__group__`（无群号后缀）；规范 scope 是 `__group__:<gid>`，
+      // 与 listConversations 的计算口径对齐，否则 Web 与 #聊天列表 会对同一旧会话算出不同短 ID。
+      if (parsedUser === '__group__' && parsedGroup !== 'private') parsedUser = `__group__:${parsedGroup}`
+      // 新会话把 scope 身份随对象落盘（避免键解析歧义）；旧会话按上面的键形态回退。
+      const scopeUserId = c.scopeUserId != null ? String(c.scopeUserId) : parsedUser
+      const scopeGroupId = c.scopeGroupId != null
+        ? String(c.scopeGroupId)
+        : (parsedGroup === 'private' ? '' : parsedGroup)
       out.push({
         id: c.id,
+        shortId: c.shortId || this._convShortId(scopeUserId, scopeGroupId, c.id),
         title: c.title || `对话 ${c.id}`,
         count: (c.messages || []).length,
         updatedAt: c.updatedAt || c.createdAt || 0,
         createdAt: c.createdAt || 0,
         preview: preview(c.messages || []),
-        scopeUserId: userId,
-        scopeGroupId: groupId === 'private' ? '' : groupId,
+        scopeUserId,
+        scopeGroupId,
       })
     }
     return out.sort((a, b) => b.updatedAt - a.updatedAt)
+  }
+
+  /** 把短会话 ID（或当前 scope 的旧数字 id）解析为会话引用；找不到返回 null。 */
+  async resolveConversationRef(ref, { userId = '', groupId = null } = {}) {
+    const input = String(ref ?? '').trim()
+    if (!input) return null
+    const scoped = userId ? await this.listConversations(userId, groupId) : []
+    if (scoped.length) {
+      const byShort = scoped.find((c) => String(c.shortId || '').toLowerCase() === input.toLowerCase())
+      if (byShort) return byShort
+      if (/^\d+$/.test(input)) {
+        const byId = scoped.find((c) => String(c.id) === input)
+        if (byId) return byId
+      }
+    }
+    // 短 ID 是全局唯一的；Web 回放没有 scope 上下文，必须能跨 scope 解析。
+    const all = await this.listAllConversations()
+    return all.find((c) => String(c.shortId || '').toLowerCase() === input.toLowerCase()) || null
   }
 
   /** 取活跃对话 id；若无则自动创建首个（加锁：并发首次不再各建一个对话） */
@@ -288,10 +338,13 @@ export class SessionStore {
   }
 
   async setActiveConversation(userId, groupId, convId) {
+    // 接受短会话 ID；活跃指针仍只存内部 id，旧数字序号继续兼容。
+    const ref = await this.resolveConversationRef(convId, { userId, groupId })
+    const id = ref ? String(ref.id) : String(convId)
     // 旧群共享键也算存在（第 8 轮审计 medium-1），否则恢复历史对话时会判为不存在
-    const exists = await this._readConv(userId, groupId, String(convId), { migrate: true })
+    const exists = await this._readConv(userId, groupId, id, { migrate: true })
     if (!exists) return false
-    await this.kv.set(this.activeKey(userId, groupId), String(convId))
+    await this.kv.set(this.activeKey(userId, groupId), id)
     return true
   }
 
@@ -305,7 +358,15 @@ export class SessionStore {
   async getConversationMeta(userId, groupId, convId) {
     const c = await this._readConv(userId, groupId, String(convId))
     if (!c) return null
-    return { id: c.id, title: c.title, createdAt: c.createdAt, updatedAt: c.updatedAt }
+    return {
+      id: c.id,
+      shortId: c.shortId || this._convShortId(userId, groupId, c.id),
+      scopeUserId: c.scopeUserId != null ? String(c.scopeUserId) : String(userId),
+      scopeGroupId: c.scopeGroupId != null
+        ? String(c.scopeGroupId)
+        : (groupId && groupId !== 'private' ? String(groupId) : ''),
+      title: c.title, createdAt: c.createdAt, updatedAt: c.updatedAt,
+    }
   }
 
   async appendConversation(userId, groupId, convId, msgs, extra = {}) {
@@ -320,7 +381,10 @@ export class SessionStore {
         this.logger?.('warn', `[session] 对话数据损坏，已拒绝写回以免抹掉历史：${k}`)
         throw new Error(CORRUPT_CONV_MSG)
       }
-      const c = raw || { id: String(convId), title: `对话 ${convId}`, messages: [], createdAt: Date.now() }
+      const c = this._ensureConvMeta(
+        raw || { id: String(convId), title: `对话 ${convId}`, messages: [], createdAt: Date.now() },
+        userId, groupId, convId,
+      )
       const next = [...c.messages, ...msgs]
       // 同上：append-only；Agent 滞回压缩负责水位（cacheEpoch 持久化在 extra）
       const trimmed = next.length > this.window ? trimKeepFirst(next, this.window) : next
@@ -356,7 +420,10 @@ export class SessionStore {
         this.logger?.('warn', `[session] 对话数据损坏，已拒绝覆写以免误判为压缩后落盘：${k}`)
         throw new Error(CORRUPT_CONV_MSG)
       }
-      const c = raw || { id: String(convId), title: `对话 ${convId}`, messages: [], createdAt: Date.now() }
+      const c = this._ensureConvMeta(
+        raw || { id: String(convId), title: `对话 ${convId}`, messages: [], createdAt: Date.now() },
+        userId, groupId, convId,
+      )
       c.messages = Array.isArray(messages) ? messages : []
       c.updatedAt = Date.now()
       for (const [ek, ev] of Object.entries(extra || {})) if (ev !== undefined) c[ek] = ev
