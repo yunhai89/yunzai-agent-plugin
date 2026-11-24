@@ -12,23 +12,52 @@ export const ANSI = Object.freeze({
   R: '\x1b[0m', r: '\x1b[31m', g: '\x1b[32m', y: '\x1b[33m', b: '\x1b[34m', m: '\x1b[35m', c: '\x1b[36m', gry: '\x1b[90m', B: '\x1b[1m',
 })
 
+/** 单值 → 单行可读文本：对象 JSON 化，Error 保留 message + 栈首行。 */
+function formatArg(v) {
+  if (v instanceof Error) {
+    return `${v.name || 'Error'}: ${v.message}${v.stack ? `\n${v.stack.split('\n').slice(0, 4).join('\n')}` : ''}`
+  }
+  if (typeof v === 'string') return v
+  if (v == null) return String(v)
+  if (typeof v === 'object') {
+    try { return JSON.stringify(v) } catch { return String(v) }
+  }
+  return String(v)
+}
+
+/**
+ * 多参数 → 单个可读字符串。
+ * 直接把数组交给 Bot.makeLog 会被框架按 Node 数组格式打印（带 `[length]: N`、逐项引号/换行），
+ * 多行工具日志几乎无法阅读；统一拼成一行（Error 栈除外），并做长度保护。
+ */
+export function formatLogArgs(args = [], { max = 4000 } = {}) {
+  const list = Array.isArray(args) ? args : [args]
+  // 单字符串（面板/多行正文）原样保留：盒式面板依赖连续空格对齐，不能压成单空格。
+  const singleText = list.length === 1 && typeof list[0] === 'string'
+  let text = singleText ? list[0] : list.map(formatArg).join(' ')
+  if (!singleText) text = text.replace(/[ \t]+/g, ' ')
+  text = text.trim()
+  return text.length > max ? `${text.slice(0, max)}…(+${text.length - max})` : text
+}
+
 function log(level, ...args) {
+  const msg = formatLogArgs(args)
   // Web「调试日志」开启时，Yunzai 的 logger level 仍可能是 info，Bot.makeLog('debug')
   // 会被框架过滤。这里把 debug/trace 强制走 info 通道并加 [DEBUG] 前缀，
   // 保证后台确实能看到调试输出；关闭后恢复原级别过滤。
   if (FORCE_DEBUG && (level === 'debug' || level === 'trace')) {
     try {
       if (typeof Bot !== 'undefined' && typeof Bot.makeLog === 'function') {
-        return Bot.makeLog('info', ['[DEBUG]', ...(args.length === 1 ? args : [args])], TAG, true)
+        return Bot.makeLog('info', `[DEBUG] ${msg}`, TAG, true)
       }
     } catch (e) { /* fall through */ }
     const lg = typeof logger !== 'undefined' ? logger : console
     const fn = lg?.info || console.log
-    return fn.call(lg, `[${TAG}][DEBUG]`, ...args)
+    return fn.call(lg, `[${TAG}][DEBUG]`, msg)
   }
   try {
     if (typeof Bot !== 'undefined' && typeof Bot.makeLog === 'function') {
-      return Bot.makeLog(level, args.length === 1 ? args[0] : args, TAG)
+      return Bot.makeLog(level, msg, TAG)
     }
   } catch (e) {
     // ignore and fall through
@@ -36,7 +65,7 @@ function log(level, ...args) {
 
   const lg = typeof logger !== 'undefined' ? logger : console
   const fn = typeof lg[level] === 'function' ? lg[level] : lg.info
-  if (typeof fn === 'function') fn.call(lg, `[${TAG}]`, ...args)
+  if (typeof fn === 'function') fn.call(lg, `[${TAG}]`, msg)
 }
 
 const Log = {

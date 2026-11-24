@@ -276,6 +276,7 @@ await test('buildSkillsPromptSection：目录为空则不生成段', async () =>
 await test('EXECUTION_BIAS：含行动偏向文案', async () => {
   ok(EXECUTION_BIAS.includes('立刻动手'), '偏向立即行动')
   ok(EXECUTION_BIAS.includes('实时核验'), '工具核验')
+  ok(EXECUTION_BIAS.includes('不认识的词'), '未知术语先搜索再回答')
 })
 
 await test('SEARCH_VERIFICATION：防信息茧房（多面获取/交叉验证/对抗验证）', async () => {
@@ -286,6 +287,7 @@ await test('SEARCH_VERIFICATION：防信息茧房（多面获取/交叉验证/�
   ok(SEARCH_VERIFICATION.includes('辟谣'), '给出找反证的具体做法')
   ok(SEARCH_VERIFICATION.includes('不要静默选一个'), '冲突必须并列而非静默选择')
   ok(SEARCH_VERIFICATION.includes('queries'), '与 web_search 多查询参数呼应')
+  ok(SEARCH_VERIFICATION.includes('先搜再答'), '未知术语先搜索')
   ok(SEARCH_VERIFICATION.includes('engines') && SEARCH_VERIFICATION.includes('换 `engine`'), '结果不理想时要求换源重搜')
   ok(SEARCH_VERIFICATION.includes('只是证据') && SEARCH_VERIFICATION.includes('原样倾倒'), '要求综合而非倾倒搜索结果')
   // 常驻注入：有身份时必须带上该段；空入参仍为空

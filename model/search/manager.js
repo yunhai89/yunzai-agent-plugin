@@ -319,6 +319,7 @@ export class SearchManager {
         }
         this._cool.delete(name)
         attempts.push({ name, ok: true, count: results.length, quality: quality.score })
+        this.logger('debug', `[search] ${name} ok count=${results.length} quality=${quality.score}`)
         const note = errors.length ? `Note: ${errors.slice(-3).join('; ')}; using ${name}.` : undefined
         const out = {
           ...result, results, provider: result.provider || name,
@@ -421,6 +422,7 @@ export class SearchManager {
       ...(s.ok ? {} : { error: s.error || 'empty', ...(s.errorClass ? { errorClass: s.errorClass } : {}) }),
     }))
     const failed = providers.filter((p) => !p.ok).map((p) => p.name)
+    this.logger('debug', `[search] engines ${names.join('/')} → ${providers.map((p) => `${p.name}:${p.ok ? `${p.count}条/q${p.quality}` : `失败(${p.error || 'empty'})`}`).join(' ')}`)
     return {
       ...merged,
       provider: okItems.length === 1 ? okItems[0].name : 'multi',
@@ -466,7 +468,7 @@ export class SearchManager {
       merged.available_engines = this.retryableProviders
       if (merged.providers.length) merged.quality = Math.max(...merged.providers.map((p) => Number(p.quality) || 0))
     }
-    this.logger('debug', `[search] searchMany ${list.length} queries${engines.length ? ` × ${engines.join('/')}` : ''} → ${merged.results.length} merged results${merged.failures.length ? `（${merged.failures.length} 条查询失败）` : ''}`)
+    this.logger('debug', `[search] searchMany ${list.length} queries${engines.length ? ` × ${engines.join('/')}` : ''} → ${merged.results.length} merged results${merged.sources?.length ? ` sources=${merged.sources.join('/')}` : ''}${merged.failures.length ? `（${merged.failures.length} 条查询失败）` : ''}`)
     return merged
   }
 

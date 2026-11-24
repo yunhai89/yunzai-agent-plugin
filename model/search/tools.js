@@ -15,7 +15,7 @@ export function makeSearchTools(manager, defaults = {}) {
   return [
     {
       name: 'web_search',
-      description: '联网搜索（免费引擎优先 + 自动回退：Bing / DDG / AnySearch / Exa(keyless) / Tavily(keyless) / Keenable / Firecrawl / Parallel / You.com / SearXNG；配置 key 后可用 Brave / Perplexity 及增强额度）。输入查询词，返回排序后的相关结果 + 可选 AI 答案；用于获取实时信息或超出知识范围的内容。核验关键事实时用 queries 一次并行发 2~4 个不同角度（官方一手/不同措辞/找反证），结果按 URL 去重合并。**若返回结果不理想（空/答非所问/质量提示偏低/只有转载/来源太单一），不要直接拿它回答：用 engines 显式指定 2~4 个其它搜索源（如 ["bing","ddg","exa"]）重搜，或换 engine 单个源重搜，工具会把多源结果去重合并并返回各源状态；结合多轮搜索结果再下结论。** 若所有搜索源都不可用，会返回结构化错误并附 alternatives，不要只反复重试本工具。',
+      description: '联网搜索（免费引擎优先 + 自动回退：Bing / DDG / AnySearch / Exa(keyless) / Tavily(keyless) / Keenable / Firecrawl / Parallel / You.com / SearXNG；配置 key 后可用 Brave / Perplexity 及增强额度）。输入查询词，返回排序后的相关结果 + 可选 AI 答案；用于获取实时信息或超出知识范围的内容。**遇到不认识的术语/缩写/梗/项目名/角色名，先用它搜索确认，不要直接反问用户或说不知道。** 核验关键事实时用 queries 一次并行发 2~4 个不同角度（官方一手/不同措辞/找反证），结果按 URL 去重合并。**若返回结果不理想（空/答非所问/质量提示偏低/只有转载/来源太单一），不要直接拿它回答：用 engines 显式指定 2~4 个其它搜索源（如 ["bing","ddg","exa"]）重搜，或换 engine 单个源重搜，工具会把多源结果去重合并并返回各源状态；结合多轮搜索结果再下结论。** 若所有搜索源都不可用，会返回结构化错误并附 alternatives，不要只反复重试本工具。',
       category: 'query',
       meta: { summary: '联网搜索（免费引擎优先/自动回退）', capabilities: ['net', 'net.search'] },
       parameters: {
