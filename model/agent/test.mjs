@@ -1937,7 +1937,9 @@ await test('会话前缀：30 轮逐字节前缀 + 滞回压缩只跨 epoch 重�
     provider, tools, session, maxTurns: 5, reflect: 'off',
     // token 水位滞回（显式覆盖仅用于测试）：80% 触发 → 45% 目标。
     // 消息条数水位已随 contextMsg* 配置一起移除，压缩始终按可用输入预算计算。
-    contextWindow: 2000, contextKeepRecent: 4,
+    // prompt 优化后常驻 system 变短，固定 2000 窗口在 15 轮内已达不到 80% 水位；
+    // 收窄到 1200 保持“必然触发一次压缩”的测试意图，而不是让 fixture 依赖 prompt 体积。
+    contextWindow: 1200, contextKeepRecent: 4,
     estimateTokens: (t) => Math.ceil(String(t || '').length / 4),
   })
   const epochsSeen = []

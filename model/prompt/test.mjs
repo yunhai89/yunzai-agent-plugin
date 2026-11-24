@@ -2,7 +2,7 @@
 import {
   inject, SystemPromptBuilder, ToolPromptBuilder, assembleSystem,
   TEMPLATES, fromTemplate,
-  EXECUTION_BIAS, SEARCH_VERIFICATION, SERVICE_DIRECTIVE, buildSkillsPromptSection, buildToolCatalogSection, buildAgentSystemPrompt,
+  EXECUTION_BIAS, SEARCH_VERIFICATION, SERVICE_DIRECTIVE, buildSkillsPromptSection, buildToolCatalogSection, buildAgentSystemPrompt, hasSearchCapability,
   PromptTemplate, PromptRegistry, runFixtures, runEval, regressionGate,
   evolveTemplate, evolveTemplates,
 } from './index.js'
@@ -49,7 +49,7 @@ await test('TEMPLATES：预优化模板', async () => {
   for (const k of ['agent', 'orchestrator', 'researcher', 'scope', 'synthesis', 'citation', 'judge']) {
     ok(TEMPLATES[k], `模板 ${k} 存在`)
   }
-  ok(TEMPLATES.agent.version === '1.3.0', 'agent 版本')
+  ok(TEMPLATES.agent.version === '1.4.0', 'agent 版本')
   ok(!TEMPLATES.agent.system.includes('CRITICAL'), 'agent 无激进')
   ok(TEMPLATES.researcher.system.includes('先宽后窄'), 'researcher 先宽后窄')
 })
@@ -238,6 +238,22 @@ await test('buildAgentSystemPrompt：分层组装 + 稳定前缀', async () => {
   eq(buildAgentSystemPrompt(), '', '全空 → 空串')
 })
 
+await test('buildAgentSystemPrompt：按工具能力裁剪常驻段', async () => {
+  const noTools = buildAgentSystemPrompt({ identity: '你是助手', serviceDirective: SERVICE_DIRECTIVE, toolNames: [] })
+  ok(noTools.includes('服务准则'), '无工具仍保留服务准则')
+  ok(!noTools.includes('## 执行取向') && !noTools.includes('## 搜索与核验'), '无工具不注入执行/搜索段')
+
+  const memoryOnly = buildAgentSystemPrompt({ identity: '你是助手', toolNames: ['memory_search', 'clarify'] })
+  ok(memoryOnly.includes('## 执行取向'), '有工具注入执行取向')
+  ok(!memoryOnly.includes('## 搜索与核验'), '无搜索入口不注入搜索段')
+
+  const withSearch = buildAgentSystemPrompt({ identity: '你是助手', toolNames: ['memory_search', 'web_search'] })
+  ok(withSearch.includes('## 执行取向') && withSearch.includes('## 搜索与核验'), '有搜索入口注入搜索段')
+
+  ok(hasSearchCapability(['web_search']) && hasSearchCapability(['moegirl__search']), '识别搜索能力')
+  ok(!hasSearchCapability(['memory_search', 'calculate']), '无搜索能力')
+})
+
 await test('buildToolCatalogSection：每工具一行速查', async () => {
   const cat = buildToolCatalogSection([
     { name: 'web_search', description: '搜索互联网获取实时信息' },
@@ -247,6 +263,7 @@ await test('buildToolCatalogSection：每工具一行速查', async () => {
   ok(cat.includes('- web_search：搜索互联网获取实时信息'), '用 description')
   ok(cat.includes('- skill：加载技能说明书'), '优先 meta.summary')
   ok(/- x：A{48}…/.test(cat), '超长 description 截断到 48 + …')
+  ok(cat.indexOf('- skill') < cat.indexOf('- web_search'), '按名称稳定排序（保护缓存前缀）')
   eq(buildToolCatalogSection([]), '', '空工具 → 空串')
 })
 
@@ -270,6 +287,7 @@ await test('SEARCH_VERIFICATION：防信息茧房（多面获取/交叉验证/�
   ok(SEARCH_VERIFICATION.includes('不要静默选一个'), '冲突必须并列而非静默选择')
   ok(SEARCH_VERIFICATION.includes('queries'), '与 web_search 多查询参数呼应')
   ok(SEARCH_VERIFICATION.includes('engines') && SEARCH_VERIFICATION.includes('换 `engine`'), '结果不理想时要求换源重搜')
+  ok(SEARCH_VERIFICATION.includes('只是证据') && SEARCH_VERIFICATION.includes('原样倾倒'), '要求综合而非倾倒搜索结果')
   // 常驻注入：有身份时必须带上该段；空入参仍为空
   const sys = buildAgentSystemPrompt({ identity: '你是助手' })
   ok(sys.includes('## 搜索与核验') && sys.includes('信息茧房'), 'buildAgentSystemPrompt 注入搜索纪律段')

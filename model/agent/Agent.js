@@ -27,7 +27,7 @@ import { isToolErrorContent } from './tool-result.js'
 import { enrichToolFailure } from './tool-fallback.js'
 import { tagUntrusted, unwrapUntrusted } from './guard.js'
 import { compactMessages } from './compact/index.js'
-import { TEMPLATES, SERVICE_DIRECTIVE, SEARCH_VERIFICATION, REFLECTION_DIRECTIVE, buildToolCatalogSection, buildToolDiscoverySection, buildSkillsPromptSection, buildStickerPromptSection, buildAgentSystemPrompt } from '../prompt/index.js'
+import { TEMPLATES, SERVICE_DIRECTIVE, EXECUTION_BIAS, SEARCH_VERIFICATION, REFLECTION_DIRECTIVE, buildToolCatalogSection, buildToolDiscoverySection, buildSkillsPromptSection, buildStickerPromptSection, buildAgentSystemPrompt, hasSearchCapability } from '../prompt/index.js'
 import { detectScheduleIntent, isSharedScopeId, SHARED_SCOPE_PREFIX } from './schedule.js'
 import { decideThinkingSmart, classifyComplexity, clampThinkingBudget } from '../llm/thinking.js'
 import { resolveModelContext, notePromptUsage, getPromptCalibration, isContextOverflowError, learnContextFromError } from '../llm/model-context.js'
@@ -1527,6 +1527,13 @@ export class Agent {
     // 它在会话内会随 memory 工具写入而变化，留在 system 里等于每次写记忆都打穿其后全部历史前缀。
     const memorySnapshot = ''
     const guardHardening = this.guard ? (this.guard.systemHardening() || '') : ''
+    // 按当前实际工具集裁剪常驻指令：无搜索入口不注入搜索纪律，无工具不注入执行/恢复规则。
+    const toolListNames = this._buildToolList().map((t) => t?.name).filter(Boolean)
+    const searchEnabled = hasSearchCapability(toolListNames)
+    const directiveText = identity
+      ? [SERVICE_DIRECTIVE, toolListNames.length ? EXECUTION_BIAS : '', searchEnabled ? SEARCH_VERIFICATION : '']
+        .filter(Boolean).join('\n\n')
+      : ''
     const system = buildAgentSystemPrompt({
       identity,
       serviceDirective: SERVICE_DIRECTIVE,
@@ -1535,10 +1542,11 @@ export class Agent {
       stickerSection,
       memorySnapshot,
       guardHardening,
+      toolNames: toolListNames,
     })
     // token 分段估算（供 token_breakdown；toolListTokens 在 run 处每轮补，因 _assembleSystem 早于 toolList 合成）
     const breakdown = tokenBreakdown({
-      identity, service: SERVICE_DIRECTIVE + '\n\n' + SEARCH_VERIFICATION, context: '', guard: guardHardening,
+      identity, service: directiveText, context: '', guard: guardHardening,
       toolCatalog, toolListTokens: 0,
       recalledMemory: '', memorySnapshot, skills: skillsSection, sticker: stickerSection,
       conversationTokens: this._estimateMessagesTokens(),
@@ -1548,9 +1556,8 @@ export class Agent {
     // 保留该字段会让「会话内写记忆」被误报成前缀断点（实际前缀没断）。
     // tools 数组（渲染在请求最前缀）也必须纳入指纹：MCP 运行期注册等让数组变化时，
     // 此前指纹只含静态目录 toolHash → 整段前缀失效却记不到任何 cacheBreakReason（第 9 轮审计 S5）
-    const toolListNames = this._buildToolList().map((t) => t?.name).filter(Boolean)
     const fp = {
-      systemHash: shortHash(identity + SERVICE_DIRECTIVE + SEARCH_VERIFICATION),
+      systemHash: shortHash(identity + directiveText),
       toolListHash: shortHash(toolListNames.join(',')),
       toolHash: shortHash(toolCatalog),
       stickerVersion: shortHash(stickerSection),
