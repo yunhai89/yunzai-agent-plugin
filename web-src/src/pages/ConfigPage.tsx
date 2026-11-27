@@ -8,6 +8,7 @@ import { api } from '@/lib/api'
 import { useAsync } from '@/lib/hooks'
 import { useAgentConfig, CfgSection, CfgRow, SaveBar, Note, SubHead, deepMerge, deepClone, diffPaths, parseNum } from '@/lib/config'
 import { Button, CopyButton, Input, Select, Switch, TagEditor, Tag, Textarea, EmptyState, ErrorState, PageHeader } from '@/components/ui'
+import { ProviderModelSelect } from '@/components/ModelPicker'
 import { useConfirm, useToast } from '@/components/Overlay'
 import { cn } from '@/lib/cn'
 
@@ -618,14 +619,17 @@ export function ConfigPage() {
 
     if (sec.id === 'models') return (
       <>
-        <div className="flex flex-wrap items-center justify-between gap-2 py-2"><p className="text-[11px] text-ink-3">模型条目挂在厂商下；只有 providerId / modelId 是真源。</p><Button size="sm" variant="secondary" onClick={addModel} icon={<Plus size={12} />}>添加模型</Button></div>
+        <div className="flex flex-wrap items-center justify-between gap-2 py-2"><p className="text-[11px] text-ink-3">模型条目挂在厂商下；只有 providerId / modelId 是真源。模型 ID 可从厂商模型列表下拉选择，也可手输。</p><Button size="sm" variant="secondary" onClick={addModel} icon={<Plus size={12} />}>添加模型</Button></div>
         <datalist id="cfg-model-ids">{modelIds.map((id) => <option key={id} value={id} />)}</datalist>
         {models.length === 0 ? <EmptyState title="暂无模型">先添加模型条目，再到「基础 / 模型」选作主模型。</EmptyState> : models.map((m, i) => (
           <div key={m.id} className="mb-2 rounded-lg border border-line-soft bg-white/35 p-3">
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <Input value={m.name || ''} placeholder="别名（可选）" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, name: e.target.value }; field('llmModels', arr) }} />
               <Select value={m.providerId || ''} onChange={(e) => { const arr = [...models]; arr[i] = { ...m, providerId: e.target.value }; field('llmModels', arr) }}><option value="">（未挂厂商）</option>{providers.map((p) => <option key={p.id} value={p.id}>{p.name || p.id}</option>)}</Select>
-              <Input className="mono" list="cfg-model-ids" value={m.model || ''} placeholder="模型 ID（可手输）" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, model: e.target.value }; field('llmModels', arr) }} />
+              <div className="flex min-w-0 items-center gap-1.5">
+                <Input className="mono min-w-0 flex-1" aria-label="模型 ID" autoComplete="off" spellCheck={false} value={m.model || ''} placeholder="模型 ID（可手输）" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, model: e.target.value }; field('llmModels', arr) }} />
+                <ProviderModelSelect className="w-[140px] shrink-0 sm:w-[168px]" provider={providers.find((p) => p.id === m.providerId)} value={m.model || ''} onSelect={(id) => { const arr = [...models]; arr[i] = { ...m, model: id }; field('llmModels', arr) }} />
+              </div>
               <Select value={m.thinking || 'inherit'} onChange={(e) => { const arr = [...models]; arr[i] = { ...m, thinking: e.target.value }; field('llmModels', arr) }}><option value="inherit">思考 · 继承全局</option><option value="on">思考 · 开启</option><option value="off">思考 · 关闭</option></Select>
               <Input type="number" step={0.1} min={0} max={2} value={m.temperature ?? ''} placeholder="温度（留空=继承）" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, temperature: parseNum(e.target.value) }; field('llmModels', arr) }} />
               <Input type="number" step={256} min={1} value={m.maxTokens ?? ''} placeholder="maxTokens（留空=默认）" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, maxTokens: parseNum(e.target.value) }; field('llmModels', arr) }} />

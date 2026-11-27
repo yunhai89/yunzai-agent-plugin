@@ -13,6 +13,7 @@
 
 | 版本 | 内容 |
 | --- | --- |
+| **v1.56.0** | Web 配置中心「模型列表」支持从厂商实时拉取模型：模型栏新增「厂商模型」下拉，按当前行的 `protocol/preset/baseURL/apiKey` 调 `GET /api/models` 拉取列表，选择后回填模型 ID；同一厂商配置 5 分钟缓存、可手动刷新，拉取失败/未填 Key 时控件内提示，手输自定义 ID 的能力保留。后端接口此前已存在，本次完成前端接入。 |
 | **v1.55.1** | 工程拆分：`apps/agent.js`（4478 行）拆为薄入口 + `apps/agent/constants.js`、`streaming.js`、`runtime.js`、`context.js`、`chat.js` 与 `apps/agent/commands/{chat,admin,mcp,memory,tasks,persona,evolution}.js`。运行时装配、事件上下文、流式发送、命令实现各自独立；`Chat`/`getRuntime`/`fireReminder`/`makeDeltaStreamer`/`attachToolRuntime` 等对外导出保持不变，行为无变化。 |
 | **v1.55.0** | 渲染统一到 Yunzai 渲染器：帮助图、聊天/人设列表、Markdown 回复图、深度研究长图全部经 Yunzai `renderers`（puppeteer / shotium，按 Yunzai 配置）输出，删除插件内独立 puppeteer 浏览器与 `reply.renderScale` 配置，不再额外常驻一份 Chromium。PDF 仅在 Yunzai 当前后端为 Puppeteer 时复用其浏览器导出，shotium 等纯图片后端自动降级长图/文本；渲染超时、后端不可用、截图失败仍按原级联降级，不影响指令返回。 |
 | **v1.54.1** | `#抓取环境 安装` / `修复` 的安装结果不再只写控制台日志：后台安装成功或失败都会把结果推回触发会话（成功 ✅；失败 ❌ 附退出码、清理后的日志尾部与 `#抓取环境 修复` 重试提示）。若安装已由启动自检发起，命令会挂到同一任务上等待通知；多端重复查询同一安装也不会重复启动。 |
