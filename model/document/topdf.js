@@ -4,8 +4,8 @@
  * 引擎（按可用性与类型择优）：
  *  1. LibreOffice（soffice --headless --convert-to pdf）：万能且保真，docx/xlsx/pptx/odt
  *     /图片/文本 等全吃。需系统安装（容器内 apt-get install -y libreoffice）。
- *  2. renderPdf（puppeteer，已就绪，优先系统 Chromium）：图片/文本/markdown/html/xlsx
- *     → 渲染 HTML → 打印 PDF。无需系统依赖。
+ *  2. renderPdf（复用 Yunzai Puppeteer 渲染后端的浏览器）：图片/文本/markdown/html/xlsx
+ *     → 渲染 HTML → 打印 PDF。无需系统依赖；shotium 等纯图片后端不可用。
  *  3. docx/pptx 等无 LibreOffice 时：明确报错引导安装（纯 JS 无法保真转换）。
  *
  * 执行面（2025-10 变更）：显式选择 E2B（agent.sandbox.mode=e2b）后，LibreOffice 转换**在会话沙箱内执行**
@@ -172,14 +172,14 @@ async function convert(inputPath, baseName, ctx = {}) {
     if (!r.missing) Log.warn('[topdf] soffice 转换失败，回退纯 JS', r.error)
   }
 
-  // 2) 纯 JS（renderPdf / puppeteer）：图片/文本/markdown/html/xlsx/csv——宿主渲染，非 shell，任何模式下可用
+  // 2) 纯 JS（renderPdf / Yunzai 渲染器）：图片/文本/markdown/html/xlsx/csv——宿主渲染，非 shell，任何模式下可用
   if (IMG_EXTS.has(ext) || ['md', 'html', 'htm', 'xlsx', 'xls', 'csv', ...TEXT_EXTS].includes(ext)) {
     const inner = await toInnerHtml(inputPath, ext)
     const html = buildHtml({ title: safeName(baseName), bodyHtml: inner })
     const out = tmpPdf(baseName)
     const pdfPath = await renderPdf(html, { path: out })
-    if (pdfPath) return { path: pdfPath, engine: 'puppeteer' }
-    return { error: _sofficeMissing ? '渲染 PDF 失败（puppeteer/Chromium 不可用）；docx/pptx 等需装 LibreOffice' : '渲染 PDF 失败' }
+    if (pdfPath) return { path: pdfPath, engine: 'yunzai' }
+    return { error: _sofficeMissing ? '渲染 PDF 失败（Yunzai Puppeteer 渲染后端不可用）；docx/pptx 等需装 LibreOffice' : '渲染 PDF 失败' }
   }
 
   // 3) 不支持（docx/pptx/odt 等需 LibreOffice）

@@ -2,7 +2,7 @@
  * 图片渲染的 HTML 构建器（纯函数，离线可测）。
  * 复用 model/render 的统一浅色主题（buildHtml + THEME_CSS）；
  * 结构行（命令/对话/人设）用 LIST_CSS（同调色板）补充布局。
- * 实际截图在 apps/render.js 经 Yunzai puppeteer 完成。
+ * 实际截图在 apps/render.js 统一经 Yunzai 渲染器完成。
  */
 import { buildHtml } from '../render/index.js'
 import { ACCENT } from '../render/theme.js'

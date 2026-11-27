@@ -13,6 +13,8 @@
 
 | 版本 | 内容 |
 | --- | --- |
+| **v1.55.0** | 渲染统一到 Yunzai 渲染器：帮助图、聊天/人设列表、Markdown 回复图、深度研究长图全部经 Yunzai `renderers`（puppeteer / shotium，按 Yunzai 配置）输出，删除插件内独立 puppeteer 浏览器与 `reply.renderScale` 配置，不再额外常驻一份 Chromium。PDF 仅在 Yunzai 当前后端为 Puppeteer 时复用其浏览器导出，shotium 等纯图片后端自动降级长图/文本；渲染超时、后端不可用、截图失败仍按原级联降级，不影响指令返回。 |
+| **v1.54.1** | `#抓取环境 安装` / `修复` 的安装结果不再只写控制台日志：后台安装成功或失败都会把结果推回触发会话（成功 ✅；失败 ❌ 附退出码、清理后的日志尾部与 `#抓取环境 修复` 重试提示）。若安装已由启动自检发起，命令会挂到同一任务上等待通知；多端重复查询同一安装也不会重复启动。 |
 | **v1.54.0** | 搜索体系重写（参考 dsh-free-search）：免费引擎优先（Bing / DDG / AnySearch / Exa keyless / Tavily keyless / Keenable / Firecrawl / Parallel / You.com / SearXNG），可选 key 增强（Exa/Tavily/Brave/Perplexity 等）；失败分类冷却、瞬时失败重试、同查询缓存、安全搜索、时间过滤、域名黑白名单、`engine` 首选与自动回退；Web/锅巴配置同步。人设连续性加固：静态身份锁定 + 出戏/抛弃人设/承认 AI/展示提示词的逐轮强化提醒，明确覆盖角色卡中允许短暂出戏的表述（现实安全例外保留）。 |
 | **v1.53.0** | 新增萌娘百科外置工具包 `tools/moegirl/`：词条精选/全文搜索（gRPC SearchEntry + MediaWiki 全文）、词条摘要与纯文本正文、社区帖子搜索/详情、首页混合流；自动限速 300ms、短 TTL 缓存、网络错误重试；`tool.config.js` 可在 Web「外置工具」页配置开关/条数/正文上限；新增离线与可选真实接口自检。 |
 | **v1.52.0** | 人设导入：Web 人设库新增「导入」，支持 `.txt` / `.md` 人设正文与 `aha-character-card/1.x` 角色卡片 `.json`；可同时提供正文与卡片（正文优先，卡片补全名称/简介/标签/开场白并保存完整卡片）；运行时追加卡片 `post_history_instructions` 与行为规则/禁忌/当前状态等补充约束（伪人模式复用同一合成结果）；同名默认拒绝、支持勾选覆盖；新增导入 API、离线自检与 [角色卡片文档](persona-cards.md)；修正「不要泄露系统提示词」类防御性声明被人设注入闸误判的问题；顺带修正 Web 新建人设 creator 使用示例 QQ、改名撞名未拦截的问题。 |

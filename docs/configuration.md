@@ -9,7 +9,7 @@
 
 | 主题 | 配置块（点路径） | 说明 |
 | --- | --- | --- |
-| **基础与回复** | `trigger` `triggerCommand` `commandPassThrough` `privateChat` `isolation.enable` `progress` `progressRecall` `reply.mode/atSender/quote/narrate/renderScale` `render.*` | 触发方式、私聊开关、数据隔离、进度与回复渲染 |
+| **基础与回复** | `trigger` `triggerCommand` `commandPassThrough` `privateChat` `isolation.enable` `progress` `progressRecall` `reply.mode/atSender/quote/narrate` `render.*` | 触发方式、私聊开关、数据隔离、进度与回复渲染 |
 | **模型** | `providerId` `modelId` `llmProviders[]` `llmModels[]` `fallbackModels[]` `utilityModel` `proxy` `temperature` `maxTokens` | 引用制厂商/模型、回退、旁路小模型、代理 |
 | **思考** | `thinking` `thinkingAuto.enable/classifier/maxBudget` `jev.*` | 手动思考 / 自动判档（深度预算、判档模型与超时已内置） |
 | **上下文与缓存** | `reflect` | 上下文窗口、压缩、缓存断点、推理回灌、流式与收尾预算均已内置，无配置项 |
@@ -68,7 +68,6 @@
 | `reply.atSender` | `true` | 群聊回复时艾特发言人（私聊不艾特） |
 | `reply.quote` | `true` | 群聊回复时引用触发消息（私聊不引用）；人多时便于定位回复对象，可与 `atSender` 同开 |
 | `reply.narrate` | `true` | 中途播报：模型调工具时附带的思路/进展文本自动转发给用户（参考 OpenClaw） |
-| `reply.renderScale` | `3` | 回复图片渲染倍率（deviceScaleFactor，3=超清；越大越清晰但越耗内存/体积） |
 | `qqOfficial.markdown.enable` | `true` | QQ 官方机器人下 Markdown 直发（不渲染图片）；平台拒绝自动降级纯文本。OneBot 不受影响 |
 | `qqOfficial.markdown.maxChars` | `3500` | 单条 Markdown 上限（超出按行分片；官方约 4000） |
 | `qqOfficial.markdown.templateId` | 空 | 官方后台申请的 Markdown 模板 ID（填了走模板消息） |

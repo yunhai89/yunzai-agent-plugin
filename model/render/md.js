@@ -38,8 +38,8 @@ async function getEngine() {
       { gfm: true, breaks: false },
       {
         // 原始 HTML 一律转义：正文来自 LLM 回复（可能被工具结果/网页内容间接注入），
-        // 而卡片会被注入 JS 的 Chromium 渲染。marked 默认原样透传 <script>/<img onerror=…> → 这里堵死。
-        // （另两道防线：文档 CSP meta、独立 puppeteer 路径 setJavaScriptEnabled(false)）
+        // 而卡片会由 Yunzai 渲染器（Chromium）渲染。marked 默认原样透传 <script>/<img onerror=…> → 这里堵死。
+        // （另一道防线：文档 CSP meta；script-src 'none'）
         renderer: {
           html(token) {
             const s = typeof token === 'string' ? token : (token?.text ?? token?.raw ?? '')

@@ -77,7 +77,7 @@ agent:
   # keepReasoning 固定 false（省 context；thinking 工具轮协议必需字段仍保留）；逐字流式固定关闭（稳定性优先）。
   reflect: auto             # 自我反思/自纠：off=关 | auto=仅多轮/用工具时(默认) | always=每次最终回复都反思 | jev=由 Jev 判断是否需要反思
   # 收尾输出上限固定 8192；根任务 token 预算不设额外上限（子代理/编排各自预算仍生效）。
-  render:                   # 卡片图渲染（帮助/聊天列表/人设列表；回复图由 reply.mode 控制）
+  render:                   # 卡片图渲染（帮助/聊天列表/人设列表；回复图由 reply.mode 控制）；统一由 Yunzai 渲染器（puppeteer/shotium）输出
     card: true              # 帮助/列表卡片图开关；弱服务器可置 false 直接回文本，避免渲染卡死
     timeoutMs: 15000        # 单张卡片图（列表类）渲染总超时（毫秒）：超时/失败降级文本，不让指令永久卡住
     helpTimeoutMs: 300000   # 帮助图渲染总超时（毫秒，默认 5 分钟）：帮助卡片最长、弱机器/冷缓存首次渲染常超过 15s；超时降级文本并进入冷却
@@ -91,7 +91,6 @@ agent:
     atSender: true          # 群聊回复时艾特发言人（私聊不艾特）
     quote: true             # 群聊回复时引用触发消息（私聊不引用）；人多时便于定位回复对象，可与 atSender 同开
     narrate: true           # 中途播报：模型调工具时附带的思路/进展文本自动转发给用户（OpenClaw 式）
-    renderScale: 3          # 回复图片渲染倍率（deviceScaleFactor，3=超清默认；2=高清；1=普通；越大越清晰但越耗内存/体积）
   # ── QQ 官方机器人：本插件自实现适配器（AppID + AppSecret 直连）──
   # 目的：TRSS 官方 QQBot 适配器（Yunzai-QQBot-Plugin）仍要求「机器人QQ号:AppID:Token:AppSecret」
   # 四段连接串（Token 是 QQ 频道 v1 时代遗留）；现行开放平台只需 AppID + AppSecret 换 access_token。

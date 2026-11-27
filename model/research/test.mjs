@@ -215,7 +215,7 @@ await test('render：buildResearchHtml 组装', async () => {
   ok(full.includes('评估通过'), '评估徽章')
   ok(full.includes('参考来源'), '来源区')
   ok(full.includes('https://a.com'), '来源链接')
-  ok(full.includes('#container'), '容器（puppeteer 截图锚点）')
+  ok(full.includes('#container'), '容器（渲染器截图锚点）')
   // evaluation pass=false → fail 样式
   const f = buildResearchHtml({ topic: 'x', report: 'y', evaluation: { pass: false } })
   ok(f.includes('评估未通过'), '未通过徽章')

@@ -273,7 +273,6 @@ export function supportGuoba() {
         { field: 'agent.reply.narrate', label: '中途播报', bottomHelpMessage: '模型调工具时附带的思路/进展自动转发给用户（别埋头苦干）；默认开', component: 'Switch' },
         { field: 'agent.reply.atSender', label: '群聊回复艾特发言人', bottomHelpMessage: '默认开；私聊不艾特', component: 'Switch' },
         { field: 'agent.reply.quote', label: '群聊回复引用触发消息', bottomHelpMessage: '默认开；私聊不引用；可与艾特同开，人多时便于定位回复对象', component: 'Switch' },
-        { field: 'agent.reply.renderScale', label: '回复图清晰度倍率', bottomHelpMessage: 'deviceScaleFactor：3=超清（默认）/ 2=高清 / 1=普通；越大越清晰但越耗内存', component: 'InputNumber', componentProps: { min: 1, max: 4 } },
         { field: 'agent.render.card', label: '卡片图渲染', bottomHelpMessage: '帮助/列表等卡片图开关（默认开）；弱服务器可关，直接回文本避免渲染卡死。回复图由上面的「回复渲染方式」控制', component: 'Switch' },
         { field: 'agent.reflect', label: '自我反思/自纠', bottomHelpMessage: '默认 auto：仅多轮或用工具时反思；always=每次最终回复都反思；jev=由 Jev 判断（需开启 Jev）', component: 'Select', componentProps: { options: OPT.reflect } },
 

@@ -144,9 +144,14 @@ function appendStatus(data) {
  * @param {'auto'|'browser'|'full'} o.mode
  * @param {boolean} o.force 忽略 6 小时失败冷却/陈旧状态（不终止正在运行的安装）
  * @param {object} o.probeResult 已探测的状态，避免重复 spawn
+ * @param {function} o.onFinish 安装结束（成功/失败）后回调，用于把结果推回聊天；
+ *   安装已在运行时会把回调挂到当前任务上，仍能收到结果。
  */
 export async function startCrawl4aiInstall(options = {}) {
-  if (_installing) return { started: false, already: true, mode: _installing.mode, log: LOG_FILE }
+  if (_installing) {
+    attachCrawlInstallFinish(options?.onFinish)
+    return { started: false, already: true, mode: _installing.mode, log: LOG_FILE }
+  }
   if (_starting) return { started: false, already: true, log: LOG_FILE }
   _starting = true
   try {
@@ -156,7 +161,18 @@ export async function startCrawl4aiInstall(options = {}) {
   }
 }
 
-async function _startCrawl4aiInstall({ mode = 'auto', force = false, probeResult = null } = {}) {
+/**
+ * 给正在后台运行的安装挂一个结束回调（成功/失败都会触发）。
+ * 供 #抓取环境 在安装已由启动自检发起时仍能收到聊天反馈。
+ * @returns {boolean} 是否挂上（没有正在进行的安装时为 false）
+ */
+export function attachCrawlInstallFinish(cb) {
+  if (typeof cb !== 'function' || !_installing) return false
+  _installing.onFinish.push(cb)
+  return true
+}
+
+async function _startCrawl4aiInstall({ mode = 'auto', force = false, probeResult = null, onFinish = null } = {}) {
   if (_installing) return { started: false, already: true, mode: _installing.mode, log: LOG_FILE }
   const lock = readLock()
   if (lock) return { started: false, already: true, mode: lock.mode || '', log: LOG_FILE }
@@ -207,6 +223,8 @@ async function _startCrawl4aiInstall({ mode = 'auto', force = false, probeResult
     return { started: false, error: e?.message || String(e), log: LOG_FILE }
   }
 
+  // 安装结束通知（命令发起方/多个等待者）：成功或失败都要反馈，不能只写控制台日志。
+  const finishListeners = typeof onFinish === 'function' ? [onFinish] : []
   let tail = ''
   let settled = false
   let logStream = null
@@ -248,9 +266,16 @@ async function _startCrawl4aiInstall({ mode = 'auto', force = false, probeResult
     } else {
       Log.warn('[crawl] 抓取环境安装失败：仍会降级纯 HTTP fetch。发 #抓取环境 查看原因/重试，日志', LOG_FILE)
     }
+    for (const cb of finishListeners.splice(0)) {
+      try {
+        Promise.resolve(cb(status)).catch((e) => Log.warn('[crawl] 安装结果通知发送失败', e?.message || e))
+      } catch (e) {
+        Log.warn('[crawl] 安装结果通知发送失败', e?.message || e)
+      }
+    }
   }
 
-  _installing = { mode: installMode, startedAt, promise: null }
+  _installing = { mode: installMode, startedAt, promise: null, onFinish: finishListeners }
   const promise = new Promise((resolve) => {
     child.on('error', (e) => { finish({ ok: false, error: e?.message || String(e) }); resolve() })
     child.on('close', (code, signal) => { finish({ ok: code === 0, code, signal }); resolve() })
@@ -300,6 +325,38 @@ function reasonText(s) {
   return s.reason || s.error || '未安装或不可用'
 }
 
+/** 安装日志尾部：去掉 ANSI 与进度条噪音，只保留最后几条可读输出。 */
+function readableTail(text, n = 3) {
+  return String(text || '')
+    .replace(/\x1b\[[0-9;]*m/g, '')
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !/^\|■/.test(l) && !/% of /.test(l))
+    .slice(-n)
+}
+
+/**
+ * 后台安装结束后的聊天反馈（成功/失败都发；失败附带退出码、日志尾部和重试命令）。
+ * 与 formatCrawlSetupStatus 分离：状态报告用于主动查询，这里用于安装完成推送。
+ */
+export function formatCrawlInstallResult(r = {}) {
+  const ok = r.ok === true
+  const mode = r.mode === 'browser' ? '补装 Chromium' : '安装 crawl4ai + Chromium'
+  const lines = [`${ok ? '✅' : '❌'} 抓取环境${mode}${ok ? '完成' : '失败'}`]
+  if (ok) {
+    lines.push('web_crawl 现在会使用真浏览器渲染，无需重启。')
+  } else {
+    lines.push(`退出码：${r.code != null ? r.code : '未知'}${r.signal ? ` · signal ${r.signal}` : ''}`)
+    if (r.error) lines.push(`原因：${r.error}`)
+    lines.push('当前继续降级纯 HTTP fetch，插件其他功能不受影响。')
+    const tail = readableTail(r.tail, 3)
+    if (tail.length) lines.push(`日志尾部：\n${tail.join('\n')}`)
+    lines.push('发 #抓取环境 查看完整状态，或 #抓取环境 修复 重新安装。')
+  }
+  if (r.log) lines.push(`日志：${file(r.log)}`)
+  return lines.join('\n')
+}
+
 /** #抓取环境 的纯文本报告（保持可单测）。 */
 export function formatCrawlSetupStatus(s = {}) {
   const lines = ['🧰 网页抓取环境']
@@ -327,10 +384,8 @@ export function formatCrawlSetupStatus(s = {}) {
   if (s.last && s.last.ok === false && !s.installing) {
     const when = s.last.finishedAt ? new Date(Number(s.last.finishedAt)).toLocaleString('zh-CN') : ''
     lines.push(`上次安装失败：${when}${s.last.code != null ? `（exit ${s.last.code}）` : ''}`)
-    if (s.last.tail) {
-      const tail = String(s.last.tail).trim().split('\n').slice(-3).join('\n')
-      if (tail) lines.push(`日志尾部：\n${tail}`)
-    }
+    const tail = readableTail(s.last.tail, 3)
+    if (tail.length) lines.push(`日志尾部：\n${tail.join('\n')}`)
   }
   lines.push(`安装日志：${file(s.log || '') || '-'}`)
   if (!s.ready && !s.installing) lines.push('修复：发 #抓取环境 安装（或 #抓取环境 修复 忽略失败冷却重试）')

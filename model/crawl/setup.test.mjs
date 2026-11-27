@@ -2,7 +2,7 @@
  * crawl4ai 抓取环境自检/自动安装的离线断言。
  * 运行：node model/crawl/setup.test.mjs
  */
-import { pickInstallMode, formatCrawlSetupStatus, maybeAutoInstallCrawl4ai } from './setup.js'
+import { pickInstallMode, formatCrawlSetupStatus, formatCrawlInstallResult, maybeAutoInstallCrawl4ai } from './setup.js'
 
 let passed = 0
 let failed = 0
@@ -41,6 +41,25 @@ await test('状态报告：浏览器缺失/安装中/沙箱档', () => {
 
   const fetchMode = formatCrawlSetupStatus({ engine: 'fetch', ready: false })
   ok(/不需要浏览器/.test(fetchMode), 'fetch 引擎不需要浏览器')
+})
+
+await test('安装结果推送：成功/失败都生成聊天反馈', () => {
+  const okMsg = formatCrawlInstallResult({ ok: true, mode: 'browser', log: '/x/data/crawl/setup.log' })
+  ok(/✅/.test(okMsg), '成功带 ✅')
+  ok(/补装 Chromium/.test(okMsg), '说明补装浏览器')
+  ok(/无需重启/.test(okMsg), '提示已生效无需重启')
+
+  const failMsg = formatCrawlInstallResult({
+    ok: false, mode: 'full', code: 1,
+    tail: '\x1b[31mERROR boom\x1b[0m\n|■■■■■■■■  10% of 100 MiB\nTraceback: pip failed',
+    log: '/x/data/crawl/setup.log',
+  })
+  ok(/❌/.test(failMsg), '失败带 ❌')
+  ok(/退出码：1/.test(failMsg), '包含退出码')
+  ok(/纯 HTTP fetch/.test(failMsg), '说明继续降级 fetch')
+  ok(/ERROR boom/.test(failMsg) && /Traceback: pip failed/.test(failMsg), '包含日志尾部')
+  ok(!/■|% of /.test(failMsg), '过滤进度条噪音')
+  ok(/#抓取环境 修复/.test(failMsg), '给出重试命令')
 })
 
 await test('自动安装：开关/引擎/执行面/已就绪/安装中', async () => {

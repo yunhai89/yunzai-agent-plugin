@@ -62,7 +62,7 @@ import { thinkingLogFields as fmtThinkingLogFields } from '../model/llm/thinking
 import { KnowledgeStore, makeKbSearchTool } from '../model/agent/knowledge.js'
 import { detectGpu } from '../model/agent/vector-backends.js'
 import { webCrawlTool, resetCrawl4aiProbe } from '../model/crawl/index.js' // web_crawl：抓取网页正文（常驻）
-import { getCrawlSetupStatus, startCrawl4aiInstall, formatCrawlSetupStatus } from '../model/crawl/setup.js' // 抓取环境自检/自动安装
+import { getCrawlSetupStatus, startCrawl4aiInstall, attachCrawlInstallFinish, formatCrawlSetupStatus, formatCrawlInstallResult } from '../model/crawl/setup.js' // 抓取环境自检/自动安装
 import { CompactionArchive } from '../model/agent/compact/archive.js' // 无损压缩：原文内容寻址归档
 import { makeContextRecallTool } from '../model/agent/compact/recall.js' // context_recall：取回归档原文
 import { groupInfoTools, groupManageTools, groupHistoryTools, groupNoticeTools, groupFileTools, aiVoiceTools, forwardTools } from '../model/group/index.js'
@@ -2724,7 +2724,6 @@ export class Chat extends plugin {
             } catch { cleanBody = stripMarkers(body) }
           }
           const img = await renderReplyImage(cleanBody, {
-          scale: cfg.reply?.renderScale ?? 3,
           footer: `会话 ${ctx.conversationShortId || `#${ctx.conversationId}`} · 对话 ${traceId.slice(0, 8)}`,
           extraCss: REPLY_CSS,
           chat: {
@@ -3631,6 +3630,21 @@ export class Chat extends plugin {
   async crawlSetup() {
     const arg = String(this.e.msg.match(/^#抓取环境(?:\s+(\S+))?$/)?.[1] || '').trim()
     const status = await getCrawlSetupStatus()
+    // 安装结束（成功/失败）都推回触发会话：后台任务只写控制台日志时用户看不到结果。
+    const notifyResult = (r) => {
+      const text = formatCrawlInstallResult(r)
+      return Promise.resolve().then(() => this.e.reply(text)).catch(async (err) => {
+        Log.warn('[crawl] 安装结果回复失败，按会话信息重发', err?.message || err)
+        const target = {
+          selfId: String(this.e.self_id || this.e.selfId || ''),
+          groupId: this.e.group_id != null ? String(this.e.group_id) : null,
+          userId: String(this.e.user_id || this.e.userId || ''),
+        }
+        try { await sendByInfo(target, text) } catch (e2) {
+          Log.warn('[crawl] 安装结果重发失败', e2?.message || e2)
+        }
+      })
+    }
     if (arg === '安装' || arg === '修复') {
       if (status.engine === 'fetch') {
         await this.e.reply('当前抓取引擎是 fetch（纯 HTTP，不需要浏览器）。\n如需抓 SPA/JS 动态页，先把 agent.kb.crawl.engine 改为 crawl4ai。')
@@ -3641,12 +3655,24 @@ export class Chat extends plugin {
         return true
       }
       if (status.ready) { await this.e.reply('✅ 抓取环境已可用，无需安装。'); return true }
-      if (status.installing) { await this.e.reply('⏳ 抓取环境正在安装中，请稍后发 #抓取环境 查看结果。'); return true }
-      const r = await startCrawl4aiInstall({ mode: 'auto', force: arg === '修复', probeResult: status })
+      // 启动自检可能已经在装：先尝试挂到运行中的任务上，装完仍会在这里反馈。
+      const attached = attachCrawlInstallFinish(notifyResult)
+      if (status.installing) {
+        await this.e.reply(attached
+          ? '⏳ 抓取环境正在安装中，完成后会在这里通知你。'
+          : '⏳ 抓取环境正在安装中（由其他进程启动），完成后请发 #抓取环境 查看结果。')
+        return true
+      }
+      const r = await startCrawl4aiInstall({ mode: 'auto', force: arg === '修复', probeResult: status, onFinish: attached ? null : notifyResult })
       if (r.ready) { await this.e.reply('✅ 抓取环境已可用，无需安装。'); return true }
-      if (r.already) { await this.e.reply('⏳ 抓取环境正在安装中，请稍后发 #抓取环境 查看结果。'); return true }
+      if (r.already) {
+        await this.e.reply(attached
+          ? '⏳ 抓取环境正在安装中，完成后会在这里通知你。'
+          : '⏳ 抓取环境正在安装中（由其他进程启动），完成后请发 #抓取环境 查看结果。')
+        return true
+      }
       if (r.error) { await this.e.reply(`❌ 无法启动安装：${r.error}`); return true }
-      await this.e.reply(`⏳ 已开始后台${r.mode === 'browser' ? '补装 Chromium' : '安装 crawl4ai + Chromium'}（约 300-500MB）。\n完成后发 #抓取环境 查看；失败会自动降级纯 HTTP。\n日志：${r.log}`)
+      await this.e.reply(`⏳ 已开始后台${r.mode === 'browser' ? '补装 Chromium' : '安装 crawl4ai + Chromium'}（约 300-500MB）。\n完成或失败都会在这里推送结果；失败会自动降级纯 HTTP。\n日志：${r.log}`)
       return true
     }
     if (arg && arg !== '状态') {

@@ -1,8 +1,11 @@
 /**
- * 渲染封装 —— 经 Yunzai 核心 lib/puppeteer 把 HTML 渲染为图片，并为深度研究提供
- * PDF 导出与高清长图（独立 puppeteer 浏览器，懒加载单例）。
+ * 渲染封装 —— 统一走 Yunzai 渲染器（lib/puppeteer/puppeteer.js，按 Yunzai 配置的
+ * puppeteer / shotium 后端），插件不再启动自己的 Chromium。
  *
- * 所有方法失败返回 null / false，调用方据此降级（PDF→高清图→文本）。
+ * 图片：把自包含 HTML 写入唯一 tplFile，交给 Yunzai 渲染器截图。
+ * PDF：仅在 Yunzai 当前后端为 Puppeteer 时复用它的浏览器页导出；shotium 等纯图片
+ *      后端返回 null，调用方按 PDF → 图片 → 文本降级。
+ * 所有方法失败返回 null / false，调用方据此降级。
  */
 
 import fs from 'node:fs'
@@ -20,7 +23,9 @@ const SHOT_KEEP_MS = 10 * 60 * 1000
 /** PDF / 高清长图的总超时下限（毫秒）：排版比卡片截图慢，低于 puppeteer 默认 30s 会误杀。 */
 const HEAVY_TIMEOUT_FLOOR_MS = 30000
 
-/** 渲染总超时（毫秒）：防弱服务器上 puppeteer 卡死导致指令永不返回（超时→调用方降级文本）。 */
+const YUNZAI_RENDERER = '../../../lib/puppeteer/puppeteer.js'
+
+/** 渲染总超时（毫秒）：防弱服务器上渲染器卡死导致指令永不返回（超时→调用方降级文本）。 */
 function renderTimeoutMs() {
   const t = Number(Config.get()?.agent?.render?.timeoutMs)
   return t > 0 ? t : 15000
@@ -55,61 +60,143 @@ function withTimeout(promise, ms, tag) {
   ])
 }
 
-/**
- * 经 Yunzai 内置 renderer 截图（jpeg）。
- *
- * Yunzai 渲染器为「模板模式」：screenshot(name, data) 要求 data.tplFile（模板文件路径），
- * 不支持裸 data.html；其 dealTpl 用 art-template 渲染模板。
- * 本插件生成的 HTML 是自包含的纯 HTML（无 art-template 的 {{}} 语法），art-template 对其原样输出（已验证）。
- * 故：把完整 HTML 写入临时文件作为 tplFile 传入，复用 Yunzai 已启动的 Chromium（Docker 等环境依赖此路径）。
- *
- * 用「name + 时间戳 + 随机串」做唯一 tplFile：保证每次都重新读取最新 HTML，避开渲染器的模板缓存
- * （聊天列表 / 人设列表等内容会变化）。失败返回 null，调用方据此降级为文本。
- */
-export const screenshot = async (name, html) => {
-  try {
-    const mod = await import('../../../lib/puppeteer/puppeteer.js')
-    const puppeteer = mod.default || mod
-    if (!puppeteer?.screenshot) return null
+// ─── Yunzai 渲染器（进程内单例；失败只缓存一次本次调用，不永久禁用）───
+let _renderer = null
+let _rendererLoading = null
 
-    const safe = String(name || 'agents').replace(/[\\/]/g, '_')
-    const dir = Config.path.temp
-    await fs.promises.mkdir(dir, { recursive: true }).catch(() => {})
-    const tplFile = path.join(dir, `${safe}__${Date.now()}_${Math.random().toString(36).slice(2, 8)}.html`)
-    // 清理同 name 的过期临时模板，避免磁盘无限堆积：只删超过 SHOT_KEEP_MS 的旧文件，
-    // 不再无条件删除（修 2026-10-17 审计：并发同名截图互删文件导致渲染失败）。
+async function getYunzaiRenderer() {
+  if (_renderer) return _renderer
+  if (_rendererLoading) return _rendererLoading
+  _rendererLoading = (async () => {
     try {
-      const now = Date.now()
-      for (const f of fs.readdirSync(dir)) {
-        if (!f.startsWith(`${safe}__`)) continue
-        const fp = path.join(dir, f)
-        if (fp === tplFile) continue
-        try { if (now - fs.statSync(fp).mtimeMs > SHOT_KEEP_MS) fs.unlinkSync(fp) } catch { /* noop */ }
-      }
-    } catch { /* noop */ }
-    await fs.promises.writeFile(tplFile, String(html ?? ''))
+      const mod = await import(YUNZAI_RENDERER)
+      _renderer = mod.default || mod
+      return _renderer
+    } catch (e) {
+      Log.warn('[render] 加载 Yunzai 渲染器失败', e?.message || e)
+      return null
+    } finally {
+      _rendererLoading = null
+    }
+  })()
+  return _rendererLoading
+}
 
-    return await puppeteer.screenshot(name, { tplFile, saveId: safe })
-  } catch (e) {
-    Log.warn('[render] screenshot 异常', e?.message || e)
-    return null
+/** 写唯一 tplFile（Yunzai 渲染器的模板入口），并清理同前缀过期文件。 */
+async function writeTplFile(name, html) {
+  const safe = String(name || 'agents').replace(/[\\/]/g, '_')
+  const dir = Config.path.temp
+  await fs.promises.mkdir(dir, { recursive: true }).catch(() => {})
+  const tplFile = path.join(dir, `${safe}__${Date.now()}_${Math.random().toString(36).slice(2, 8)}.html`)
+  try {
+    const now = Date.now()
+    for (const f of fs.readdirSync(dir)) {
+      if (!f.startsWith(`${safe}__`)) continue
+      const fp = path.join(dir, f)
+      if (fp === tplFile) continue
+      try { if (now - fs.statSync(fp).mtimeMs > SHOT_KEEP_MS) fs.unlinkSync(fp) } catch { /* noop */ }
+    }
+  } catch { /* noop */ }
+  await fs.promises.writeFile(tplFile, String(html ?? ''))
+  return { tplFile, safe }
+}
+
+/** 从 Yunzai 渲染器/后端列表里找 Puppeteer 后端（auto 模式可能默认选 shotium，但 PDF 仍需浏览器）。 */
+function findPuppeteerRenderer(renderer) {
+  if (typeof renderer?.browserInit === 'function') return renderer
+  const map = renderer?.renderers
+  if (map && typeof map.values === 'function') {
+    for (const r of map.values()) if (typeof r?.browserInit === 'function') return r
   }
+  return null
+}
+
+/** 归一化渲染器返回值：Buffer / base64 / 临时文件路径。 */
+async function toBuffer(out) {
+  if (!out) return null
+  if (Buffer.isBuffer(out)) return out
+  if (Array.isArray(out)) return toBuffer(out[0])
+  if (typeof out === 'string') {
+    const s = out.trim()
+    if (!s) return null
+    if (s.startsWith('base64://')) return Buffer.from(s.slice('base64://'.length), 'base64')
+    if (/^data:image\//.test(s)) {
+      const comma = s.indexOf(',')
+      if (comma > 0) return Buffer.from(s.slice(comma + 1), 'base64')
+    }
+    try { if (fs.existsSync(s)) return await fs.promises.readFile(s) } catch { /* noop */ }
+    try {
+      const b = Buffer.from(s, 'base64')
+      return b.length ? b : null
+    } catch { return null }
+  }
+  if (out?.data?.file) return toBuffer(out.data.file)
+  if (out?.file) return toBuffer(out.file)
+  return null
+}
+
+/**
+ * 用 Yunzai 渲染器把自包含 HTML 截图成 Buffer。
+ * @param {string} html
+ * @param {object} [opts] { name, imgType='jpeg', quality=95, timeoutMs, pageGotoParams, multiPage, multiPageHeight }
+ * @returns {Promise<Buffer|null>}
+ */
+export const renderCardBuffer = async (html, {
+  name = 'agents-plugin/card', imgType = 'jpeg', quality = 95, timeoutMs,
+  pageGotoParams, multiPage = false, multiPageHeight,
+} = {}) => {
+  const ms = Number(timeoutMs) > 0 ? Number(timeoutMs) : renderTimeoutMs()
+  return withTimeout((async () => {
+    const renderer = await getYunzaiRenderer()
+    if (!renderer?.render) {
+      Log.warn('[render] Yunzai 渲染器不可用（检查 Yunzai renderers 配置）')
+      return null
+    }
+    try {
+      const { tplFile, safe } = await writeTplFile(name, html)
+      const out = await renderer.render(name, {
+        tplFile,
+        saveId: safe,
+        imgType,
+        quality,
+        ...(multiPage ? { multiPage: true } : {}),
+        ...(multiPageHeight ? { multiPageHeight } : {}),
+        ...(pageGotoParams ? { pageGotoParams } : {}),
+      })
+      return toBuffer(out)
+    } catch (e) {
+      Log.warn('[render] Yunzai 渲染器截图失败', e?.message || e)
+      return null
+    }
+  })(), ms, 'card')
+}
+
+/**
+ * 经 Yunzai 渲染器截图，返回 segment.image。失败返回 null，调用方降级文本。
+ * @param {string} name
+ * @param {string} html
+ * @param {object} [opts] 透传 renderCardBuffer 的 imgType/quality/timeoutMs/pageGotoParams
+ */
+export const screenshot = async (name, html, opts = {}) => {
+  const buf = await renderCardBuffer(html, { ...opts, name })
+  if (!buf) return null
+  const seg = (typeof segment !== 'undefined' && segment) || null
+  return seg?.image ? seg.image(`base64://${buf.toString('base64')}`) : null
 }
 
 /**
  * 把一段文本（markdown）渲染成回复图片（segment.image），失败返回 null。
- * markdown→HTML 用 marked+highlight.js（依赖缺失时自动降级为简易渲染）；截图经 Yunzai 渲染器。
+ * markdown→HTML 用 marked+highlight.js（依赖缺失时自动降级为简易渲染）；截图统一经 Yunzai 渲染器。
  */
 export const renderReplyImage = async (content, opts = {}) => {
   const ms = Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : (Number(Config.get()?.agent?.render?.replyTimeoutMs) || 30000)
-  return withTimeout(_renderReplyImage(content, opts), ms, 'reply-image')
+  return withTimeout(_renderReplyImage(content, { ...opts, timeoutMs: ms }), ms, 'reply-image')
 }
 
-const _renderReplyImage = async (content, { scale = 3, footer, extraCss, chat } = {}) => {
-  const sc = Math.min(Math.max(Number(scale) || 3, 1), 4) // clamp [1,4]，防 Chromium OOM
+const _renderReplyImage = async (content, { timeoutMs, footer, extraCss, chat } = {}) => {
   try {
     const bodyHtml = await inlineImages(await mdToHtml(content)) // 远程图片下载转 base64 内联（防盗链+可靠），见 model/render/inline-images.js
-    // 聊天模式：头像 base64 内联（防 puppeteer 加载远程失败/防盗链）
+    // 聊天模式：头像 base64 内联（防渲染器加载远程失败/防盗链）
     let chatResolved = chat
     if (chat) {
       const fa = async (u) => { if (!u) return ''; try { const r = await fetch(u, { headers: { 'User-Agent': 'Mozilla/5.0' } }); const b = Buffer.from(await r.arrayBuffer()); return `data:image/jpeg;base64,${b.toString('base64')}` } catch { return String(u) } }
@@ -120,8 +207,8 @@ const _renderReplyImage = async (content, { scale = 3, footer, extraCss, chat } 
       const messages = [
         { role: 'user', text: chat.userText, avatar: userAvatar },
         ...(String(bodyHtml || '').trim() ? [{ role: 'ai', html: bodyHtml, avatar: aiAvatar, name: chat.aiName }] : []),
-        // 修复：stickerImgs 的元素已是完整 <img class="sticker" src="data:..."> 标签（manager._imgDataUri 产物，
-        // .sticker 样式在 theme.js）——此前误当 URL 再包一层 src="${u}" → 嵌套 HTML 解析崩 → 卡片里只剩空气泡
+        // stickerImgs 的元素已是完整 <img class="sticker" src="data:..."> 标签（manager._imgDataUri 产物，
+        // .sticker 样式在 theme.js）——不能再当 URL 包一层 src。
         ...((chat.stickerImgs || []).map((tag) => ({ role: 'ai', html: String(tag), avatar: aiAvatar, name: chat.aiName }))),
       ]
       chatResolved = { messages, head: chat.groupName ? `${chat.groupName}（${chat.groupId}）` : '私聊', tokens: chat.tokens, reasoningTokens: chat.reasoningTokens, model: chat.model, inputTokens: chat.inputTokens, outputTokens: chat.outputTokens }
@@ -129,18 +216,15 @@ const _renderReplyImage = async (content, { scale = 3, footer, extraCss, chat } 
     const html = chatResolved
       ? buildChatHtml(chatResolved)
       : buildHtml({ bodyHtml, ...(footer ? { footer } : {}), ...(extraCss ? { extraCss } : {}) })
-    // 主路径：独立 puppeteer 高清渲染（dsf + JPEG q95，清晰度远超 Yunzai dsf 1）
-    let img = await renderHighQuality(html, { scale: sc })
-    if (img) return img
-    // 降级 1：Yunzai 渲染器（dsf 1，但总比文本好）。独立 puppeteer 缺包是部署常态，降级属正常兜底，用 debug 不刷屏
-    Log.debug('[render] 独立浏览器渲染失败，降级 Yunzai 渲染器…')
-    img = await screenshot('agents-plugin/reply', html)
-    if (img) return img
-    // 降级 2：Yunzai 重试
-    Log.warn('[render] Yunzai 首次截图失败，重试中…')
-    img = await screenshot('agents-plugin/reply', html)
-    if (!img) Log.warn('[render] 重试仍失败，将回退文本')
-    return img
+    const buf = await renderCardBuffer(html, {
+      name: 'agents-plugin/reply', imgType: 'jpeg', quality: 95, timeoutMs,
+    })
+    if (!buf) {
+      Log.warn('[render] 回复图渲染失败，回退文本')
+      return null
+    }
+    const seg = (typeof segment !== 'undefined' && segment) || null
+    return seg?.image ? seg.image(`base64://${buf.toString('base64')}`) : null
   } catch (e) {
     Log.warn('[render] renderReplyImage 异常', e?.message || e)
     return null
@@ -148,109 +232,17 @@ const _renderReplyImage = async (content, { scale = 3, footer, extraCss, chat } 
 }
 
 /**
- * 独立 puppeteer 高清渲染（不经 Yunzai 渲染器，可控制 deviceScaleFactor）。
- * 用 getBrowser 懒加载单例浏览器，setContent 内联 HTML（base64 图片直接加载，无 file://），
- * setViewport deviceScaleFactor=N → 物理像素 N 倍 → 清晰度翻倍。
- * 返回 segment.image（base64），失败 null。
+ * 把自包含 HTML 渲染为「卡片图」：统一经 Yunzai 渲染器（截 #container，JPEG q95）。
+ * 返回 segment.image；失败返回 null（调用方降级文本）。
  */
-async function shotCard(html, { scale = 3, width = 800, imgType = 'jpeg', quality = 95 } = {}) {
-  return withPage(html, async (page) => {
-    await page.setViewport({ width, height: 1200, deviceScaleFactor: scale })
-    await page.waitForSelector('#container', { timeout: 8000 }).catch(() => {})
-    await new Promise((r) => setTimeout(r, 200)) // 字体/布局/图片稳定
-    const opt = { type: imgType }
-    if (imgType === 'jpeg') opt.quality = quality
-    // 截 #container 元素本身（紧贴卡片 border-box），避免内容少时 fullPage 把视口/body 背景一起截进来、多出大片空白
-    const el = await page.$('#container')
-    if (el) {
-      try { return await el.screenshot(opt) } catch { /* element 截图偶发失败 → 落到 clip 兜底 */ }
-    }
-    // clip 兜底：按 #container 的精确 bbox 截（同样紧贴卡片，绝不 fullPage）
-    const box = await page.evaluate(() => {
-      const e = document.querySelector('#container')
-      if (!e) return null
-      const r = e.getBoundingClientRect()
-      return { x: r.x, y: r.y, width: r.width, height: r.height }
-    }).catch(() => null)
-    if (box && box.width > 0 && box.height > 0) return page.screenshot({ ...opt, clip: box })
-    return null // #container 异常 → 返回 null 走降级（Yunzai 渲染器，仍截 #container），不再 fullPage
-  })
-}
-
-async function renderHighQuality(html, opts = {}) {
-  const buff = await shotCard(html, opts)
-  if (!buff || !Buffer.isBuffer(buff)) return null
-  const seg = (typeof segment !== 'undefined' && segment) || null
-  if (!seg) return null
-  return seg.image(`base64://${buff.toString('base64')}`)
-}
-
-/** 渲染卡片为 Buffer（用于缓存/发送），带总超时；失败/超时返回 null。 */
-export const renderCardBuffer = async (html, opts = {}) => {
-  const ms = Number(opts.timeoutMs) > 0 ? Number(opts.timeoutMs) : renderTimeoutMs()
-  return withTimeout(shotCard(html, opts), ms, 'card-buffer')
-}
-
-// ─── 独立 puppeteer 浏览器（懒加载单例，用于 PDF / 高清图）───
-let _browser = null
-let _launching = null
-
-async function getBrowser() {
-  if (_browser) return _browser
-  if (_launching) return _launching
-  _launching = (async () => {
-    try {
-      const mod = await import('puppeteer')
-      const pptr = mod.default || mod
-      // 优先复用系统 Chromium（容器里 /usr/sbin/chromium 已装），免去 puppeteer 下载二进制；
-      // 未探测到则 executablePath 省略，puppeteer 用默认下载的 Chromium
-      const exec = process.env.PUPPETEER_EXECUTABLE_PATH
-        || ['/usr/sbin/chromium', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/google-chrome']
-            .find((p) => { try { return fs.existsSync(p) } catch { return false } })
-      _browser = await pptr.launch({
-        headless: 'new',
-        ...(exec ? { executablePath: exec } : {}),
-        args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-gpu', '--disable-dev-shm-usage'],
-      })
-      return _browser
-    } catch (e) {
-      Log.warn('[render] 独立浏览器 launch 失败', e?.message || e)
-      _browser = null
-      return null
-    } finally {
-      _launching = null
-    }
-  })()
-  return _launching
-}
-
-async function withPage(html, fn) {
-  const browser = await getBrowser()
-  if (!browser) return null
-  let page = null
-  try {
-    page = await browser.newPage()
-  } catch (e) {
-    // newPage 失败 = 浏览器已死 → reset 让下次重新 launch（自愈）
-    _browser = null
-    return null
-  }
-  try {
-    // 渲染的 HTML 里含 LLM 正文（可能被工具结果/网页内容间接注入）；这些卡片本身不需要 JS（theme.js 全静态）
-    // → 直接关掉页面 JS：双保险（另一道是 mdToHtml 转义原始 HTML + 文档 CSP meta），防 XSS 打到本机
-    await page.setJavaScriptEnabled(false).catch(() => {})
-    await page.setContent(String(html), { waitUntil: 'load', timeout: 30000 })
-    return await fn(page)
-  } catch (e) {
-    Log.warn('[render] 页面渲染/截图失败', e?.message || e)
-    return null
-  } finally {
-    if (page) page.close().catch(() => {})
-  }
+export const renderCardImage = async (html, { name = 'agents-plugin/card', timeoutMs } = {}) => {
+  return screenshot(name, html, { ...(Number(timeoutMs) > 0 ? { timeoutMs: Number(timeoutMs) } : {}) })
 }
 
 /**
  * 渲染 HTML 为 PDF 文件。
+ * 仅在 Yunzai 当前渲染后端是 Puppeteer 时复用其浏览器（不再单独 launch Chromium）；
+ * shotium 等纯图片后端返回 null，调用方降级为图片/文本。
  * @param {string} html
  * @param {object} opts { path, format='A4' }
  * @returns {Promise<string|null>} 成功返回写入路径，失败 null
@@ -260,61 +252,53 @@ export const renderPdf = async (html, { path: outPath, format = 'A4' } = {}) => 
   try {
     await fs.promises.mkdir(path.dirname(outPath), { recursive: true })
   } catch { /* noop */ }
-  const buff = await withPage(html, (page) =>
-    page.pdf({
-      format,
-      printBackground: true,
-      margin: { top: '16mm', bottom: '16mm', left: '14mm', right: '14mm' },
-      preferCSSPageSize: false,
-      // 修 2026-10-17 审计：page.pdf 原先无 timeout，卡住时 Promise 永不 resolve → #研究 既不回复也不降级。
-      // 超时由 puppeteer 抛错 → withPage catch 返回 null，调用方按 PDF→高清图→文本 降级。
-      timeout: Math.max(renderTimeoutMs(), HEAVY_TIMEOUT_FLOOR_MS),
-    }),
-  )
+  const pdfMs = Math.max(renderTimeoutMs(), HEAVY_TIMEOUT_FLOOR_MS)
+  const buff = await withTimeout((async () => {
+    const renderer = await getYunzaiRenderer()
+    const puppeteer = findPuppeteerRenderer(renderer)
+    if (!puppeteer) {
+      Log.warn('[render] 当前 Yunzai 渲染后端不支持 PDF（仅图片），跳过 PDF 导出')
+      return null
+    }
+    let page = null
+    try {
+      const browser = await puppeteer.browserInit()
+      const target = browser?.newPage ? browser : puppeteer.browser
+      if (!target?.newPage) return null
+      page = await target.newPage()
+      await page.setJavaScriptEnabled?.(false)
+      await page.setContent(String(html ?? ''), { waitUntil: 'load', timeout: pdfMs })
+      return await page.pdf({
+        format,
+        printBackground: true,
+        margin: { top: '16mm', bottom: '16mm', left: '14mm', right: '14mm' },
+        preferCSSPageSize: false,
+        timeout: pdfMs,
+      })
+    } catch (e) {
+      Log.warn('[render] PDF 渲染失败', e?.message || e)
+      return null
+    } finally {
+      if (page) page.close().catch(() => {})
+    }
+  })(), pdfMs + 5000, 'pdf')
   if (!buff) return null
   try {
-    await fs.promises.writeFile(outPath, buff)
+    await fs.promises.writeFile(outPath, Buffer.isBuffer(buff) ? buff : Buffer.from(buff))
     return outPath
-  } catch (e) {
+  } catch {
     return null
   }
 }
 
 /**
- * 渲染 HTML 为高清长图（fullPage，deviceScaleFactor 提升清晰度）。
- * @param {string} name 缓存名（保留参数，便于复用 Yunzai 截图命名）
+ * 渲染 HTML 为高清长图（PNG；由 Yunzai 渲染器截 #container）。
+ * @param {string} name 缓存名
  * @param {string} html
- * @param {object} opts { scale=2, imgType='png', width=820 }
+ * @param {object} opts { imgType='png', timeoutMs }（旧 scale/width 参数保留但忽略）
  * @returns {Promise<Buffer|null>}
  */
-/**
- * 把自包含 HTML 渲染为「卡片图」：优先独立 puppeteer 高清渲染（截 #container，3x JPEG），
- * 再降级 Yunzai 渲染器（dsf 1）。用于帮助图/列表图等非 markdown 场景。
- * 返回 segment.image 或 Yunzai 渲染结果；全部失败返回 null（调用方降级文本）。
- */
-export const renderCardImage = async (html, { scale = 3, name = 'agents-plugin/card', timeoutMs } = {}) => {
-  const sc = Math.min(Math.max(Number(scale) || 3, 1), 4) // clamp [1,4]，防 Chromium OOM
-  const ms = Number(timeoutMs) > 0 ? Number(timeoutMs) : renderTimeoutMs()
-  return await withTimeout((async () => {
-    let img = await renderHighQuality(html, { scale: sc })
-    if (img) return img
-    Log.debug('[render] 卡片图独立浏览器渲染失败，降级 Yunzai 渲染器…')
-    img = await screenshot(name, html)
-    // 修 2026-10-17 审计：原先失败后用完全相同的参数再截一次 —— 同因必失败，只是让用户白等一个超时
-    // （Chromium 卡住时是 2×15s）。失败直接交给调用方降级为文本。
-    if (!img) Log.warn('[render] 卡片图 Yunzai 渲染器失败，降级文本')
-    return img
-  })(), ms, 'card-image')
-}
-
-export const renderHd = async (name, html, { scale = 2, imgType = 'png', width = 820 } = {}) => {
-  const buff = await withPage(html, async (page) => {
-    await page.setViewport({ width, height: 1200, deviceScaleFactor: scale })
-    const opt = { type: imgType, fullPage: true }
-    if (imgType === 'jpeg') opt.quality = 92
-    // 修 2026-10-17 审计：page.screenshot 原先无 timeout，长图卡住时永不返回 → 命令既不回复也不降级
-    opt.timeout = Math.max(renderTimeoutMs(), HEAVY_TIMEOUT_FLOOR_MS)
-    return page.screenshot(opt)
-  })
-  return buff && Buffer.isBuffer(buff) ? buff : null
+export const renderHd = async (name, html, { imgType = 'png', timeoutMs } = {}) => {
+  const ms = Number(timeoutMs) > 0 ? Number(timeoutMs) : Math.max(renderTimeoutMs(), HEAVY_TIMEOUT_FLOOR_MS)
+  return renderCardBuffer(html, { name, imgType, quality: 100, timeoutMs: ms })
 }

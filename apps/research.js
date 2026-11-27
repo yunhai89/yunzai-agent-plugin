@@ -1,9 +1,9 @@
 /**
  * 深度研究命令（#研究 <主题>）—— 接入 model/research/DeepResearch。
  *
- * 结果下发级联（PDF → 高清长图 → 分段文本），任一环节失败自动降级：
- *   1) PDF 文件发送（segment.file）—— 失败/不可用 →
- *   2) 高清长图（puppeteer fullPage @2x PNG）—— 再失败 → Yunzai 内置截图 →
+ * 结果下发级联（PDF → 长图 → 分段文本），任一环节失败自动降级：
+ *   1) PDF 文件发送（segment.file；仅 Yunzai Puppeteer 渲染后端可用）—— 失败/不可用 →
+ *   2) 长图（统一经 Yunzai 渲染器输出 PNG）—— 再失败 →
  *   3) 分段文本（按段落边界切分，单段 ≤ ~1800 字，防超 QQ 发送上限）
  *
  * 默认仅主人可用（研究成本高，agent.research.permission 可改为 all）。
@@ -132,12 +132,12 @@ export class Research extends plugin {
   async _tryHdImage(html) {
     try {
       const seg = (typeof segment !== 'undefined' && segment) || null
-      const buff = await renderHd('agents-plugin/research', html, { scale: 2, imgType: 'png' })
+      const buff = await renderHd('agents-plugin/research', html, { imgType: 'png' })
       if (buff && seg?.image) {
         const sent = await this.e.reply(seg.image(`base64://${buff.toString('base64')}`)).catch(() => null)
         if (sent) return true
       }
-      // 再兜底：Yunzai 内置截图
+      // 再兜底：普通卡片截图（同样走 Yunzai 渲染器）
       const img = await screenshot('agents-plugin/research', html)
       if (img) {
         await this.e.reply(img)

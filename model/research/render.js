@@ -3,7 +3,7 @@
  *
  * 零依赖 markdown→HTML（覆盖研究报告常用语法），浅色排版、打印友好：
  *  - PDF：A4 宽度、衬线正文、分页避让
- *  - 长图：puppeteer fullPage 截图，CSS 控制最大宽度居中
+ *  - 长图：Yunzai 渲染器截图，CSS 控制最大宽度居中
  */
 
 function esc(s) {

@@ -71,7 +71,7 @@ cd ./plugins/agents-plugin && pnpm install   # markdown 渲染依赖（用 npm �
 
 > 其余依赖随 Yunzai 提供（`ws` / `sharp` / `puppeteer` 等）。`#agent更新` 检测到 `package.json` 变动会自动 `pnpm install`。
 > 重启 Yunzai 后，插件会在**自己的** `plugins/agents-plugin/config/config.yaml` 生成配置（不在 Yunzai 根；旧的 `Yunzai/config/agents-plugin.yaml` 会自动迁移）。
-> **网页抓取开箱即用**：首次启动会自动检测并后台安装 crawl4ai + Chromium（约 300–500MB，装到插件目录；需要系统有 `python3` ≥3.10）；安装期间抓取自动降级纯 HTTP，完成后无需重启。发 **`#抓取环境`** 查看进度或修复；失败不影响插件其他功能。
+> **网页抓取开箱即用**：首次启动会自动检测并后台安装 crawl4ai + Chromium（约 300–500MB，装到插件目录；需要系统有 `python3` ≥3.10）；安装期间抓取自动降级纯 HTTP，完成后无需重启。发 **`#抓取环境`** 查看进度或修复，**`#抓取环境 安装`** 会在成功/失败时把结果推回当前会话；失败不影响插件其他功能。
 
 ### 1.5 首次启动：先拿到面板地址（无需协议端）
 
@@ -161,7 +161,7 @@ agent:
 到 Web 配置中心核对厂商 `baseURL` / `apiKey` / `protocol`；海外端点可配 `agent.proxy`。
 
 **Q3：回复变纯文本 / 图片渲染失败？**
-默认 `reply.mode=text`，不需要 Chromium；切到 `reply.mode=image` 才需要 Chromium，失败会自动退文本。官方机器人本来就走 Markdown。弱服务器可设 `agent.render.card=false`。
+默认 `reply.mode=text`，不需要 Chromium；切到 `reply.mode=image` 才需要 **Yunzai 渲染器**（puppeteer/shotium，按 Yunzai `renderers` 配置），插件不再启动独立浏览器，失败会自动退文本。官方机器人本来就走 Markdown。弱服务器可设 `agent.render.card=false`。
 
 **Q5：QQ 官方机器人连不上？**
 确认 AppID + AppSecret（Token 已废弃）；看 Web「机器人账号」页状态；4004=密钥错，4013/4914=intents 权限问题，4008=频控；不要和 Yunzai-QQBot-Plugin 同时开。

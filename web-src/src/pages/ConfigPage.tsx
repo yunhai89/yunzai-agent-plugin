@@ -20,7 +20,7 @@ const DEFAULTS = {
   thinking: null as any, thinkingAuto: { enable: false, classifier: 'auto', maxBudget: 32768 },
   maxTurns: 200, temperature: 1, maxTokens: null, maxToolResultChars: 8000, reflect: 'auto',
   taskStore: { enable: false, dir: 'data/tasks' }, progress: true, progressRecall: 3,
-  reply: { mode: 'text', renderScale: 1, atSender: true, quote: true, narrate: false },
+  reply: { mode: 'text', atSender: true, quote: true, narrate: false },
   render: { card: true, helpTimeoutMs: 300000, timeoutMs: 15000, replyTimeoutMs: 30000 },
   qqBot: { enable: false, appId: '', appSecret: '', name: '', accounts: [] as any[], intents: 0, markdown: 'auto', preferMarkdownText: false, sandbox: false },
   qqOfficial: { markdown: { enable: true, maxChars: 3500, templateId: '' }, keyboard: { enable: true }, progress: false, narrate: false },
@@ -191,7 +191,7 @@ const SECTIONS: Section[] = [
     id: 'reply', name: '进度 / 回复渲染', icon: Send, desc: '进度消息、卡片图与回复方式',
     fields: [
       S('progress', '工具调用进度消息'), N('progressRecall', '进度消息撤回（秒）', undefined, { min: 0, max: 120 }),
-      SEL('reply.mode', '回复渲染方式', [['text', '纯文本（默认）'], ['image', '图片渲染']]), N('reply.renderScale', '回复图清晰度倍率', undefined, { min: 1, max: 4 }),
+      SEL('reply.mode', '回复渲染方式', [['text', '纯文本（默认）'], ['image', '图片渲染']]),
       S('render.card', '帮助 / 列表卡片图'), N('render.helpTimeoutMs', '帮助图渲染超时', undefined, { min: 1000, step: 1000 }),
       N('render.timeoutMs', '卡片图渲染超时', undefined, { min: 1000 }), N('render.replyTimeoutMs', '回复图渲染超时', undefined, { min: 1000 }),
       S('reply.atSender', '群聊 @ 发言人'), S('reply.quote', '群聊引用原消息'), S('reply.narrate', '中途播报'),

@@ -170,7 +170,7 @@ export class Help extends plugin {
       const img = await this._helpCard(html, render)
       if (img) return this.e.reply(img), true
     }
-    // 文本回退（puppeteer 不可用 / 渲染超时 / 主动关闭时）
+    // 文本回退（Yunzai 渲染器不可用 / 渲染超时 / 主动关闭时）
     const lines = ['#agent帮助']
     for (const s of SECTIONS) {
       lines.push(`【${s.title}】`)
@@ -191,7 +191,7 @@ export class Help extends plugin {
     } catch { /* 未命中缓存 */ }
 
     // 帮助图默认给 5 分钟（agent.render.helpTimeoutMs）：弱机器/冷缓存首次渲染常超过普通卡片的 15s
-    const buf = await renderCardBuffer(html, { scale: 3, timeoutMs: helpRenderTimeoutMs(render) })
+    const buf = await renderCardBuffer(html, { timeoutMs: helpRenderTimeoutMs(render) })
     if (!buf) {
       _helpCardCooldownUntil = Date.now() + HELP_CARD_COOLDOWN_MS // 渲染失败/超时 → 冷却期内走文本
       return null
