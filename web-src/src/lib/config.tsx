@@ -182,7 +182,7 @@ export function useAgentConfig<T extends Record<string, any>>(subtree: string | 
 export function SaveBar({ dirty, onReset, onSave, busy, label = '保存（热加载）' }: { dirty: boolean; onReset: () => void; onSave: () => void; busy?: boolean; label?: string }) {
   if (!dirty) return null
   return (
-    <div className="fixed bottom-[calc(72px+env(safe-area-inset-bottom))] left-1/2 z-50 flex w-[min(560px,calc(100vw-24px))] -translate-x-1/2 items-center gap-3 rounded-[14px] border border-white/80 bg-white/90 px-3 py-2.5 shadow-[0_24px_60px_-28px_rgba(10,60,56,.5)] backdrop-blur-xl lg:bottom-6">
+    <div className="savebar fixed bottom-[calc(72px+env(safe-area-inset-bottom))] left-1/2 z-50 flex w-[min(560px,calc(100vw-24px))] -translate-x-1/2 items-center gap-3 rounded-[14px] border border-white/80 bg-white/90 px-3 py-2.5 shadow-[0_24px_60px_-28px_rgba(10,60,56,.5)] backdrop-blur-xl lg:bottom-6">
       <span className="relative ml-1 flex h-2 w-2 flex-none">
         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-vermilion/60" />
         <span className="relative inline-flex h-2 w-2 rounded-full bg-vermilion" />

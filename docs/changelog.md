@@ -13,6 +13,7 @@
 
 | 版本 | 内容 |
 | --- | --- |
+| **v1.57.0** | 配置中心交互与移动端修复：厂商/模型列表默认折叠为「名称 + 状态」摘要，点击展开编辑；模型 ID 改为可检索组合框（已有模型 + 厂商目录，支持手输、方向键/回车、空结果确认），下拉改为 portal 定位，修复被面板 `overflow-hidden` 裁剪、箭头点击无反应与透明底穿透；软键盘弹出时自动收起底部导航、保存栏贴键盘显示，补充 `interactive-widget=resizes-content` 与 16px 输入字号；补齐 `ink-4/lagoon-soft/jade-soft/amber-soft/coral-soft/line-soft/line-strong` 色板 token，修复部分样式失效。 |
 | **v1.56.0** | Web 配置中心「模型列表」支持从厂商实时拉取模型：模型栏新增「厂商模型」下拉，按当前行的 `protocol/preset/baseURL/apiKey` 调 `GET /api/models` 拉取列表，选择后回填模型 ID；同一厂商配置 5 分钟缓存、可手动刷新，拉取失败/未填 Key 时控件内提示，手输自定义 ID 的能力保留。后端接口此前已存在，本次完成前端接入。 |
 | **v1.55.1** | 工程拆分：`apps/agent.js`（4478 行）拆为薄入口 + `apps/agent/constants.js`、`streaming.js`、`runtime.js`、`context.js`、`chat.js` 与 `apps/agent/commands/{chat,admin,mcp,memory,tasks,persona,evolution}.js`。运行时装配、事件上下文、流式发送、命令实现各自独立；`Chat`/`getRuntime`/`fireReminder`/`makeDeltaStreamer`/`attachToolRuntime` 等对外导出保持不变，行为无变化。 |
 | **v1.55.0** | 渲染统一到 Yunzai 渲染器：帮助图、聊天/人设列表、Markdown 回复图、深度研究长图全部经 Yunzai `renderers`（puppeteer / shotium，按 Yunzai 配置）输出，删除插件内独立 puppeteer 浏览器与 `reply.renderScale` 配置，不再额外常驻一份 Chromium。PDF 仅在 Yunzai 当前后端为 Puppeteer 时复用其浏览器导出，shotium 等纯图片后端自动降级长图/文本；渲染超时、后端不可用、截图失败仍按原级联降级，不影响指令返回。 |

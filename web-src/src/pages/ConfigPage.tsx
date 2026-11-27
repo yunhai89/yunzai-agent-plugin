@@ -1,14 +1,14 @@
 import { useEffect, useMemo, useState } from 'react'
 import {
-  Bot, Boxes, Brain, CalendarClock, ChevronRight, Cpu, Database, ExternalLink, FlaskConical,
+  Bot, Boxes, Brain, CalendarClock, ChevronDown, ChevronRight, Cpu, Database, ExternalLink, FlaskConical,
   Globe2, KeyRound, Layers, ListChecks, MessageSquare, Plus, RefreshCw, Search, Send,
   ShieldCheck, SlidersHorizontal, Sparkles, Terminal, Trash2, Wrench, X, Zap,
 } from 'lucide-react'
 import { api } from '@/lib/api'
 import { useAsync } from '@/lib/hooks'
 import { useAgentConfig, CfgSection, CfgRow, SaveBar, Note, SubHead, deepMerge, deepClone, diffPaths, parseNum } from '@/lib/config'
-import { Button, CopyButton, Input, Select, Switch, TagEditor, Tag, Textarea, EmptyState, ErrorState, PageHeader } from '@/components/ui'
-import { ProviderModelSelect } from '@/components/ModelPicker'
+import { Button, CopyButton, Field, Input, Select, Switch, TagEditor, Tag, Textarea, EmptyState, ErrorState, PageHeader } from '@/components/ui'
+import { ModelCombobox, type ModelOption } from '@/components/ModelPicker'
 import { useConfirm, useToast } from '@/components/Overlay'
 import { cn } from '@/lib/cn'
 
@@ -92,6 +92,8 @@ type FieldType = 'switch' | 'number' | 'text' | 'mono' | 'textarea' | 'json' | '
 type Field = {
   path: string; label: string; hint?: string; type: FieldType; danger?: boolean; full?: boolean;
   options?: [string, string][]; min?: number; max?: number; step?: number; placeholder?: string; unit?: string; readonly?: (f: any) => string
+  /** 该字段是 LLM 模型 ID：用可检索/可手输的模型下拉，而不是普通输入框。 */
+  modelPicker?: boolean
 }
 type Section = { id: string; name: string; icon: any; desc: string; fields: Field[]; custom?: boolean; keywords?: string }
 const S = (path: string, label: string, hint?: string, extra: Partial<Field> = {}): Field => ({ path, label, hint, type: 'switch', ...extra })
@@ -135,7 +137,7 @@ const SECTIONS: Section[] = [
       S('commandPassThrough', '指令透传', '允许主人指令穿过 Agent 直接执行。'),
       S('isolation.enable', '多用户数据隔离', '按群 / 私聊拆分记忆。'),
       S('debug', '调试日志', '写入更详细的运行日志。'),
-      M('utilityModel', '旁路小模型', '高频小任务使用；留空 = 主模型。', { placeholder: '模型 ID' }),
+      M('utilityModel', '旁路小模型', '高频小任务使用；留空 = 主模型。', { placeholder: '模型 ID', modelPicker: true }),
       M('proxy', '代理', 'http / https 代理地址。', { placeholder: 'http://127.0.0.1:7890' }),
     ],
   },
@@ -345,7 +347,7 @@ function JsonField({ value, onChange, placeholder }: { value: any; onChange: (v:
   )
 }
 
-function FieldControl({ f, form, field, modelIds }: { f: Field; form: any; field: (p: string, v: any) => void; modelIds: string[] }) {
+function FieldControl({ f, form, field, modelOptions }: { f: Field; form: any; field: (p: string, v: any) => void; modelOptions: ModelOption[] }) {
   const get = (p: string) => p.split('.').reduce((o, k) => o?.[k], form)
   const v = get(f.path)
   const set = (val: any) => field(f.path, val)
@@ -357,10 +359,11 @@ function FieldControl({ f, form, field, modelIds }: { f: Field; form: any; field
     const n = Number(v) || 0
     return <div className="flex items-center gap-3"><input type="range" min={f.min ?? 0} max={f.max ?? 1} step={f.step ?? 0.05} value={n} onChange={(e) => set(Number(e.target.value))} className="w-full accent-lagoon" /><span className="mono w-10 text-right text-[11px]">{n.toFixed(1)}</span></div>
   }
+  if (f.modelPicker) return <ModelCombobox value={typeof v === 'string' ? v : ''} onChange={set} localOptions={modelOptions} allowRemote={false} placeholder={f.placeholder} ariaLabel={f.label} />
   if (f.type === 'json') return <JsonField value={v} onChange={set} placeholder={f.placeholder} />
   if (f.type === 'textarea') return <Textarea aria-label={f.label} className="mono min-h-[100px]" value={typeof v === 'string' ? v : JSON.stringify(v ?? {}, null, 2)} onChange={(e) => set(e.target.value)} placeholder={f.placeholder} />
   if (f.type === 'number') return <Input aria-label={f.label} className="w-[130px]" type="number" min={f.min} max={f.max} step={f.step} value={v ?? ''} onChange={(e) => set(e.target.value === '' ? '' : Number(e.target.value))} placeholder={f.placeholder} />
-  return <Input aria-label={f.label} className={f.type === 'mono' ? 'mono' : ''} value={v ?? ''} onChange={(e) => set(e.target.value)} placeholder={f.placeholder} list={modelIds.length && /Model|model/.test(f.path) ? 'cfg-model-ids' : undefined} />
+  return <Input aria-label={f.label} className={f.type === 'mono' ? 'mono' : ''} value={v ?? ''} onChange={(e) => set(e.target.value)} placeholder={f.placeholder} />
 }
 
 export function ConfigPage() {
@@ -386,7 +389,20 @@ export function ConfigPage() {
   const models = (form.llmModels || []) as any[]
   const mainProvider = providers.find((p) => p.id === form.providerId)
   const mainModels = models.filter((m) => m.providerId === form.providerId)
-  const modelIds = useMemo(() => [...new Set(models.map((m) => m.model).filter(Boolean))], [models])
+  const [expandedProvider, setExpandedProvider] = useState<string | null>(null)
+  const [expandedModel, setExpandedModel] = useState<string | null>(null)
+  const modelOptions = useMemo<ModelOption[]>(() => {
+    const seen = new Set<string>()
+    const out: ModelOption[] = []
+    for (const m of models) {
+      const id = String(m.model || '').trim()
+      if (!id || seen.has(id)) continue
+      seen.add(id)
+      const prov = providers.find((p) => p.id === m.providerId)
+      out.push({ id, label: m.name || '', meta: prov?.name || '已登记模型', rowId: m.id })
+    }
+    return out
+  }, [models, providers])
 
   useEffect(() => {
     if (ready && !mcpReady) {
@@ -413,6 +429,7 @@ export function ConfigPage() {
   const addProvider = () => {
     const id = 'p' + Date.now().toString(36)
     field('llmProviders', [...providers, { id, name: '', protocol: 'openai', preset: '', baseURL: '', apiKey: '' }])
+    setExpandedProvider(id)
   }
   const removeProvider = async (idx: number) => {
     const p = providers[idx]
@@ -420,17 +437,20 @@ export function ConfigPage() {
     if (models.some((m) => m.providerId === p.id)) { toast('该厂商下还有模型条目，请先删除或改挂', 'warn'); return }
     const ok = await confirm({ title: '删除这个厂商？', message: p.name || p.id, confirmText: '删除', danger: true })
     if (!ok) return
+    if (expandedProvider === p.id) setExpandedProvider(null)
     field('llmProviders', providers.filter((_, i) => i !== idx))
   }
   const addModel = () => {
     const id = 'm' + Date.now().toString(36)
     field('llmModels', [...models, { id, name: '', providerId: form.providerId || providers[0]?.id || '', model: '', thinking: 'inherit', note: '' }])
+    setExpandedModel(id)
   }
   const removeModel = async (idx: number) => {
     const m = models[idx]
     if (m.id === form.modelId) { toast('该模型正被基础模型使用，请先切换', 'warn'); return }
     const ok = await confirm({ title: '删除这个模型条目？', message: m.name || m.model || m.id, confirmText: '删除', danger: true })
     if (!ok) return
+    if (expandedModel === m.id) setExpandedModel(null)
     field('llmModels', models.filter((_, i) => i !== idx))
   }
 
@@ -535,7 +555,7 @@ export function ConfigPage() {
             </CfgRow>
           ) : (
             <CfgRow key={f.path} label={f.label} hint={f.hint} full={f.full} danger={f.danger} path={f.path} highlight={highlight === f.path}>
-              <FieldControl f={f} form={form} field={field} modelIds={modelIds} />
+              <FieldControl f={f} form={form} field={field} modelOptions={modelOptions} />
             </CfgRow>
           )
         ))}
@@ -546,7 +566,7 @@ export function ConfigPage() {
   const renderCustom = (sec: Section) => {
     if (sec.id === 'basic') return (
       <>
-        {sec.fields.map((f) => <CfgRow key={f.path} label={f.label} hint={f.hint} full={f.full} danger={f.danger} path={f.path} highlight={highlight === f.path}><FieldControl f={f} form={form} field={field} modelIds={modelIds} /></CfgRow>)}
+        {sec.fields.map((f) => <CfgRow key={f.path} label={f.label} hint={f.hint} full={f.full} danger={f.danger} path={f.path} highlight={highlight === f.path}><FieldControl f={f} form={form} field={field} modelOptions={modelOptions} /></CfgRow>)}
         <SubHead hint="只改引用，镜像字段由后端回填">主接入（对话主模型）</SubHead>
         <CfgRow label="厂商" hint="基础模型的唯一来源。" full>
           <div className="flex flex-wrap items-center gap-2">
@@ -575,7 +595,7 @@ export function ConfigPage() {
         <div className="mb-2 flex justify-end"><Button size="sm" variant="secondary" onClick={() => field('fallbackModels', [...(form.fallbackModels || []), { model: '', baseURL: '', apiKey: '', protocol: 'openai' }])} icon={<Plus size={12} />}>添加回退</Button></div>
         {(form.fallbackModels || []).length === 0 ? <p className="pb-3 text-[11px] text-ink-3">没有回退模型。主模型失败时会直接报错。</p> : (form.fallbackModels || []).map((fb: any, i: number) => (
           <div key={i} className="mb-2 grid grid-cols-1 gap-2 rounded-lg border border-line-soft bg-white/35 p-2.5 sm:grid-cols-[1fr_130px_1fr_1fr_auto]">
-            <Input value={fb.model || ''} placeholder="模型 ID" onChange={(e) => { const arr = [...form.fallbackModels]; arr[i] = { ...fb, model: e.target.value }; field('fallbackModels', arr) }} />
+            <ModelCombobox value={fb.model || ''} placeholder="模型 ID（可手输或选择）" localOptions={modelOptions} allowRemote={false} onChange={(v) => { const arr = [...form.fallbackModels]; arr[i] = { ...fb, model: v }; field('fallbackModels', arr) }} />
             <Select value={fb.protocol || 'openai'} onChange={(e) => { const arr = [...form.fallbackModels]; arr[i] = { ...fb, protocol: e.target.value }; field('fallbackModels', arr) }}>{PROTOCOL.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select>
             <Input className="mono" value={fb.baseURL || ''} placeholder="baseURL" onChange={(e) => { const arr = [...form.fallbackModels]; arr[i] = { ...fb, baseURL: e.target.value }; field('fallbackModels', arr) }} />
             <Input className="mono" type="password" value={fb.apiKey || ''} placeholder="apiKey" onChange={(e) => { const arr = [...form.fallbackModels]; arr[i] = { ...fb, apiKey: e.target.value }; field('fallbackModels', arr) }} />
@@ -587,7 +607,7 @@ export function ConfigPage() {
         <Note tone="amber">启用后，判断请求会发送到 Jev（TypeSafe）。未启用时所有判断回退规则。</Note>
         <CfgRow label="启用 Jev"><Switch checked={!!form.jev?.enable} onChange={(v) => field('jev.enable', v)} label="启用 Jev" /></CfgRow>
         <CfgRow label="Jev 厂商"><Select value={form.jev?.providerId || ''} disabled={!form.jev?.enable} onChange={(e) => field('jev.providerId', e.target.value)}><option value="">（未选择）</option>{providers.map((p) => <option key={p.id} value={p.id}>{p.name || p.id}</option>)}</Select></CfgRow>
-        <CfgRow label="Jev 模型"><Input className="mono" value={form.jev?.model || ''} onChange={(e) => field('jev.model', e.target.value)} placeholder="模型 ID" /></CfgRow>
+        <CfgRow label="Jev 模型"><ModelCombobox value={form.jev?.model || ''} onChange={(v) => field('jev.model', v)} localOptions={modelOptions} allowRemote={false} placeholder="模型 ID（可手输或选择）" ariaLabel="Jev 模型" /></CfgRow>
         <CfgRow label="注册 jev 工具"><Switch checked={!!form.jev?.decisions?.llmTool} onChange={(v) => field('jev.decisions.llmTool', v)} label="注册 jev 工具" /></CfgRow>
         <CfgRow label="超时（ms）"><Input className="w-[130px]" type="number" min={500} step={500} value={form.jev?.timeoutMs ?? ''} onChange={(e) => field('jev.timeoutMs', Number(e.target.value))} /></CfgRow>
         <CfgRow label="重试次数"><Input className="w-[100px]" type="number" min={0} max={5} value={form.jev?.maxRetries ?? ''} onChange={(e) => field('jev.maxRetries', Number(e.target.value))} /></CfgRow>
@@ -600,51 +620,139 @@ export function ConfigPage() {
     if (sec.id === 'providers') return (
       <>
         <div className="flex flex-wrap items-center justify-between gap-2 py-2">
-          <p className="text-[11px] text-ink-3">没有默认厂商：这里登记的就是全部可用厂商。基础模型通过引用选择。</p>
+          <p className="text-[11px] text-ink-3">默认只显示厂商名和状态，点击一行展开详细配置；修改后点底部保存。</p>
           <Button size="sm" variant="secondary" onClick={addProvider} icon={<Plus size={12} />}>添加厂商</Button>
         </div>
-        {providers.length === 0 ? <EmptyState title="暂无厂商">先添加至少一个厂商，填接口地址与 Key。</EmptyState> : providers.map((p, i) => (
-          <div key={p.id} className="mb-2 rounded-lg border border-line-soft bg-white/35 p-3">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Input value={p.name || ''} placeholder="厂商名称（如 豆包）" onChange={(e) => { const arr = [...providers]; arr[i] = { ...p, name: e.target.value }; field('llmProviders', arr) }} />
-              <div className="flex gap-2"><Select value={p.protocol || 'openai'} onChange={(e) => { const arr = [...providers]; arr[i] = { ...p, protocol: e.target.value }; field('llmProviders', arr) }}>{PROTOCOL.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select><Select value={p.preset || ''} onChange={(e) => { const arr = [...providers]; const preset = e.target.value; const pick = PROVIDER_MODELS[preset]; arr[i] = { ...p, preset, ...(pick ? { protocol: pick.protocol, baseURL: pick.baseURL } : {}) }; field('llmProviders', arr) }}>{PRESET.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></div>
-              <Input className="mono" value={p.baseURL || ''} placeholder="接口地址 baseURL" onChange={(e) => { const arr = [...providers]; arr[i] = { ...p, baseURL: e.target.value }; field('llmProviders', arr) }} />
-              <Input className="mono" type="password" value={p.apiKey || ''} placeholder="API Key" onChange={(e) => { const arr = [...providers]; arr[i] = { ...p, apiKey: e.target.value }; field('llmProviders', arr) }} autoComplete="new-password" />
-            </div>
-            <div className="mt-2 flex items-center justify-between"><div className="flex gap-1.5">{p.id === form.providerId && <Tag tone="jade">基础模型在用</Tag>}{p.preset && <Tag tone="neutral">{p.preset}</Tag>}</div><Button size="sm" variant="danger" onClick={() => void removeProvider(i)} icon={<Trash2 size={11} />}>删除</Button></div>
+        {providers.length === 0 ? <EmptyState title="暂无厂商">先添加至少一个厂商，填接口地址与 Key。</EmptyState> : (
+          <div className="divide-y divide-line-soft overflow-hidden rounded-xl border border-line-soft bg-white/40">
+            {providers.map((p, i) => {
+              const open = expandedProvider === p.id
+              const st = !p.baseURL
+                ? { dot: 'bad' as const, tag: 'coral' as const, label: '缺接口地址' }
+                : !p.apiKey
+                  ? { dot: 'warn' as const, tag: 'amber' as const, label: '缺 API Key' }
+                  : { dot: 'ok' as const, tag: 'jade' as const, label: '已配置' }
+              const protocol = (PROTOCOL.find(([v]) => v === (p.protocol || 'openai')) || ['', p.protocol || 'openai'])[1]
+              const preset = p.preset ? (PRESET.find(([v]) => v === p.preset) || ['', p.preset])[1] : ''
+              const count = models.filter((m) => m.providerId === p.id).length
+              return (
+                <div key={p.id}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-white/55"
+                    aria-expanded={open}
+                    onClick={() => setExpandedProvider(open ? null : p.id)}
+                  >
+                    <span className={cn('status-dot', st.dot)} />
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span className="truncate text-[12.5px] font-medium text-ink">{p.name || '未命名厂商'}</span>
+                        <Tag tone={st.tag}>{st.label}</Tag>
+                        {p.id === form.providerId && <Tag tone="jade">基础模型在用</Tag>}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[10.5px] text-ink-3">
+                        {protocol}{preset ? ` · ${preset}` : ''} · {count} 个模型
+                      </span>
+                    </span>
+                    <ChevronDown size={15} className={cn('flex-none text-ink-3 transition-transform', open && 'rotate-180')} />
+                  </button>
+                  {open && (
+                    <div className="border-t border-line-soft bg-white/55 px-3.5 py-3.5">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <Field label="厂商名称"><Input value={p.name || ''} placeholder="如 豆包" onChange={(e) => { const arr = [...providers]; arr[i] = { ...p, name: e.target.value }; field('llmProviders', arr) }} /></Field>
+                        <Field label="协议"><Select value={p.protocol || 'openai'} onChange={(e) => { const arr = [...providers]; arr[i] = { ...p, protocol: e.target.value }; field('llmProviders', arr) }}>{PROTOCOL.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></Field>
+                        <Field label="预设"><Select value={p.preset || ''} onChange={(e) => { const arr = [...providers]; const preset = e.target.value; const pick = PROVIDER_MODELS[preset]; arr[i] = { ...p, preset, ...(pick ? { protocol: pick.protocol, baseURL: pick.baseURL } : {}) }; field('llmProviders', arr) }}>{PRESET.map(([v, l]) => <option key={v} value={v}>{l}</option>)}</Select></Field>
+                        <Field label="API Key"><Input className="mono" type="password" value={p.apiKey || ''} placeholder="API Key" onChange={(e) => { const arr = [...providers]; arr[i] = { ...p, apiKey: e.target.value }; field('llmProviders', arr) }} autoComplete="new-password" /></Field>
+                        <Field label="接口地址 baseURL" className="sm:col-span-2"><Input className="mono" value={p.baseURL || ''} placeholder="https://…" onChange={(e) => { const arr = [...providers]; arr[i] = { ...p, baseURL: e.target.value }; field('llmProviders', arr) }} /></Field>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-[10.5px] text-ink-3">基础模型与功能分配通过引用使用这个厂商。</p>
+                        <Button size="sm" variant="danger" onClick={() => void removeProvider(i)} icon={<Trash2 size={11} />}>删除厂商</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
-        ))}
+        )}
       </>
     )
 
     if (sec.id === 'models') return (
       <>
-        <div className="flex flex-wrap items-center justify-between gap-2 py-2"><p className="text-[11px] text-ink-3">模型条目挂在厂商下；只有 providerId / modelId 是真源。模型 ID 可从厂商模型列表下拉选择，也可手输。</p><Button size="sm" variant="secondary" onClick={addModel} icon={<Plus size={12} />}>添加模型</Button></div>
-        <datalist id="cfg-model-ids">{modelIds.map((id) => <option key={id} value={id} />)}</datalist>
-        {models.length === 0 ? <EmptyState title="暂无模型">先添加模型条目，再到「基础 / 模型」选作主模型。</EmptyState> : models.map((m, i) => (
-          <div key={m.id} className="mb-2 rounded-lg border border-line-soft bg-white/35 p-3">
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <Input value={m.name || ''} placeholder="别名（可选）" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, name: e.target.value }; field('llmModels', arr) }} />
-              <Select value={m.providerId || ''} onChange={(e) => { const arr = [...models]; arr[i] = { ...m, providerId: e.target.value }; field('llmModels', arr) }}><option value="">（未挂厂商）</option>{providers.map((p) => <option key={p.id} value={p.id}>{p.name || p.id}</option>)}</Select>
-              <div className="flex min-w-0 items-center gap-1.5">
-                <Input className="mono min-w-0 flex-1" aria-label="模型 ID" autoComplete="off" spellCheck={false} value={m.model || ''} placeholder="模型 ID（可手输）" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, model: e.target.value }; field('llmModels', arr) }} />
-                <ProviderModelSelect className="w-[140px] shrink-0 sm:w-[168px]" provider={providers.find((p) => p.id === m.providerId)} value={m.model || ''} onSelect={(id) => { const arr = [...models]; arr[i] = { ...m, model: id }; field('llmModels', arr) }} />
-              </div>
-              <Select value={m.thinking || 'inherit'} onChange={(e) => { const arr = [...models]; arr[i] = { ...m, thinking: e.target.value }; field('llmModels', arr) }}><option value="inherit">思考 · 继承全局</option><option value="on">思考 · 开启</option><option value="off">思考 · 关闭</option></Select>
-              <Input type="number" step={0.1} min={0} max={2} value={m.temperature ?? ''} placeholder="温度（留空=继承）" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, temperature: parseNum(e.target.value) }; field('llmModels', arr) }} />
-              <Input type="number" step={256} min={1} value={m.maxTokens ?? ''} placeholder="maxTokens（留空=默认）" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, maxTokens: parseNum(e.target.value) }; field('llmModels', arr) }} />
-              <Input className="sm:col-span-2" value={m.note || ''} placeholder="备注（可选）" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, note: e.target.value }; field('llmModels', arr) }} />
-            </div>
-            <div className="mt-2 flex items-center justify-between">{m.id === form.modelId ? <Tag tone="jade">基础模型</Tag> : <span />}<Button size="sm" variant="danger" onClick={() => void removeModel(i)} icon={<Trash2 size={11} />}>删除</Button></div>
+        <div className="flex flex-wrap items-center justify-between gap-2 py-2">
+          <p className="text-[11px] text-ink-3">默认只显示模型名和状态，点击一行展开编辑；模型 ID 可从已有模型或厂商目录中选择。</p>
+          <Button size="sm" variant="secondary" onClick={addModel} icon={<Plus size={12} />}>添加模型</Button>
+        </div>
+        {models.length === 0 ? <EmptyState title="暂无模型">先添加模型条目，再到「基础 / 模型」选作主模型。</EmptyState> : (
+          <div className="divide-y divide-line-soft overflow-hidden rounded-xl border border-line-soft bg-white/40">
+            {models.map((m, i) => {
+              const open = expandedModel === m.id
+              const provider = providers.find((p) => p.id === m.providerId)
+              const missing = !String(m.model || '').trim()
+              const isMain = m.id === form.modelId
+              const title = m.name || m.model || '未命名模型'
+              const sub = [m.name ? m.model : '', provider?.name || '未挂厂商', m.note].filter(Boolean).join(' · ') || '未填模型 ID'
+              return (
+                <div key={m.id}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center gap-3 px-3.5 py-3 text-left transition-colors hover:bg-white/55"
+                    aria-expanded={open}
+                    onClick={() => setExpandedModel(open ? null : m.id)}
+                  >
+                    <span className="min-w-0 flex-1">
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <span className="truncate text-[12.5px] font-medium text-ink">{title}</span>
+                        {isMain && <Tag tone="jade">基础模型</Tag>}
+                        {missing && <Tag tone="coral">缺模型 ID</Tag>}
+                        {m.thinking === 'on' && <Tag tone="amber">思考</Tag>}
+                        {m.thinking === 'off' && <Tag tone="coral">禁思考</Tag>}
+                      </span>
+                      <span className="mt-0.5 block truncate text-[10.5px] text-ink-3">{sub}</span>
+                    </span>
+                    <ChevronDown size={15} className={cn('flex-none text-ink-3 transition-transform', open && 'rotate-180')} />
+                  </button>
+                  {open && (
+                    <div className="border-t border-line-soft bg-white/55 px-3.5 py-3.5">
+                      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                        <Field label="别名（可选）"><Input value={m.name || ''} placeholder="如 便宜小模型" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, name: e.target.value }; field('llmModels', arr) }} /></Field>
+                        <Field label="所属厂商"><Select value={m.providerId || ''} onChange={(e) => { const arr = [...models]; arr[i] = { ...m, providerId: e.target.value }; field('llmModels', arr) }}><option value="">（未挂厂商）</option>{providers.map((p) => <option key={p.id} value={p.id}>{p.name || p.id}</option>)}</Select></Field>
+                        <Field label="模型 ID" className="sm:col-span-2" hint="可直接手输；点右侧箭头从「模型列表」或厂商目录选择。">
+                          <ModelCombobox
+                            value={m.model || ''}
+                            provider={provider}
+                            localOptions={modelOptions.filter((o) => o.rowId !== m.id)}
+                            ariaLabel={`模型 ID · ${title}`}
+                            onChange={(id) => { const arr = [...models]; arr[i] = { ...m, model: id }; field('llmModels', arr) }}
+                          />
+                        </Field>
+                        <Field label="思考"><Select value={m.thinking || 'inherit'} onChange={(e) => { const arr = [...models]; arr[i] = { ...m, thinking: e.target.value }; field('llmModels', arr) }}><option value="inherit">继承全局</option><option value="on">开启</option><option value="off">关闭</option></Select></Field>
+                        <Field label="温度" hint="留空 = 继承全局"><Input type="number" step={0.1} min={0} max={2} value={m.temperature ?? ''} placeholder="留空 = 继承" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, temperature: parseNum(e.target.value) }; field('llmModels', arr) }} /></Field>
+                        <Field label="maxTokens" hint="留空 = 功能默认"><Input type="number" step={256} min={1} value={m.maxTokens ?? ''} placeholder="留空 = 默认" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, maxTokens: parseNum(e.target.value) }; field('llmModels', arr) }} /></Field>
+                        <Field label="备注（可选）"><Input value={m.note || ''} placeholder="用途 / 备注" onChange={(e) => { const arr = [...models]; arr[i] = { ...m, note: e.target.value }; field('llmModels', arr) }} /></Field>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap gap-1.5">
+                          {isMain && <Tag tone="jade">基础模型</Tag>}
+                          <Tag tone="neutral">{provider?.name || '未挂厂商'}</Tag>
+                        </div>
+                        <Button size="sm" variant="danger" onClick={() => void removeModel(i)} icon={<Trash2 size={11} />}>删除模型</Button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )
+            })}
           </div>
-        ))}
+        )}
       </>
     )
 
     if (sec.id === 'features') return (
       <>
-        <Note tone="neutral">每个槽位填模型 ID（可直接手输）；留空 = 继承主模型。主模型请在「基础 / 模型」用引用选择。</Note>
-        <datalist id="cfg-model-ids">{modelIds.map((id) => <option key={id} value={id} />)}</datalist>
+        <Note tone="neutral">每个槽位选择一个模型 ID；可从「模型列表」已有条目中选择，也可直接手输。留空 = 继承主模型。主模型请在「基础 / 模型」用引用选择。</Note>
         <CfgRow label="主模型" hint="对话主力：推理 / 工具调用 / 复杂任务"><Select value={form.modelId || ''} onChange={(e) => setBaseModel(e.target.value)}><option value="">（未选择）</option>{models.map((m) => <option key={m.id} value={m.id}>{m.name ? `${m.name} · ` : ''}{m.model || m.id}</option>)}</Select></CfgRow>
         {featureRows.filter((f) => f.path).map((f) => {
           const value = f.path.split('.').reduce((o: any, k) => o?.[k], form) ?? ''
@@ -653,7 +761,7 @@ export function ConfigPage() {
             if (parts.length === 1) field(parts[0], v)
             else field(f.path, v)
           }
-          return <CfgRow key={f.key} label={f.label} hint="可选任意厂商；运行时会解析端点"><Input className="mono" list="cfg-model-ids" value={value} placeholder="留空=主模型" onChange={(e) => set(e.target.value)} /></CfgRow>
+          return <CfgRow key={f.key} label={f.label} hint="可选任意厂商；运行时会解析端点"><ModelCombobox className="max-w-[340px]" value={value} localOptions={modelOptions} allowRemote={false} placeholder="留空=主模型" ariaLabel={f.label} onChange={set} /></CfgRow>
         })}
         <CfgRow label="Stagehand 原生模型"><Input className="mono" value={form.stagehand?.modelName || ''} onChange={(e) => field('stagehand.modelName', e.target.value)} placeholder="留空=复用 provider" /></CfgRow>
       </>
@@ -789,7 +897,6 @@ export function ConfigPage() {
           </aside>
 
           <div className="min-w-0 space-y-4">
-            <datalist id="cfg-model-ids">{modelIds.map((id) => <option key={id} value={id} />)}</datalist>
             {visibleSections.map(renderSection)}
           </div>
         </div>

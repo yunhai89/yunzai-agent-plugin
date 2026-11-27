@@ -207,7 +207,7 @@ function MobileDock({ onOpenMenu, onOpenPalette }: { onOpenMenu: () => void; onO
     { path: '/sessions', name: '会话', icon: ALL_NAV.find((n) => n.id === 'sessions')!.icon },
   ]
   return (
-    <div className="fixed inset-x-0 bottom-0 z-40 border-t border-white/70 bg-white/78 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur-xl lg:hidden">
+    <div className="mobile-dock fixed inset-x-0 bottom-0 z-40 border-t border-white/70 bg-white/78 px-2 pb-[max(8px,env(safe-area-inset-bottom))] pt-1.5 backdrop-blur-xl lg:hidden">
       <div className="grid grid-cols-6 gap-0.5">
         {items.map((it) => {
           const Icon = it.icon
@@ -247,6 +247,65 @@ export function AppShell() {
     const onRefresh = () => window.dispatchEvent(new CustomEvent('agents:reload-page'))
     window.addEventListener('agents:refresh', onRefresh)
     return () => window.removeEventListener('agents:refresh', onRefresh)
+  }, [])
+
+  /* 软键盘弹出时：记录键盘高度，收起底部导航，避免导航与输入法之间留出大空白。
+     同时覆盖 Android 的 overlay（visualViewport 变小）与 resizes-content（window 变矮）两种行为。 */
+  useEffect(() => {
+    const root = document.documentElement
+    let fieldFocused = false
+    let baseHeight = window.innerHeight
+    let timer = 0
+    const isField = (el: Element | null) => el instanceof HTMLElement && el.matches(
+      'input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), textarea, select, [contenteditable="true"]',
+    )
+    const update = () => {
+      const vv = window.visualViewport
+      const layoutHeight = window.innerHeight
+      const visualHeight = vv?.height ?? layoutHeight
+      const overlayInset = Math.max(0, Math.round(layoutHeight - visualHeight - (vv?.offsetTop ?? 0)))
+      const layoutShrink = Math.max(0, baseHeight - layoutHeight)
+      const open = overlayInset > 120 || layoutShrink > 120
+      root.style.setProperty('--kb-inset', overlayInset + 'px')
+      root.toggleAttribute('data-keyboard-open', open)
+      if (!open && !fieldFocused) baseHeight = layoutHeight
+    }
+    const focusIn = (e: FocusEvent) => {
+      if (!isField(e.target as Element)) return
+      fieldFocused = true
+      window.clearTimeout(timer)
+      timer = window.setTimeout(update, 80)
+    }
+    const focusOut = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        fieldFocused = isField(document.activeElement)
+        update()
+        if (!fieldFocused) baseHeight = window.innerHeight
+      }, 180)
+    }
+    const onOrientation = () => {
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => { baseHeight = window.innerHeight; update() }, 300)
+    }
+    update()
+    document.addEventListener('focusin', focusIn)
+    document.addEventListener('focusout', focusOut)
+    window.addEventListener('resize', update)
+    window.addEventListener('orientationchange', onOrientation)
+    window.visualViewport?.addEventListener('resize', update)
+    window.visualViewport?.addEventListener('scroll', update)
+    return () => {
+      window.clearTimeout(timer)
+      document.removeEventListener('focusin', focusIn)
+      document.removeEventListener('focusout', focusOut)
+      window.removeEventListener('resize', update)
+      window.removeEventListener('orientationchange', onOrientation)
+      window.visualViewport?.removeEventListener('resize', update)
+      window.visualViewport?.removeEventListener('scroll', update)
+      root.removeAttribute('data-keyboard-open')
+      root.style.removeProperty('--kb-inset')
+    }
   }, [])
 
   const page = ALL_NAV.find((n) => location.pathname.startsWith(n.path))
